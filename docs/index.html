@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentBar — Claude Code Session Monitor for macOS</title>
+  <meta name="description" content="A macOS menu bar app that monitors your active Claude Code agent sessions in real-time.">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0a0a0b;
+      --surface: #141416;
+      --border: #1f1f23;
+      --text: #e4e4e7;
+      --text-muted: #71717a;
+      --accent: #c084fc;
+      --accent-hover: #a855f7;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Nav */
+    nav {
+      padding: 20px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    nav .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .logo span { margin-right: 6px; }
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    .nav-link:hover { color: var(--text); }
+
+    /* Hero */
+    .hero {
+      padding: 100px 0 80px;
+      text-align: center;
+    }
+    .badge {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 52px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 20px;
+    }
+    h1 .highlight {
+      background: linear-gradient(135deg, var(--accent), #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .subtitle {
+      font-size: 18px;
+      color: var(--text-muted);
+      max-width: 500px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+    }
+    .cta-group {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      align-items: center;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #0a0a0b;
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      border-color: #2a2a30;
+      transform: translateY(-1px);
+    }
+    .platform-note {
+      margin-top: 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Features */
+    .features {
+      padding: 80px 0;
+    }
+    .section-label {
+      font-size: 13px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .section-title {
+      font-size: 32px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      transition: border-color 0.2s;
+    }
+    .feature-card:hover {
+      border-color: #2a2a30;
+    }
+    .feature-icon {
+      font-size: 28px;
+      margin-bottom: 16px;
+    }
+    .feature-card h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .feature-card p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Install */
+    .install {
+      padding: 80px 0;
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-top: 48px;
+    }
+    .step {
+      text-align: center;
+    }
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+    .step h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .step p {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    /* Footer */
+    footer {
+      padding: 32px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+    footer p {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    footer a:hover { color: var(--text); }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      h1 { font-size: 36px; }
+      .subtitle { font-size: 16px; }
+      .feature-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; gap: 32px; }
+      .cta-group { flex-direction: column; }
+      .hero { padding: 60px 0 48px; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="container">
+      <div class="logo"><span>🤖</span>AgentBar</div>
+      <a href="https://github.com/sotthang/so-agentbar" class="nav-link">GitHub</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="container">
+      <div class="badge">macOS Menu Bar App</div>
+      <h1>Monitor your<br><span class="highlight">Claude Code</span> agents</h1>
+      <p class="subtitle">Track every active Claude Code session from your menu bar. See tokens, costs, and status at a glance.</p>
+      <div class="cta-group">
+        <a href="https://github.com/sotthang/so-agentbar/releases/latest/download/AgentBar.dmg" class="btn btn-primary">
+          Download for macOS
+        </a>
+        <a href="https://github.com/sotthang/so-agentbar" class="btn btn-secondary">
+          View Source
+        </a>
+      </div>
+      <p class="platform-note">Requires macOS 14.0 or later</p>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="container">
+      <p class="section-label">Features</p>
+      <h2 class="section-title">Everything in your menu bar</h2>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">📡</div>
+          <h3>Real-time Monitoring</h3>
+          <p>Automatically detects and tracks all running Claude Code sessions from CLI and editors.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📊</div>
+          <h3>Token & Cost Tracking</h3>
+          <p>Monitor input/output tokens and API usage costs for each session in real-time.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔔</div>
+          <h3>Smart Notifications</h3>
+          <p>Get notified when responses complete, errors occur, or quota limits are approaching.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⌨️</div>
+          <h3>Global Hotkey</h3>
+          <p>Press Cmd+Shift+S to instantly toggle the session panel from anywhere.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🎨</div>
+          <h3>Custom Emoji</h3>
+          <p>Assign unique emoji icons to each project for quick visual identification.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🚀</div>
+          <h3>Editor Integration</h3>
+          <p>Open projects directly in VSCode, Cursor, Terminal, or Finder with one click.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="install">
+    <div class="container">
+      <p class="section-label">Install</p>
+      <h2 class="section-title">Up and running in seconds</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <h3>Download</h3>
+          <p>Grab the DMG from the button above</p>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <h3>Install</h3>
+          <p>Drag AgentBar.app to Applications</p>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <h3>Launch</h3>
+          <p>AgentBar appears in your menu bar</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <p>Built by <a href="https://github.com/sotthang">sotthang</a> · <a href="https://github.com/sotthang/so-agentbar">Source on GitHub</a></p>
+    </div>
+  </footer>
+
+</body>
+</html>

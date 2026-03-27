@@ -1,0 +1,398 @@
+import Foundation
+import CoreServices
+
+// MARK: - 세션 상태 (JSONL 이벤트 기반)
+
+enum SessionStatus {
+    case running    // 툴 실행 중 or Claude 생성 중 (파일 최근 수정 + 마지막 이벤트가 active)
+    case responded  // Claude 응답 완료, 사용자 입력 대기
+    case completed  // "result" 이벤트 감지 = 세션 정상 종료
+    case idle       // 5분 이상 아무 변화 없음
+}
+
+// MARK: - 세션 출처
+
+enum SessionSource {
+    case cli     // 터미널에서 claude 명령어로 실행
+    case xcode   // Xcode Coding Assistant에서 실행
+}
+
+// MARK: - Claude 세션 모델
+
+struct ClaudeSession: Identifiable {
+    let id: String
+    let projectDir: String
+    let source: SessionSource
+    var workingPath: String
+    var lastModified: Date
+    var lastActivity: Date
+
+    // JSONL 파싱 상태 (오프셋 기반으로 누적)
+    var sawResultEvent: Bool = false
+    var lastEventType: String = ""         // "user", "assistant", "tool_result", "result"
+    var lastAssistantHasToolUse: Bool = false
+    var inputTokens: Int = 0
+    var outputTokens: Int = 0
+    var lastToolName: String = "running"
+    var lastAssistantText: String = ""      // 마지막 Claude 응답 미리보기
+
+    // JSONL 이벤트 기반 상태 판단
+    var sessionStatus: SessionStatus {
+        // result 이벤트 = 세션 완전 종료
+        if sawResultEvent { return .completed }
+
+        let age = Date().timeIntervalSince(lastModified)
+
+        // 5분 이상 = idle
+        if age > 300 { return .idle }
+
+        // 1~5분 = 응답 완료 후 대기 (사용자가 다음 입력 안 한 상태)
+        if age > 60 { return .responded }
+
+        // 60초 이내: 마지막 이벤트로 판단
+        // assistant with text only → Claude가 방금 응답 완료
+        if lastEventType == "assistant" && !lastAssistantHasToolUse {
+            return .responded
+        }
+
+        // tool_result, assistant with tool_use, user → 아직 실행 중
+        return .running
+    }
+
+    var displayName: String {
+        let home = NSHomeDirectory()
+        if workingPath.hasPrefix(home) {
+            let relative = String(workingPath.dropFirst(home.count + 1))
+            // "Develop/so-agentbar" → 마지막 2단계만 표시
+            let parts = relative.components(separatedBy: "/")
+            return parts.suffix(2).joined(separator: "/")
+        }
+        return URL(fileURLWithPath: workingPath).lastPathComponent
+    }
+}
+
+// MARK: - SessionMonitor
+
+class SessionMonitor {
+    private let projectsDirs: [URL]
+    private let dispatchQueue = DispatchQueue(label: "com.agentbar.sessionmonitor", qos: .utility)
+
+    var onSessionsChanged: (([ClaudeSession]) -> Void)?
+
+    private var eventStream: FSEventStreamRef?
+    private var fallbackTimer: Timer?
+    private var pollWorkItem: DispatchWorkItem?       // FSEvents 디바운스용
+    private var fileOffsets: [String: UInt64] = [:]   // 파일별 마지막 읽은 바이트 위치
+    private var sessionCache: [String: ClaudeSession] = [:]
+
+    init() {
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        projectsDirs = [
+            // CLI: claude 명령어로 실행한 세션
+            home.appendingPathComponent(".claude/projects"),
+            // Xcode: Coding Assistant에서 실행한 세션
+            home.appendingPathComponent("Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig/projects"),
+        ]
+    }
+
+    func start() {
+        // 디렉토리가 없으면 미리 생성 (FSEvents가 감시할 수 있도록)
+        for dir in projectsDirs {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+
+        // 초기 폴링
+        dispatchQueue.async { [weak self] in self?.poll() }
+
+        // FSEvents: 파일 변경 시 자동으로 poll 트리거
+        startFSEvents()
+
+        // 안전장치: 30초마다 폴백 폴링 (FSEvents가 놓칠 경우 대비)
+        DispatchQueue.main.async { [weak self] in
+            self?.fallbackTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+                self?.dispatchQueue.async { self?.poll() }
+            }
+        }
+    }
+
+    func stop() {
+        stopFSEvents()
+        fallbackTimer?.invalidate()
+        fallbackTimer = nil
+    }
+
+    func updatePollInterval(_ interval: Double) {
+        // FSEvents가 실시간 감지하므로 폴백 타이머 간격만 조정
+        DispatchQueue.main.async { [weak self] in
+            self?.fallbackTimer?.invalidate()
+            self?.fallbackTimer = Timer.scheduledTimer(withTimeInterval: max(interval, 10), repeats: true) { [weak self] _ in
+                self?.dispatchQueue.async { self?.poll() }
+            }
+        }
+    }
+
+    // MARK: - FSEvents 파일 시스템 감시
+
+    private func startFSEvents() {
+        let paths = projectsDirs.map(\.path) as CFArray
+
+        var context = FSEventStreamContext(
+            version: 0,
+            info: Unmanaged.passUnretained(self).toOpaque(),
+            retain: nil, release: nil, copyDescription: nil
+        )
+
+        let callback: FSEventStreamCallback = { _, clientInfo, _, _, _, _ in
+            guard let clientInfo else { return }
+            let monitor = Unmanaged<SessionMonitor>.fromOpaque(clientInfo).takeUnretainedValue()
+            monitor.scheduleDebouncedPoll()
+        }
+
+        guard let stream = FSEventStreamCreate(
+            nil, callback, &context, paths,
+            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+            1.0,  // 1초 내 이벤트 병합
+            UInt32(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes)
+        ) else { return }
+
+        eventStream = stream
+        FSEventStreamSetDispatchQueue(stream, dispatchQueue)
+        FSEventStreamStart(stream)
+    }
+
+    private func stopFSEvents() {
+        guard let stream = eventStream else { return }
+        FSEventStreamStop(stream)
+        FSEventStreamInvalidate(stream)
+        FSEventStreamRelease(stream)
+        eventStream = nil
+    }
+
+    /// FSEvents 콜백 디바운스: 0.5초 내 중복 호출 병합
+    private func scheduleDebouncedPoll() {
+        pollWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in self?.poll() }
+        pollWorkItem = item
+        dispatchQueue.asyncAfter(deadline: .now() + 0.5, execute: item)
+    }
+
+    // MARK: - 메인 루프
+
+    private func poll() {
+        let now = Date()
+        var results: [ClaudeSession] = []
+
+        // (디렉토리 URL, 출처) 쌍으로 순회
+        let projectDirs: [(url: URL, source: SessionSource)] = projectsDirs.enumerated().flatMap { index, dir in
+            let source: SessionSource = index == 0 ? .cli : .xcode
+            return ((try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.isDirectoryKey]
+            )) ?? []).map { (url: $0, source: source) }
+        }
+
+        for entry in projectDirs {
+            guard entry.url.hasDirectoryPath else { continue }
+            let folderName = entry.url.lastPathComponent
+
+            guard let jsonlURL = latestJSONL(in: entry.url),
+                  let modDate = modificationDate(of: jsonlURL) else { continue }
+
+            let age = now.timeIntervalSince(modDate)
+
+            // 24시간 이상 된 세션은 표시 안 함
+            guard age < 86400 else { continue }
+
+            let sessionID = jsonlURL.deletingPathExtension().lastPathComponent
+            var session = sessionCache[sessionID] ?? ClaudeSession(
+                id: sessionID,
+                projectDir: folderName,
+                source: entry.source,
+                workingPath: readCWD(from: jsonlURL) ?? entry.url.path,
+                lastModified: modDate,
+                lastActivity: modDate
+            )
+
+            session.lastModified = modDate
+
+            // 새로 추가된 줄만 파싱
+            parseNewLines(url: jsonlURL, session: &session)
+
+            sessionCache[sessionID] = session
+            results.append(session)
+        }
+
+        results.sort { $0.lastModified > $1.lastModified }
+
+        // 캐시 정리: 현재 결과에 없는 항목 제거 (24시간 필터에서 걸러진 오래된 세션)
+        let activeIDs = Set(results.map(\.id))
+        for key in sessionCache.keys where !activeIDs.contains(key) {
+            sessionCache.removeValue(forKey: key)
+        }
+        for path in fileOffsets.keys {
+            let id = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+            if !activeIDs.contains(id) {
+                fileOffsets.removeValue(forKey: path)
+            }
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.onSessionsChanged?(results)
+        }
+    }
+
+    // MARK: - JSONL 파싱 (오프셋 기반)
+
+    private func parseNewLines(url: URL, session: inout ClaudeSession) {
+        guard let fileHandle = try? FileHandle(forReadingFrom: url) else { return }
+        defer { try? fileHandle.close() }
+
+        let currentOffset = fileOffsets[url.path] ?? 0
+
+        // 파일 크기 확인
+        let fileSize = (try? fileHandle.seekToEnd()) ?? 0
+        guard fileSize > currentOffset else { return }
+
+        // 마지막으로 읽은 위치로 이동
+        try? fileHandle.seek(toOffset: currentOffset)
+
+        // 새로 추가된 데이터만 읽기
+        let newData = fileHandle.readDataToEndOfFile()
+        guard !newData.isEmpty,
+              let text = String(data: newData, encoding: .utf8) else { return }
+
+        // 오프셋 업데이트
+        fileOffsets[url.path] = fileSize
+
+        // 새 줄만 파싱
+        for line in text.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty,
+                  let lineData = trimmed.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
+            else { continue }
+
+            processEvent(json, session: &session)
+        }
+    }
+
+    private func processEvent(_ json: [String: Any], session: inout ClaudeSession) {
+        guard let type = json["type"] as? String else { return }
+
+        // 타임스탬프 업데이트
+        if let tsStr = json["timestamp"] as? String,
+           let ts = parseISO8601(tsStr), ts > session.lastActivity {
+            session.lastActivity = ts
+        }
+
+        switch type {
+
+        // ✅ 세션 완전 종료 감지
+        case "result":
+            session.sawResultEvent = true
+            session.lastEventType = type
+
+        // Claude 응답 파싱
+        case "assistant":
+            guard let message = json["message"] as? [String: Any] else { return }
+
+            // stop_reason이 nil = 아직 스트리밍 중 → 무시
+            guard let stopReason = message["stop_reason"] as? String else { return }
+
+            session.lastEventType = type
+            session.lastAssistantHasToolUse = stopReason == "tool_use"
+
+            // 토큰 사용량
+            if let usage = message["usage"] as? [String: Any] {
+                session.inputTokens += (usage["input_tokens"] as? Int ?? 0)
+                    + (usage["cache_creation_input_tokens"] as? Int ?? 0)
+                    + (usage["cache_read_input_tokens"] as? Int ?? 0)
+                session.outputTokens += usage["output_tokens"] as? Int ?? 0
+            }
+
+            // 응답 텍스트 추출
+            if let content = message["content"] as? [[String: Any]] {
+                let textParts = content
+                    .filter { $0["type"] as? String == "text" }
+                    .compactMap { $0["text"] as? String }
+                if let text = textParts.last, !text.isEmpty {
+                    // 처음 200자만 저장
+                    session.lastAssistantText = String(text.prefix(200))
+                }
+
+                // tool 이름 기록 (tool_use일 때만)
+                if stopReason == "tool_use",
+                   let lastTool = content.last(where: { $0["type"] as? String == "tool_use" }),
+                   let name = lastTool["name"] as? String {
+                    session.lastToolName = name.lowercased()
+                }
+            }
+
+        // user 메시지 = 새 요청 시작
+        case "user":
+            session.lastEventType = type
+            // cwd 필드가 있으면 정확한 경로로 업데이트
+            if let cwd = json["cwd"] as? String {
+                session.workingPath = cwd
+            }
+
+        // progress 이벤트는 훅 실행 중 - lastEventType 덮어쓰지 않음
+        // (Claude end_turn 후 PostToolUse 훅이 실행돼도 responded 상태 유지)
+        case "progress":
+            break
+
+        default:
+            session.lastEventType = type
+        }
+    }
+
+    // MARK: - 유틸
+
+    private func latestJSONL(in projectURL: URL) -> URL? {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: projectURL,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        ) else { return nil }
+
+        return files
+            .filter { $0.pathExtension == "jsonl" }
+            .max {
+                (modificationDate(of: $0) ?? .distantPast) <
+                (modificationDate(of: $1) ?? .distantPast)
+            }
+    }
+
+    private func modificationDate(of url: URL) -> Date? {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    }
+
+    /// JSONL 파일의 처음 몇 줄에서 cwd 필드를 읽어 정확한 프로젝트 경로 반환
+    private func readCWD(from jsonlURL: URL) -> String? {
+        guard let fileHandle = try? FileHandle(forReadingFrom: jsonlURL) else { return nil }
+        defer { try? fileHandle.close() }
+
+        // 첫 4KB만 읽으면 cwd가 포함된 초기 이벤트를 충분히 커버
+        let data = fileHandle.readData(ofLength: 4096)
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+
+        for line in text.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty,
+                  let lineData = trimmed.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                  let cwd = json["cwd"] as? String
+            else { continue }
+            return cwd
+        }
+        return nil
+    }
+
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private func parseISO8601(_ str: String) -> Date? {
+        Self.iso8601Formatter.date(from: str)
+    }
+}

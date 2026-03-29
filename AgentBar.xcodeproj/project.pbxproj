@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		15B59B5D2F7973AA00170E5B /* logo.png in Resources */ = {isa = PBXBuildFile; fileRef = 15B59B5C2F7973AA00170E5B /* logo.png */; };
 		3E1ED4571EA5484EA2B785AA /* AgentBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785AB /* AgentBarApp.swift */; };
 		3E1ED4571EA5484EA2B785AC /* AgentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785AD /* AgentStore.swift */; };
 		3E1ED4571EA5484EA2B785B0 /* MenuBarIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785B1 /* MenuBarIconView.swift */; };
@@ -21,6 +22,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		15B59B5C2F7973AA00170E5B /* logo.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = logo.png; sourceTree = "<group>"; };
 		3E1ED4571EA5484EA2B785A0 /* AgentBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AgentBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3E1ED4571EA5484EA2B785AB /* AgentBarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBarApp.swift; sourceTree = "<group>"; };
 		3E1ED4571EA5484EA2B785AD /* AgentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStore.swift; sourceTree = "<group>"; };
@@ -62,6 +64,7 @@
 				3E1ED4571EA5484EA2B785B4 /* Info.plist */,
 				D0A7CBE72F766AA30052C5A3 /* StatsStore.swift */,
 				D0A7CBE92F766AD00052C5A3 /* StatsView.swift */,
+				15B59B5C2F7973AA00170E5B /* logo.png */,
 			);
 			path = AgentBar;
 			sourceTree = "<group>";
@@ -140,6 +143,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				15B59B5D2F7973AA00170E5B /* logo.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

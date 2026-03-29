@@ -157,7 +157,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         let agents = store.agents
         let activeCount = agents.filter { $0.status == .working }.count
         if agents.isEmpty {
-            button.title = "🤖"
+            if let img = NSImage(named: "logo") {
+                img.size = NSSize(width: 18, height: 18)
+                img.isTemplate = false
+                button.image = img
+                button.title = ""
+            } else {
+                button.title = "🤖"
+            }
             button.toolTip = "AgentBar — \(store.t("실행 중인 세션 없음", "No running sessions"))"
             return
         }

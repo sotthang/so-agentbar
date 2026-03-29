@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+*.xcscmblueprint
+DerivedData/
+
+# Build artifacts
+*.dmg
+*.app
+build/
+
+# IDE
+.vscode/
+.idea/

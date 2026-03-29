@@ -8,7 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		15B59B5D2F7973AA00170E5B /* logo.png in Resources */ = {isa = PBXBuildFile; fileRef = 15B59B5C2F7973AA00170E5B /* logo.png */; };
-		3E1ED4571EA5484EA2B785AA /* AgentBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785AB /* AgentBarApp.swift */; };
+		15B59B5F2F797D2700170E5B /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 15B59B5E2F797D2700170E5B /* AppIcon.icns */; };
+		3E1ED4571EA5484EA2B785AA /* SoAgentBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785AB /* SoAgentBarApp.swift */; };
 		3E1ED4571EA5484EA2B785AC /* AgentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785AD /* AgentStore.swift */; };
 		3E1ED4571EA5484EA2B785B0 /* MenuBarIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785B1 /* MenuBarIconView.swift */; };
 		3E1ED4571EA5484EA2B785B2 /* AgentListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785B3 /* AgentListView.swift */; };
@@ -23,8 +24,9 @@
 
 /* Begin PBXFileReference section */
 		15B59B5C2F7973AA00170E5B /* logo.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = logo.png; sourceTree = "<group>"; };
-		3E1ED4571EA5484EA2B785A0 /* AgentBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AgentBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		3E1ED4571EA5484EA2B785AB /* AgentBarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBarApp.swift; sourceTree = "<group>"; };
+		15B59B5E2F797D2700170E5B /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
+		3E1ED4571EA5484EA2B785A0 /* SoAgentBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SoAgentBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3E1ED4571EA5484EA2B785AB /* SoAgentBarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoAgentBarApp.swift; sourceTree = "<group>"; };
 		3E1ED4571EA5484EA2B785AD /* AgentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStore.swift; sourceTree = "<group>"; };
 		3E1ED4571EA5484EA2B785B1 /* MenuBarIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIconView.swift; sourceTree = "<group>"; };
 		3E1ED4571EA5484EA2B785B3 /* AgentListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentListView.swift; sourceTree = "<group>"; };
@@ -49,13 +51,13 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		3E1ED4571EA5484EA2B78500 /* AgentBar */ = {
+		3E1ED4571EA5484EA2B78500 /* SoAgentBar */ = {
 			isa = PBXGroup;
 			children = (
 				D0A7CBE32F76505F0052C5A3 /* UsageMonitor.swift */,
 				D0A7CBE42F76505F0052C5A3 /* UsageView.swift */,
 				D0A7CBDD2F7591410052C5A3 /* EmojiPickerView.swift */,
-				3E1ED4571EA5484EA2B785AB /* AgentBarApp.swift */,
+				3E1ED4571EA5484EA2B785AB /* SoAgentBarApp.swift */,
 				3E1ED4571EA5484EA2B785AD /* AgentStore.swift */,
 				3E1ED4571EA5484EA2B785B6 /* SessionMonitor.swift */,
 				3E1ED4571EA5484EA2B785B1 /* MenuBarIconView.swift */,
@@ -65,14 +67,15 @@
 				D0A7CBE72F766AA30052C5A3 /* StatsStore.swift */,
 				D0A7CBE92F766AD00052C5A3 /* StatsView.swift */,
 				15B59B5C2F7973AA00170E5B /* logo.png */,
+				15B59B5E2F797D2700170E5B /* AppIcon.icns */,
 			);
-			path = AgentBar;
+			path = SoAgentBar;
 			sourceTree = "<group>";
 		};
 		3E1ED4571EA5484EA2B78501 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				3E1ED4571EA5484EA2B785A0 /* AgentBar.app */,
+				3E1ED4571EA5484EA2B785A0 /* SoAgentBar.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -80,7 +83,7 @@
 		3E1ED4571EA5484EA2B78502 = {
 			isa = PBXGroup;
 			children = (
-				3E1ED4571EA5484EA2B78500 /* AgentBar */,
+				3E1ED4571EA5484EA2B78500 /* SoAgentBar */,
 				3E1ED4571EA5484EA2B78501 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,9 +91,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		3E1ED4571EA5484EA2B785C0 /* AgentBar */ = {
+		3E1ED4571EA5484EA2B785C0 /* SoAgentBar */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 3E1ED4571EA5484EA2B785D0 /* Build configuration list for PBXNativeTarget "AgentBar" */;
+			buildConfigurationList = 3E1ED4571EA5484EA2B785D0 /* Build configuration list for PBXNativeTarget "SoAgentBar" */;
 			buildPhases = (
 				3E1ED4571EA5484EA2B785FC /* Sources */,
 				3E1ED4571EA5484EA2B785FE /* Frameworks */,
@@ -100,9 +103,9 @@
 			);
 			dependencies = (
 			);
-			name = AgentBar;
-			productName = AgentBar;
-			productReference = 3E1ED4571EA5484EA2B785A0 /* AgentBar.app */;
+			name = SoAgentBar;
+			productName = SoAgentBar;
+			productReference = 3E1ED4571EA5484EA2B785A0 /* SoAgentBar.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -120,7 +123,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 3E1ED4571EA5484EA2B785D2 /* Build configuration list for PBXProject "AgentBar" */;
+			buildConfigurationList = 3E1ED4571EA5484EA2B785D2 /* Build configuration list for PBXProject "SoAgentBar" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -133,7 +136,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				3E1ED4571EA5484EA2B785C0 /* AgentBar */,
+				3E1ED4571EA5484EA2B785C0 /* SoAgentBar */,
 			);
 		};
 /* End PBXProject section */
@@ -144,6 +147,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				15B59B5D2F7973AA00170E5B /* logo.png in Resources */,
+				15B59B5F2F797D2700170E5B /* AppIcon.icns in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -157,7 +161,7 @@
 				D0A7CBEA2F766AD00052C5A3 /* StatsView.swift in Sources */,
 				D0A7CBDE2F7591410052C5A3 /* EmojiPickerView.swift in Sources */,
 				D0A7CBE82F766AA30052C5A3 /* StatsStore.swift in Sources */,
-				3E1ED4571EA5484EA2B785AA /* AgentBarApp.swift in Sources */,
+				3E1ED4571EA5484EA2B785AA /* SoAgentBarApp.swift in Sources */,
 				3E1ED4571EA5484EA2B785AC /* AgentStore.swift in Sources */,
 				3E1ED4571EA5484EA2B785B5 /* SessionMonitor.swift in Sources */,
 				D0A7CBE52F76505F0052C5A3 /* UsageMonitor.swift in Sources */,
@@ -298,21 +302,21 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = AgentBar/AgentBar.entitlements;
+				CODE_SIGN_ENTITLEMENTS = SoAgentBar/SoAgentBar.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = AgentBar/Info.plist;
+				INFOPLIST_FILE = SoAgentBar/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.agentbar.AgentBar;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sotthang.soagentbar;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -325,21 +329,21 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = AgentBar/AgentBar.entitlements;
+				CODE_SIGN_ENTITLEMENTS = SoAgentBar/SoAgentBar.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = AgentBar/Info.plist;
+				INFOPLIST_FILE = SoAgentBar/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.agentbar.AgentBar;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sotthang.soagentbar;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -350,7 +354,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		3E1ED4571EA5484EA2B785D0 /* Build configuration list for PBXNativeTarget "AgentBar" */ = {
+		3E1ED4571EA5484EA2B785D0 /* Build configuration list for PBXNativeTarget "SoAgentBar" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				3E1ED4571EA5484EA2B785D5 /* Debug */,
@@ -359,7 +363,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		3E1ED4571EA5484EA2B785D2 /* Build configuration list for PBXProject "AgentBar" */ = {
+		3E1ED4571EA5484EA2B785D2 /* Build configuration list for PBXProject "SoAgentBar" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				3E1ED4571EA5484EA2B785D3 /* Debug */,

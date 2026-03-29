@@ -5,7 +5,7 @@ import Combine
 import UserNotifications
 
 @main
-struct AgentBarApp: App {
+struct SoAgentBarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
@@ -26,7 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var eventHandlerRef: EventHandlerRef?
     private var cancellables = Set<AnyCancellable>()
 
-    private static let showPopoverNotification = Notification.Name("com.agentbar.showPopover")
+    private static let showPopoverNotification = Notification.Name("com.sotthang.so-agentbar.showPopover")
 
     // 가능한 가장 이른 시점에 delegate 설정 — 새 인스턴스 런치 방지
     override init() {
@@ -165,7 +165,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             } else {
                 button.title = "🤖"
             }
-            button.toolTip = "AgentBar — \(store.t("실행 중인 세션 없음", "No running sessions"))"
+            button.toolTip = "so-agentbar — \(store.t("실행 중인 세션 없음", "No running sessions"))"
             return
         }
 
@@ -179,7 +179,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             button.title = "\(agents.count)"
         }
 
-        button.toolTip = "AgentBar — \(activeCount) \(store.t("개 에이전트 실행 중", "agents running"))"
+        button.toolTip = "so-agentbar — \(activeCount) \(store.t("개 에이전트 실행 중", "agents running"))"
     }
 
     @objc func togglePopover(_ sender: NSStatusBarButton) {

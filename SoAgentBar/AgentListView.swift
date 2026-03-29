@@ -39,7 +39,7 @@ struct AgentListView: View {
 
     private var header: some View {
         HStack {
-            Text("AgentBar")
+            Text("so-agentbar")
                 .font(.headline)
                 .fontWeight(.semibold)
             Spacer()

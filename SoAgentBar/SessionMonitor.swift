@@ -75,7 +75,7 @@ struct ClaudeSession: Identifiable {
 
 class SessionMonitor {
     private let projectsDirs: [URL]
-    private let dispatchQueue = DispatchQueue(label: "com.agentbar.sessionmonitor", qos: .utility)
+    private let dispatchQueue = DispatchQueue(label: "com.sotthang.so-agentbar.sessionmonitor", qos: .utility)
 
     var onSessionsChanged: (([ClaudeSession]) -> Void)?
 

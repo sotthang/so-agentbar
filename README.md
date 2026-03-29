@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/logo.png" alt="AgentBar" width="128" height="128">
+  <img src="docs/logo.png" alt="so-agentbar" width="128" height="128">
 </p>
 
-<h1 align="center">AgentBar</h1>
+<h1 align="center">so-agentbar</h1>
 
 <p align="center">
   macOS menu bar app that monitors your active Claude Code agent sessions in real-time
@@ -31,9 +31,9 @@
 
 ## Install
 
-1. Download `AgentBar.dmg` from [Releases](https://github.com/sotthang/so-agentbar/releases/latest)
-2. Drag `AgentBar.app` to Applications
-3. Launch — AgentBar appears in your menu bar
+1. Download `so-agentbar.dmg` from [Releases](https://github.com/sotthang/so-agentbar/releases/latest)
+2. Drag `so-agentbar.app` to Applications
+3. Launch — so-agentbar appears in your menu bar
 
 ### Build from Source
 
@@ -47,7 +47,7 @@ Build and run with Xcode (⌘R).
 
 ## How It Works
 
-AgentBar monitors Claude Code session logs via FSEvents:
+so-agentbar monitors Claude Code session logs via FSEvents:
 
 - **CLI sessions** — `~/.claude/projects/`
 - **Xcode sessions** — `~/Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig/projects/`

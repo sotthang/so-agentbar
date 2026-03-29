@@ -266,7 +266,7 @@ struct SettingsView: View {
                     settingRow {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("AgentBar")
+                                Text("so-agentbar")
                                     .font(.system(size: 13))
                                 Text(store.t("Claude Code 세션 모니터", "Claude Code session monitor"))
                                     .font(.system(size: 11))
@@ -436,7 +436,7 @@ struct LaunchAtLoginRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(store.t("로그인 시 자동 시작", "Launch at login"))
                     .font(.system(size: 13))
-                Text(store.t("Mac 시작 시 AgentBar를 자동으로 실행", "Automatically launch AgentBar when Mac starts"))
+                Text(store.t("Mac 시작 시 so-agentbar를 자동으로 실행", "Automatically launch so-agentbar when Mac starts"))
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }

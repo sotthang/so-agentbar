@@ -12,8 +12,17 @@ NOTARY_PROFILE="notarytool-profile"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
+# 태그에서 버전 추출 (예: v1.2.3 → 1.2.3), 없으면 Info.plist 기본값 사용
+VERSION="${GITHUB_REF_NAME:-}"
+VERSION="${VERSION#v}"
+
 # Build the app
 echo "Building $APP_NAME..."
+EXTRA_ARGS=""
+if [ -n "$VERSION" ]; then
+  EXTRA_ARGS="MARKETING_VERSION=$VERSION CURRENT_PROJECT_VERSION=$VERSION"
+fi
+
 xcodebuild -project "$APP_NAME.xcodeproj" \
   -scheme "$SCHEME" \
   -configuration Release \
@@ -22,7 +31,8 @@ xcodebuild -project "$APP_NAME.xcodeproj" \
   archive \
   CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
   CODE_SIGN_STYLE=Manual \
-  OTHER_CODE_SIGN_FLAGS="--options runtime"
+  OTHER_CODE_SIGN_FLAGS="--options runtime" \
+  $EXTRA_ARGS
 
 # Export the app from the archive
 echo "Exporting app..."

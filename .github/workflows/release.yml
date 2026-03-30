@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: macos-15
+    env:
+      KEYCHAIN_PATH: /tmp/signing.keychain-db
     steps:
       - uses: actions/checkout@v4
 
@@ -19,8 +21,6 @@ jobs:
           CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
           CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
         run: |
-          # Create temporary keychain
-          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -30,6 +30,8 @@ jobs:
           # Import certificate
           CERT_PATH=$RUNNER_TEMP/certificate.p12
           echo "$CERTIFICATE_P12" | base64 --decode > "$CERT_PATH"
+          echo "P12 file size: $(wc -c < "$CERT_PATH") bytes"
+
           security import "$CERT_PATH" \
             -P "$CERTIFICATE_PASSWORD" \
             -A \
@@ -37,17 +39,22 @@ jobs:
             -f pkcs12 \
             -k "$KEYCHAIN_PATH"
 
-          # Download and import Apple WWDR intermediate certificate (required for Developer ID)
+          # Download and import Apple intermediate certificates
           curl -sL "https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer" -o $RUNNER_TEMP/DeveloperIDG2CA.cer
-          security import $RUNNER_TEMP/DeveloperIDG2CA.cer -k "$KEYCHAIN_PATH" -A
+          security import $RUNNER_TEMP/DeveloperIDG2CA.cer -k "$KEYCHAIN_PATH" -A || true
 
-          # Set keychain as default and add to search list (include system keychain)
+          # Set keychain search list and default
           security list-keychain -d user -s "$KEYCHAIN_PATH" /Library/Keychains/System.keychain
           security default-keychain -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          # Verify certificate is found
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          # Debug: verify certificate
+          echo "=== Keychain search list ==="
+          security list-keychain -d user
+          echo "=== Codesigning identities ==="
+          security find-identity -v -p codesigning
+          echo "=== All identities in keychain ==="
+          security find-identity -v "$KEYCHAIN_PATH"
 
       - name: Set up notarization credentials
         env:
@@ -70,4 +77,4 @@ jobs:
 
       - name: Clean up keychain
         if: always()
-        run: security delete-keychain $RUNNER_TEMP/signing.keychain-db || true
+        run: security delete-keychain "$KEYCHAIN_PATH" || true

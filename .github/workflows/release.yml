@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: macos-15
+    permissions:
+      contents: write
     env:
       KEYCHAIN_PATH: /tmp/signing.keychain-db
     steps:

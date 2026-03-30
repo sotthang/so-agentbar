@@ -83,38 +83,7 @@ jobs:
       - name: Sign DMG and generate appcast.xml
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          # Sparkle bin 경로
-          SPARKLE_BIN=$(find ~/Library/Developer/Xcode/DerivedData -name "sign_update" -path "*/artifacts/*" 2>/dev/null | head -1)
-
-          # DMG 서명
-          SIGNATURE=$("$SPARKLE_BIN" so-agentbar.dmg -s "$SPARKLE_PRIVATE_KEY" 2>/dev/null | grep -o 'sparkle:edSignature="[^"]*"' | sed 's/sparkle:edSignature="//;s/"//')
-          DMG_SIZE=$(wc -c < so-agentbar.dmg | tr -d ' ')
-          VERSION="${GITHUB_REF_NAME#v}"
-          PUBDATE=$(date -u "+%a, %d %b %Y %H:%M:%S +0000")
-
-          cat > docs/appcast.xml <<EOF
-          <?xml version="1.0" encoding="utf-8"?>
-          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-            <channel>
-              <title>so-agentbar</title>
-              <link>https://sotthang.github.io/so-agentbar/appcast.xml</link>
-              <item>
-                <title>Version $VERSION</title>
-                <pubDate>$PUBDATE</pubDate>
-                <sparkle:version>$VERSION</sparkle:version>
-                <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
-                <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-                <enclosure
-                  url="https://github.com/sotthang/so-agentbar/releases/download/${GITHUB_REF_NAME}/so-agentbar.dmg"
-                  sparkle:edSignature="$SIGNATURE"
-                  length="$DMG_SIZE"
-                  type="application/x-apple-diskimage"
-                />
-              </item>
-            </channel>
-          </rss>
-          EOF
+        run: ./scripts/generate-appcast.sh so-agentbar.dmg "$SPARKLE_PRIVATE_KEY" "$GITHUB_REF_NAME" docs/appcast.xml
 
       - name: Deploy appcast.xml to GitHub Pages
         run: |

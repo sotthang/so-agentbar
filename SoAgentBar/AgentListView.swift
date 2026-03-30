@@ -27,7 +27,7 @@ struct AgentListView: View {
         .frame(width: 360, height: 500)
         .clipped()
         .background(Color(NSColor.windowBackgroundColor))
-        .onChange(of: store.popoverOpenCount) { _ in
+        .onChange(of: store.popoverOpenCount) {
             showSettings = false
             showStats = false
             emojiPickerAgent = nil
@@ -194,10 +194,10 @@ struct AgentRowView: View {
                                 .cornerRadius(3)
                         }
                         Spacer()
-                        if agent.status == .working {
+                        if agent.status == .working || agent.status == .waitingApproval {
                             Text(agent.elapsedDisplay)
                                 .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.secondary)
+                                .foregroundColor(agent.status == .waitingApproval ? .orange : .secondary)
                         }
                     }
 

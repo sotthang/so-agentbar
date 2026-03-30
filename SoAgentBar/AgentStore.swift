@@ -38,17 +38,19 @@ enum ListStyle: String, CaseIterable {
 // MARK: - 에디터 설정
 
 enum OpenWith: String, CaseIterable {
-    case vscode  = "vscode"
-    case cursor  = "cursor"
-    case terminal = "terminal"
-    case finder  = "finder"
+    case vscode       = "vscode"
+    case cursor       = "cursor"
+    case antigravity  = "antigravity"
+    case terminal     = "terminal"
+    case finder       = "finder"
 
     var displayName: String {
         switch self {
-        case .vscode:   return "VSCode"
-        case .cursor:   return "Cursor"
-        case .terminal: return "Terminal"
-        case .finder:   return "Finder"
+        case .vscode:       return "VSCode"
+        case .cursor:       return "Cursor"
+        case .antigravity:  return "Antigravity"
+        case .terminal:     return "Terminal"
+        case .finder:       return "Finder"
         }
     }
 
@@ -77,9 +79,16 @@ enum OpenWith: String, CaseIterable {
             task.launchPath = "/usr/bin/open"
             task.arguments = ["-a", "Cursor", path]
             try? task.run()
+        case .antigravity:
+            let task = Process()
+            task.launchPath = "/usr/bin/open"
+            task.arguments = ["-a", "Antigravity", path]
+            try? task.run()
         case .terminal:
-            let script = "tell application \"Terminal\"\nactivate\ndo script \"cd '\(path)'\"\nend tell"
-            NSAppleScript(source: script)?.executeAndReturnError(nil)
+            let task = Process()
+            task.launchPath = "/usr/bin/open"
+            task.arguments = ["-a", "Terminal", path]
+            try? task.run()
         case .finder:
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
         }
@@ -92,14 +101,16 @@ enum AgentStatus: Equatable {
     case idle
     case thinking
     case working
+    case waitingApproval  // 사용자 승인 대기 (human in the loop)
     case error
 
     var emoji: String {
         switch self {
-        case .idle:     return "😴"
-        case .thinking: return "🤔"
-        case .working:  return "🤖"
-        case .error:    return "😵"
+        case .idle:             return "😴"
+        case .thinking:         return "🤔"
+        case .working:          return "🤖"
+        case .waitingApproval:  return "⏳"
+        case .error:            return "😵"
         }
     }
 }
@@ -202,6 +213,9 @@ class AgentStore: ObservableObject {
     @Published var notifyOnError: Bool {
         didSet { UserDefaults.standard.set(notifyOnError, forKey: "notifyOnError") }
     }
+    @Published var notifyOnApprovalRequired: Bool {
+        didSet { UserDefaults.standard.set(notifyOnApprovalRequired, forKey: "notifyOnApprovalRequired") }
+    }
 
     // 쿼터 알림
     @Published var notifyOnQuotaThreshold: Bool {
@@ -298,6 +312,7 @@ class AgentStore: ObservableObject {
         self.hotkeyModifiers           = UserDefaults.standard.object(forKey: "hotkeyModifiers") as? Int ?? Int(optionKey | shiftKey)
         self.notifyOnComplete          = UserDefaults.standard.object(forKey: "notifyOnComplete") as? Bool ?? true
         self.notifyOnError             = UserDefaults.standard.object(forKey: "notifyOnError") as? Bool ?? true
+        self.notifyOnApprovalRequired  = UserDefaults.standard.object(forKey: "notifyOnApprovalRequired") as? Bool ?? true
         self.notifyOnQuotaThreshold    = UserDefaults.standard.object(forKey: "notifyOnQuotaThreshold") as? Bool ?? true
         self.notifyOnQuotaReset        = UserDefaults.standard.object(forKey: "notifyOnQuotaReset") as? Bool ?? true
         self.sessionAlertThreshold     = UserDefaults.standard.object(forKey: "sessionAlertThreshold") as? Double ?? 80
@@ -328,7 +343,7 @@ class AgentStore: ObservableObject {
         elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                for i in self.agents.indices where self.agents[i].status == .working {
+                for i in self.agents.indices where self.agents[i].status == .working || self.agents[i].status == .waitingApproval {
                     self.agents[i].elapsedSeconds += 1
                 }
             }
@@ -423,11 +438,18 @@ class AgentStore: ObservableObject {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    func sendNotification(title: String, body: String) {
+    func sendNotification(title: String, body: String, workingPath: String? = nil, source: SessionSource? = nil) {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
+
+        if let path = workingPath, let src = source {
+            content.userInfo = [
+                "workingPath": path,
+                "source": src == .xcode ? "xcode" : "cli"
+            ]
+        }
 
         let request = UNNotificationRequest(
             identifier: UUID().uuidString,
@@ -459,6 +481,9 @@ class AgentStore: ObservableObject {
             case .running:
                 status = .working
                 task = translateToolName(session.lastToolName)
+            case .waitingForApproval:
+                status = .waitingApproval
+                task = t("승인 대기 중", "Waiting for approval")
             case .responded:
                 status = .thinking
                 task = t("응답 완료 · 입력 대기", "Responded · waiting for input")
@@ -518,15 +543,28 @@ class AgentStore: ObservableObject {
                Date().timeIntervalSince(since) >= 10 {
                 sendNotification(
                     title: t("응답 완료", "Response ready"),
-                    body: "\(agent.name) — \(t("Claude가 응답했습니다", "Claude responded"))"
+                    body: "\(agent.name) — \(t("Claude가 응답했습니다", "Claude responded"))",
+                    workingPath: agent.workingPath,
+                    source: agent.source
                 )
                 workingSince.removeValue(forKey: agent.id)
+            }
+
+            if notifyOnApprovalRequired, agent.status == .waitingApproval, prev != .waitingApproval {
+                sendNotification(
+                    title: t("승인 필요", "Approval required"),
+                    body: "\(agent.name) — \(t("작업 진행을 위해 승인이 필요합니다", "requires your approval to proceed"))",
+                    workingPath: agent.workingPath,
+                    source: agent.source
+                )
             }
 
             if notifyOnError, agent.status == .error, prev != .error {
                 sendNotification(
                     title: t("에러 발생", "Error occurred"),
-                    body: "\(agent.name) — \(t("에러가 발생했습니다", "encountered an error"))"
+                    body: "\(agent.name) — \(t("에러가 발생했습니다", "encountered an error"))",
+                    workingPath: agent.workingPath,
+                    source: agent.source
                 )
             }
 

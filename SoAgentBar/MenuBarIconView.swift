@@ -6,11 +6,16 @@ struct StatusDot: View {
 
     var color: Color {
         switch status {
-        case .idle: return .gray
-        case .thinking: return .orange
-        case .working: return .green
-        case .error: return .red
+        case .idle:             return .gray
+        case .thinking:         return .orange
+        case .working:          return .green
+        case .waitingApproval:  return .yellow
+        case .error:            return .red
         }
+    }
+
+    private var isPulsing: Bool {
+        status == .working || status == .waitingApproval
     }
 
     var body: some View {
@@ -20,13 +25,13 @@ struct StatusDot: View {
             .overlay(
                 Circle()
                     .stroke(color.opacity(0.3), lineWidth: 2)
-                    .scaleEffect(status == .working ? 1.5 : 1.0)
-                    .opacity(status == .working ? 1 : 0)
+                    .scaleEffect(isPulsing ? 1.5 : 1.0)
+                    .opacity(isPulsing ? 1 : 0)
                     .animation(
-                        status == .working
+                        isPulsing
                             ? .easeInOut(duration: 1).repeatForever(autoreverses: true)
                             : .default,
-                        value: status == .working
+                        value: isPulsing
                     )
             )
     }

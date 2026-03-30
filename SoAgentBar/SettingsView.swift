@@ -94,12 +94,13 @@ struct SettingsView: View {
                                          "App for sessions started from terminal\nXcode sessions automatically open in Xcode"))
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
-                            Picker("", selection: $store.openWith) {
+                            Picker(store.openWith.displayName, selection: $store.openWith) {
                                 ForEach(OpenWith.allCases, id: \.self) { opt in
                                     Text(opt.displayName).tag(opt)
                                 }
                             }
-                            .pickerStyle(.segmented)
+                            .pickerStyle(.menu)
+                            .fixedSize()
                             .labelsHidden()
                         }
                     }
@@ -115,6 +116,21 @@ struct SettingsView: View {
                                 Text(store.t("작업 완료 알림", "Notify on task complete"))
                                     .font(.system(size: 13))
                                 Text(store.t("에이전트가 응답을 멈췄을 때 알림", "When agent stops responding"))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                    }
+
+                    Divider().padding(.leading, 16)
+
+                    settingRow {
+                        Toggle(isOn: $store.notifyOnApprovalRequired) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(store.t("승인 요청 알림", "Notify on approval required"))
+                                    .font(.system(size: 13))
+                                Text(store.t("에이전트가 사용자 승인을 기다릴 때 알림", "When agent is waiting for your approval"))
                                     .font(.system(size: 11))
                                     .foregroundColor(.secondary)
                             }

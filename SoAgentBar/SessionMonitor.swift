@@ -4,10 +4,11 @@ import CoreServices
 // MARK: - 세션 상태 (JSONL 이벤트 기반)
 
 enum SessionStatus {
-    case running    // 툴 실행 중 or Claude 생성 중 (파일 최근 수정 + 마지막 이벤트가 active)
-    case responded  // Claude 응답 완료, 사용자 입력 대기
-    case completed  // "result" 이벤트 감지 = 세션 정상 종료
-    case idle       // 5분 이상 아무 변화 없음
+    case running            // 툴 실행 중 or Claude 생성 중 (파일 최근 수정 + 마지막 이벤트가 active)
+    case waitingForApproval // tool_use 후 파일 변화 없음 = 사용자 승인 대기
+    case responded          // Claude 응답 완료, 사용자 입력 대기
+    case completed          // "result" 이벤트 감지 = 세션 정상 종료
+    case idle               // 5분 이상 아무 변화 없음
 }
 
 // MARK: - 세션 출처
@@ -31,6 +32,7 @@ struct ClaudeSession: Identifiable {
     var sawResultEvent: Bool = false
     var lastEventType: String = ""         // "user", "assistant", "tool_result", "result"
     var lastAssistantHasToolUse: Bool = false
+    var lastToolUseTime: Date? = nil       // tool_use 감지 시각 (승인 대기 판단용)
     var inputTokens: Int = 0
     var outputTokens: Int = 0
     var lastToolName: String = "running"
@@ -54,6 +56,15 @@ struct ClaudeSession: Identifiable {
         // assistant with text only → Claude가 방금 응답 완료
         if lastEventType == "assistant" && !lastAssistantHasToolUse {
             return .responded
+        }
+
+        // tool_use 후 파일이 3초 이상 변화 없음 → 사용자 승인 대기
+        // (실행 중인 명령은 bash_progress 이벤트로 파일이 계속 갱신됨)
+        if lastAssistantHasToolUse, let toolUseTime = lastToolUseTime {
+            let timeSinceToolUse = Date().timeIntervalSince(toolUseTime)
+            if timeSinceToolUse > 3 && age > 3 {
+                return .waitingForApproval
+            }
         }
 
         // tool_result, assistant with tool_use, user → 아직 실행 중
@@ -347,17 +358,19 @@ class SessionMonitor {
                     session.lastAssistantText = String(text.prefix(200))
                 }
 
-                // tool 이름 기록 (tool_use일 때만)
+                // tool 이름 기록 + 승인 대기 타이머 시작
                 if stopReason == "tool_use",
                    let lastTool = content.last(where: { $0["type"] as? String == "tool_use" }),
                    let name = lastTool["name"] as? String {
                     session.lastToolName = name.lowercased()
+                    session.lastToolUseTime = Date()
                 }
             }
 
-        // user 메시지 = 새 요청 시작
+        // user 메시지 = 새 요청 시작 or 툴 결과 수신 (승인 완료)
         case "user":
             session.lastEventType = type
+            session.lastToolUseTime = nil  // 승인 완료 → 대기 상태 해제
             // cwd 필드가 있으면 정확한 경로로 업데이트
             if let cwd = json["cwd"] as? String {
                 session.workingPath = cwd

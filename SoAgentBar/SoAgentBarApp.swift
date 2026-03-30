@@ -45,7 +45,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         // 번들ID 기반으로 이미 실행 중인 인스턴스 감지 (파일 락보다 확실)
         guard let bundleID = Bundle.main.bundleIdentifier else { return }
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        if running.count > 1 {
+        let otherInstances = running.filter { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
+        if !otherInstances.isEmpty {
             // 기존 인스턴스에 팝오버 표시 요청 보내고 즉시 종료
             DistributedNotificationCenter.default().postNotificationName(
                 Self.showPopoverNotification, object: nil
@@ -77,8 +78,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        let userInfo = response.notification.request.content.userInfo
+        let path = userInfo["workingPath"] as? String
+        let sourceStr = userInfo["source"] as? String
+
         Task { @MainActor in
-            self.showPopover()
+            if let path, let sourceStr {
+                let source: SessionSource = sourceStr == "xcode" ? .xcode : .cli
+                self.store.openProject(path, source: source)
+            } else {
+                self.showPopover()
+            }
         }
         completionHandler()
     }

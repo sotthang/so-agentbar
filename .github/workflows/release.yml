@@ -37,9 +37,17 @@ jobs:
             -f pkcs12 \
             -k "$KEYCHAIN_PATH"
 
-          # Set keychain as default and add to search list
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          # Download and import Apple WWDR intermediate certificate (required for Developer ID)
+          curl -sL "https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer" -o $RUNNER_TEMP/DeveloperIDG2CA.cer
+          security import $RUNNER_TEMP/DeveloperIDG2CA.cer -k "$KEYCHAIN_PATH" -A
+
+          # Set keychain as default and add to search list (include system keychain)
+          security list-keychain -d user -s "$KEYCHAIN_PATH" /Library/Keychains/System.keychain
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Verify certificate is found
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
       - name: Set up notarization credentials
         env:

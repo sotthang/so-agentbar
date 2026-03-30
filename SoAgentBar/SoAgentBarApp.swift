@@ -143,13 +143,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var previousAgentCount = 0
 
     private func startIconUpdateTimer() {
-        // agents 변경 감지 → 타이머 자동 관리
+        // agents 또는 menubarStyle 변경 감지 → 아이콘 업데이트
         store.$agents
             .receive(on: RunLoop.main)
             .sink { [weak self] agents in
                 self?.updateIcon()
                 self?.adjustTimerForActivity(hasWorking: agents.contains { $0.status == .working })
             }
+            .store(in: &cancellables)
+
+        store.$menubarStyle
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateIcon() }
             .store(in: &cancellables)
     }
 

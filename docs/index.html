@@ -151,7 +151,7 @@
     }
     .feature-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 16px;
     }
     .feature-card {
@@ -237,7 +237,7 @@
     @media (max-width: 768px) {
       h1 { font-size: 36px; }
       .subtitle { font-size: 16px; }
-      .feature-grid { grid-template-columns: 1fr; }
+      .feature-grid { grid-template-columns: repeat(2, 1fr); }
       .steps { grid-template-columns: 1fr; gap: 32px; }
       .cta-group { flex-direction: column; }
       .hero { padding: 60px 0 48px; }
@@ -288,12 +288,22 @@
         <div class="feature-card">
           <div class="feature-icon">🔔</div>
           <h3>Smart Notifications</h3>
-          <p>Get notified when responses complete, errors occur, or quota limits are approaching.</p>
+          <p>Get notified on completion, approval requests, errors, and quota limits. Tap to open the project in your editor.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⏳</div>
+          <h3>Approval Detection</h3>
+          <p>Instantly alerts you when an agent is waiting for your approval to proceed.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📈</div>
+          <h3>Statistics Dashboard</h3>
+          <p>Daily token summary, 7-day usage chart, and top project rankings at a glance.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">⌨️</div>
           <h3>Global Hotkey</h3>
-          <p>Press Cmd+Shift+S to instantly toggle the session panel from anywhere.</p>
+          <p>Toggle the session panel from anywhere with a fully customizable keyboard shortcut.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">🎨</div>
@@ -303,7 +313,17 @@
         <div class="feature-card">
           <div class="feature-icon">🚀</div>
           <h3>Editor Integration</h3>
-          <p>Open projects directly in VSCode, Cursor, Terminal, or Finder with one click.</p>
+          <p>Open projects directly in VSCode, Cursor, Antigravity, Terminal, or Finder with one click.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🌐</div>
+          <h3>Bilingual UI</h3>
+          <p>Full Korean and English support — switch languages instantly in Settings.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">✨</div>
+          <h3>Auto Update</h3>
+          <p>Stay up to date automatically with built-in Sparkle update support.</p>
         </div>
       </div>
     </div>

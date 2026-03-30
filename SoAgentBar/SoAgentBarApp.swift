@@ -3,6 +3,7 @@ import AppKit
 import Carbon
 import Combine
 import UserNotifications
+import Sparkle
 
 @main
 struct SoAgentBarApp: App {
@@ -25,11 +26,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var hotkeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
     private var cancellables = Set<AnyCancellable>()
+    let updaterController: SPUStandardUpdaterController
 
     private static let showPopoverNotification = Notification.Name("com.sotthang.so-agentbar.showPopover")
 
     // 가능한 가장 이른 시점에 delegate 설정 — 새 인스턴스 런치 방지
     override init() {
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
         super.init()
         UNUserNotificationCenter.current().delegate = self
     }
@@ -88,6 +95,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private func showPopover() {
         guard let button = statusItem?.button, let popover = popover else { return }
         if !popover.isShown {
+            store.popoverOpenCount += 1
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             DispatchQueue.main.async {
                 popover.contentViewController?.view.window?.makeKey()
@@ -116,7 +124,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         popover.behavior = .transient
         popover.animates = true
 
-        let contentView = AgentListView(store: store)
+        let contentView = AgentListView(store: store, updater: updaterController.updater)
         popover.contentViewController = NSHostingController(rootView: contentView)
 
         self.popover = popover

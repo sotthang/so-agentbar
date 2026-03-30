@@ -34,5 +34,9 @@
 	<string>Copyright © 2026 so-agentbar. All rights reserved.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>SUFeedURL</key>
+	<string>https://sotthang.github.io/so-agentbar/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>NEkhiJXI03ZegSN1Ux2iNpEOogl9Ct8L+eWAgfsmato=</string>
 </dict>
 </plist>

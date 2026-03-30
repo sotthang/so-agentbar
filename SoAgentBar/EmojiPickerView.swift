@@ -10,11 +10,32 @@ private let presetEmojis: [String] = [
 ]
 
 struct EmojiPickerView: View {
-    let agentId: String
+    let agent: Agent
     @ObservedObject var store: AgentStore
     @Binding var isPresented: Bool
+    var initialApplyToProject: Bool = true
+    @State private var applyToProject = true
 
     private let columns = Array(repeating: GridItem(.fixed(36), spacing: 4), count: 8)
+
+    /// 같은 프로젝트에 세션이 여러 개인지
+    private var hasMultipleSessions: Bool {
+        store.agents.filter { $0.projectDir == agent.projectDir }.count > 1
+    }
+
+    /// 현재 선택된 이모지
+    private var currentEmoji: String? {
+        if applyToProject {
+            return store.projectEmojis[agent.projectDir]
+        } else {
+            return store.sessionEmojis[agent.id]
+        }
+    }
+
+    /// 커스텀 이모지가 하나라도 설정되어 있는지
+    private var hasCustomEmoji: Bool {
+        store.sessionEmojis[agent.id] != nil || store.projectEmojis[agent.projectDir] != nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,6 +60,16 @@ struct EmojiPickerView: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 10) {
+                // 세션이 여러 개일 때만 적용 범위 선택 표시
+                if hasMultipleSessions {
+                    Picker("", selection: $applyToProject) {
+                        Text(store.t("프로젝트 전체", "Entire project")).tag(true)
+                        Text(store.t("이 세션만", "This session only")).tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+
                 LazyVGrid(columns: columns, spacing: 4) {
                     ForEach(presetEmojis, id: \.self) { emoji in
                         Button(action: { selectEmoji(emoji) }) {
@@ -46,7 +77,7 @@ struct EmojiPickerView: View {
                                 .font(.system(size: 20))
                                 .frame(width: 32, height: 32)
                                 .background(
-                                    store.projectEmojis[agentId] == emoji
+                                    currentEmoji == emoji
                                         ? Color.accentColor.opacity(0.2)
                                         : Color.clear
                                 )
@@ -56,10 +87,10 @@ struct EmojiPickerView: View {
                     }
                 }
 
-                if store.projectEmojis[agentId] != nil {
+                if hasCustomEmoji {
                     Divider()
                     Button(store.t("초기화", "Reset")) {
-                        store.resetEmoji(for: agentId)
+                        store.resetProjectEmoji(for: agent)
                         isPresented = false
                     }
                     .buttonStyle(.plain)
@@ -73,10 +104,11 @@ struct EmojiPickerView: View {
         }
         .frame(width: 360)
         .background(Color(NSColor.windowBackgroundColor))
+        .onAppear { applyToProject = initialApplyToProject }
     }
 
     private func selectEmoji(_ emoji: String) {
-        store.setEmoji(emoji, for: agentId)
+        store.setEmoji(emoji, for: agent, projectWide: applyToProject)
         isPresented = false
     }
 }

@@ -14,6 +14,7 @@
 		3E1ED4571EA5484EA2B785B0 /* MenuBarIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785B1 /* MenuBarIconView.swift */; };
 		3E1ED4571EA5484EA2B785B2 /* AgentListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785B3 /* AgentListView.swift */; };
 		3E1ED4571EA5484EA2B785B5 /* SessionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785B6 /* SessionMonitor.swift */; };
+		D04D14F12F7A4750001113FE /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = D04D14F02F7A4750001113FE /* Sparkle */; };
 		D0A7CBDC2F7556870052C5A3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A7CBDB2F7556860052C5A3 /* SettingsView.swift */; };
 		D0A7CBDE2F7591410052C5A3 /* EmojiPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A7CBDD2F7591410052C5A3 /* EmojiPickerView.swift */; };
 		D0A7CBE52F76505F0052C5A3 /* UsageMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A7CBE32F76505F0052C5A3 /* UsageMonitor.swift */; };
@@ -45,6 +46,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D04D14F12F7A4750001113FE /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -132,6 +134,9 @@
 				Base,
 			);
 			mainGroup = 3E1ED4571EA5484EA2B78502;
+			packageReferences = (
+				D04D14EF2F7A4750001113FE /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			productRefGroup = 3E1ED4571EA5484EA2B78501 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -373,6 +378,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D04D14EF2F7A4750001113FE /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D04D14F02F7A4750001113FE /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D04D14EF2F7A4750001113FE /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3E1ED4571EA5484EA2B78503 /* Project object */;
 }

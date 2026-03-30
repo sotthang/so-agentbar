@@ -1,8 +1,10 @@
 import SwiftUI
 import ServiceManagement
+import Sparkle
 
 struct SettingsView: View {
     @ObservedObject var store: AgentStore
+    let updater: SPUUpdater
     @Binding var isPresented: Bool
     @State private var thresholdValue: Double = 80
 
@@ -221,6 +223,21 @@ struct SettingsView: View {
                     sectionHeader(store.t("세션", "Sessions"))
 
                     settingRow {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(store.t("목록 스타일", "List style"))
+                                .font(.system(size: 13))
+                            Picker("", selection: $store.listStyle) {
+                                Text(store.t("플랫", "Flat")).tag(ListStyle.flat)
+                                Text(store.t("그룹", "Grouped")).tag(ListStyle.grouped)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                        }
+                    }
+
+                    Divider().padding(.leading, 16)
+
+                    settingRow {
                         Toggle(isOn: $store.showIdleSessions) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(store.t("비활성 세션 표시", "Show idle sessions"))
@@ -260,6 +277,12 @@ struct SettingsView: View {
                         LaunchAtLoginRow(store: store)
                     }
 
+                    Divider().padding(.leading, 16)
+
+                    settingRow {
+                        UpdateRow(updater: updater, store: store)
+                    }
+
                     // 정보 섹션
                     sectionHeader(store.t("정보", "About"))
 
@@ -273,7 +296,7 @@ struct SettingsView: View {
                                     .foregroundColor(.secondary)
                             }
                             Spacer()
-                            Text("v1.0.0")
+                            Text("v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?")")
                                 .font(.system(size: 11, design: .monospaced))
                                 .foregroundColor(.secondary)
                         }
@@ -460,6 +483,39 @@ struct LaunchAtLoginRow: View {
                     DispatchQueue.main.async { isEnabled = prev }
                 }
             }
+        }
+    }
+}
+
+// MARK: - 업데이트
+
+struct UpdateRow: View {
+    let updater: SPUUpdater
+    @ObservedObject var store: AgentStore
+    @State private var automaticallyChecks: Bool = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $automaticallyChecks) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(store.t("자동 업데이트 확인", "Check for updates automatically"))
+                        .font(.system(size: 13))
+                }
+            }
+            .toggleStyle(.switch)
+            .onAppear { automaticallyChecks = updater.automaticallyChecksForUpdates }
+            .onChange(of: automaticallyChecks) { _, v in updater.automaticallyChecksForUpdates = v }
+
+            Button(action: { updater.checkForUpdates() }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 12))
+                    Text(store.t("업데이트 확인", "Check for Updates"))
+                        .font(.system(size: 13))
+                }
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.accentColor)
         }
     }
 }

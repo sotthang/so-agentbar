@@ -35,6 +35,7 @@ struct ClaudeSession: Identifiable {
     var outputTokens: Int = 0
     var lastToolName: String = "running"
     var lastAssistantText: String = ""      // 마지막 Claude 응답 미리보기
+    var currentModel: String = ""           // 마지막 assistant 이벤트의 모델명
 
     // JSONL 이벤트 기반 상태 판단
     var sessionStatus: SessionStatus {
@@ -60,14 +61,28 @@ struct ClaudeSession: Identifiable {
     }
 
     var displayName: String {
-        let home = NSHomeDirectory()
-        if workingPath.hasPrefix(home) {
-            let relative = String(workingPath.dropFirst(home.count + 1))
-            // "Develop/so-agentbar" → 마지막 2단계만 표시
-            let parts = relative.components(separatedBy: "/")
-            return parts.suffix(2).joined(separator: "/")
+        // projectDir 인코딩: 경로의 특수문자(/, _ 등)를 -로 1:1 치환 → 길이 보존
+        // 예: /Users/hs_so/Develop/Dcty-Agent → -Users-hs-so-Develop-Dcty-Agent (둘 다 31자)
+        // 이를 이용해 workingPath에서 프로젝트 루트와 서브디렉토리를 분리
+
+        // worktree 접미사 제거: --claude-worktrees-xxx
+        let baseProjectDir = projectDir.components(separatedBy: "--claude-worktrees").first ?? projectDir
+        let projectRootLength = baseProjectDir.count
+
+        guard workingPath.count >= projectRootLength else {
+            return URL(fileURLWithPath: workingPath).lastPathComponent
         }
-        return URL(fileURLWithPath: workingPath).lastPathComponent
+
+        let projectRoot = String(workingPath.prefix(projectRootLength))
+        let projectName = URL(fileURLWithPath: projectRoot).lastPathComponent
+
+        // workingPath가 프로젝트 루트보다 깊으면 서브디렉토리 표시
+        if workingPath.count > projectRootLength + 1 {
+            let subdir = String(workingPath.dropFirst(projectRootLength + 1))
+            return "\(projectName) (\(subdir))"
+        }
+
+        return projectName
     }
 }
 
@@ -194,34 +209,39 @@ class SessionMonitor {
             guard entry.url.hasDirectoryPath else { continue }
             let folderName = entry.url.lastPathComponent
 
-            guard let jsonlURL = latestJSONL(in: entry.url),
-                  let modDate = modificationDate(of: jsonlURL) else { continue }
+            // 프로젝트 디렉토리 내 모든 활성 JSONL 파일 순회
+            let jsonlURLs = activeJSONLs(in: entry.url, now: now)
+            for jsonlURL in jsonlURLs {
+                guard let modDate = modificationDate(of: jsonlURL) else { continue }
 
-            let age = now.timeIntervalSince(modDate)
+                let sessionID = jsonlURL.deletingPathExtension().lastPathComponent
+                var session = sessionCache[sessionID] ?? ClaudeSession(
+                    id: sessionID,
+                    projectDir: folderName,
+                    source: entry.source,
+                    workingPath: readCWD(from: jsonlURL) ?? entry.url.path,
+                    lastModified: modDate,
+                    lastActivity: modDate
+                )
 
-            // 24시간 이상 된 세션은 표시 안 함
-            guard age < 86400 else { continue }
+                session.lastModified = modDate
 
-            let sessionID = jsonlURL.deletingPathExtension().lastPathComponent
-            var session = sessionCache[sessionID] ?? ClaudeSession(
-                id: sessionID,
-                projectDir: folderName,
-                source: entry.source,
-                workingPath: readCWD(from: jsonlURL) ?? entry.url.path,
-                lastModified: modDate,
-                lastActivity: modDate
-            )
+                // 새로 추가된 줄만 파싱
+                parseNewLines(url: jsonlURL, session: &session)
 
-            session.lastModified = modDate
-
-            // 새로 추가된 줄만 파싱
-            parseNewLines(url: jsonlURL, session: &session)
-
-            sessionCache[sessionID] = session
-            results.append(session)
+                sessionCache[sessionID] = session
+                results.append(session)
+            }
         }
 
-        results.sort { $0.lastModified > $1.lastModified }
+        // 같은 프로젝트끼리 인접 + 각 그룹 내 최신순 정렬
+        results.sort {
+            if $0.projectDir == $1.projectDir {
+                return $0.lastModified > $1.lastModified
+            }
+            // 프로젝트 그룹의 대표 시간 = 그룹 내 최신 세션
+            return $0.lastModified > $1.lastModified
+        }
 
         // 캐시 정리: 현재 결과에 없는 항목 제거 (24시간 필터에서 걸러진 오래된 세션)
         let activeIDs = Set(results.map(\.id))
@@ -295,8 +315,16 @@ class SessionMonitor {
         case "assistant":
             guard let message = json["message"] as? [String: Any] else { return }
 
+            // 모델명은 스트리밍 중에도 업데이트 (stop_reason 체크 전)
+            if let model = message["model"] as? String {
+                session.currentModel = model
+            }
+
             // stop_reason이 nil = 아직 스트리밍 중 → 무시
             guard let stopReason = message["stop_reason"] as? String else { return }
+
+            // API 에러(stop_sequence 등)는 응답 완료가 아님 → 무시
+            guard stopReason == "end_turn" || stopReason == "tool_use" else { return }
 
             session.lastEventType = type
             session.lastAssistantHasToolUse = stopReason == "tool_use"
@@ -335,9 +363,10 @@ class SessionMonitor {
                 session.workingPath = cwd
             }
 
-        // progress 이벤트는 훅 실행 중 - lastEventType 덮어쓰지 않음
-        // (Claude end_turn 후 PostToolUse 훅이 실행돼도 responded 상태 유지)
-        case "progress":
+        // 메타데이터 이벤트: 대화 상태와 무관 → lastEventType 덮어쓰지 않음
+        // (end_turn 후 이런 이벤트가 오면 상태가 running으로 flicker → 중복 알림 발생 방지)
+        case "progress", "file-history-snapshot", "queue-operation",
+             "ai-title", "last-prompt", "system":
             break
 
         default:
@@ -347,16 +376,21 @@ class SessionMonitor {
 
     // MARK: - 유틸
 
-    private func latestJSONL(in projectURL: URL) -> URL? {
+    /// 프로젝트 디렉토리 내 24시간 이내 활성 JSONL 파일 목록 반환
+    private func activeJSONLs(in projectURL: URL, now: Date) -> [URL] {
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: projectURL,
             includingPropertiesForKeys: [.contentModificationDateKey]
-        ) else { return nil }
+        ) else { return [] }
 
         return files
             .filter { $0.pathExtension == "jsonl" }
-            .max {
-                (modificationDate(of: $0) ?? .distantPast) <
+            .filter { url in
+                guard let mod = modificationDate(of: url) else { return false }
+                return now.timeIntervalSince(mod) < 86400
+            }
+            .sorted {
+                (modificationDate(of: $0) ?? .distantPast) >
                 (modificationDate(of: $1) ?? .distantPast)
             }
     }

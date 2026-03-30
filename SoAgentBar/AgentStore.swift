@@ -28,6 +28,13 @@ enum MenubarStyle: String, CaseIterable {
     var displayName: String { "" } // SettingsView에서 직접 표시
 }
 
+// MARK: - 리스트 스타일
+
+enum ListStyle: String, CaseIterable {
+    case flat    // 플랫 리스트
+    case grouped // 프로젝트 그룹 (트리형)
+}
+
 // MARK: - 에디터 설정
 
 enum OpenWith: String, CaseIterable {
@@ -106,10 +113,12 @@ struct Agent: Identifiable {
     var inputTokens: Int
     var outputTokens: Int
     var sessionID: String
+    var projectDir: String
     var workingPath: String
     var lastActivity: Date
     var source: SessionSource
     var lastResponse: String
+    var currentModel: String
     var pid: Int?
 
     var elapsedDisplay: String {
@@ -120,6 +129,16 @@ struct Agent: Identifiable {
     }
 
     var totalTokens: Int { inputTokens + outputTokens }
+
+    /// "claude-sonnet-4-6" → "Sonnet 4.6"
+    var modelDisplayName: String {
+        let m = currentModel
+        if m.isEmpty { return "" }
+        if m.contains("opus") { return "Opus" }
+        if m.contains("sonnet") { return "Sonnet" }
+        if m.contains("haiku") { return "Haiku" }
+        return m
+    }
 }
 
 // MARK: - AgentStore
@@ -127,6 +146,7 @@ struct Agent: Identifiable {
 @MainActor
 class AgentStore: ObservableObject {
     @Published var agents: [Agent] = []
+    @Published var popoverOpenCount = 0
 
     // 세션 설정
     @Published var showIdleSessions: Bool {
@@ -147,6 +167,11 @@ class AgentStore: ObservableObject {
     // 메뉴바 스타일
     @Published var menubarStyle: MenubarStyle {
         didSet { UserDefaults.standard.set(menubarStyle.rawValue, forKey: "menubarStyle") }
+    }
+
+    // 리스트 스타일
+    @Published var listStyle: ListStyle {
+        didSet { UserDefaults.standard.set(listStyle.rawValue, forKey: "listStyle") }
     }
 
     // 에디터
@@ -205,7 +230,14 @@ class AgentStore: ObservableObject {
         usageMonitor.localizer          = { [weak self] ko, en in self?.t(ko, en) ?? ko }
     }
 
-    // 프로젝트별 커스텀 이모지
+    // 커스텀 이모지: 세션별 / 프로젝트별 2단계
+    @Published var sessionEmojis: [String: String] = [:] {
+        didSet {
+            if let data = try? JSONEncoder().encode(sessionEmojis) {
+                UserDefaults.standard.set(data, forKey: "sessionEmojis")
+            }
+        }
+    }
     @Published var projectEmojis: [String: String] = [:] {
         didSet {
             if let data = try? JSONEncoder().encode(projectEmojis) {
@@ -214,16 +246,35 @@ class AgentStore: ObservableObject {
         }
     }
 
+    /// 세션 이모지 → 프로젝트 이모지 → 상태 이모지
     func displayEmoji(for agent: Agent) -> String {
-        projectEmojis[agent.id] ?? agent.status.emoji
+        sessionEmojis[agent.id]
+            ?? projectEmojis[agent.projectDir]
+            ?? agent.status.emoji
     }
 
-    func setEmoji(_ emoji: String, for agentId: String) {
-        projectEmojis[agentId] = emoji
+    func setEmoji(_ emoji: String, for agent: Agent, projectWide: Bool) {
+        if projectWide {
+            projectEmojis[agent.projectDir] = emoji
+            // 해당 프로젝트의 세션별 오버라이드 초기화
+            for a in agents where a.projectDir == agent.projectDir {
+                sessionEmojis.removeValue(forKey: a.id)
+            }
+        } else {
+            sessionEmojis[agent.id] = emoji
+        }
     }
 
-    func resetEmoji(for agentId: String) {
-        projectEmojis.removeValue(forKey: agentId)
+    func resetEmoji(for agent: Agent) {
+        sessionEmojis.removeValue(forKey: agent.id)
+        // 세션 오버라이드만 제거 → 프로젝트 이모지로 폴백
+    }
+
+    func resetProjectEmoji(for agent: Agent) {
+        projectEmojis.removeValue(forKey: agent.projectDir)
+        for a in agents where a.projectDir == agent.projectDir {
+            sessionEmojis.removeValue(forKey: a.id)
+        }
     }
 
     private let monitor = SessionMonitor()
@@ -239,6 +290,7 @@ class AgentStore: ObservableObject {
         self.pollInterval       = UserDefaults.standard.object(forKey: "pollInterval") as? Double ?? 10.0
         self.language           = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "language") ?? "ko") ?? .korean
         self.menubarStyle       = MenubarStyle(rawValue: UserDefaults.standard.string(forKey: "menubarStyle") ?? "emoji") ?? .emoji
+        self.listStyle          = ListStyle(rawValue: UserDefaults.standard.string(forKey: "listStyle") ?? "flat") ?? .flat
         self.openWith           = OpenWith(rawValue: UserDefaults.standard.string(forKey: "openWith") ?? "vscode") ?? .vscode
         self.isPinned                  = UserDefaults.standard.object(forKey: "isPinned") as? Bool ?? false
         self.hotkeyEnabled             = UserDefaults.standard.object(forKey: "hotkeyEnabled") as? Bool ?? true
@@ -253,6 +305,10 @@ class AgentStore: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: "projectEmojis"),
            let emojis = try? JSONDecoder().decode([String: String].self, from: data) {
             self.projectEmojis = emojis
+        }
+        if let data = UserDefaults.standard.data(forKey: "sessionEmojis"),
+           let emojis = try? JSONDecoder().decode([String: String].self, from: data) {
+            self.sessionEmojis = emojis
         }
 
         requestNotificationPermission()
@@ -388,7 +444,14 @@ class AgentStore: ObservableObject {
             ? sessions
             : sessions.filter { $0.sessionStatus == .running || $0.sessionStatus == .responded }
 
-        let newAgents = filtered.map { session in
+        // 같은 프로젝트에 세션이 여러 개면 번호 붙이기
+        var projectSessionCounts: [String: Int] = [:]
+        for session in filtered {
+            projectSessionCounts[session.projectDir, default: 0] += 1
+        }
+        var projectSessionIndex: [String: Int] = [:]
+
+        let newAgents = filtered.map { session -> Agent in
             let status: AgentStatus
             let task: String
 
@@ -410,19 +473,29 @@ class AgentStore: ObservableObject {
             let existing = agents.first(where: { $0.id == session.id })
             let elapsed = session.sessionStatus == .running ? (existing?.elapsedSeconds ?? 0) : 0
 
+            // 같은 프로젝트에 세션이 2개 이상이면 "#1", "#2" 붙이기
+            var name = session.displayName
+            if (projectSessionCounts[session.projectDir] ?? 1) > 1 {
+                let idx = (projectSessionIndex[session.projectDir] ?? 0) + 1
+                projectSessionIndex[session.projectDir] = idx
+                name += " #\(idx)"
+            }
+
             return Agent(
                 id: session.id,
-                name: session.displayName,
+                name: name,
                 status: status,
                 currentTask: task,
                 elapsedSeconds: elapsed,
                 inputTokens: session.inputTokens,
                 outputTokens: session.outputTokens,
                 sessionID: session.id,
+                projectDir: session.projectDir,
                 workingPath: session.workingPath,
                 lastActivity: session.lastActivity,
                 source: session.source,
                 lastResponse: session.lastAssistantText,
+                currentModel: session.currentModel,
                 pid: nil
             )
         }

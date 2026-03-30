@@ -15,9 +15,9 @@ if [ -z "$SPARKLE_BIN" ]; then
   exit 1
 fi
 
-SIGN_OUTPUT=$("$SPARKLE_BIN" "$DMG_PATH" -s "$PRIVATE_KEY")
+SIGN_OUTPUT=$(echo "$PRIVATE_KEY" | "$SPARKLE_BIN" "$DMG_PATH" --ed-key-file - -p)
 echo "sign_update output: $SIGN_OUTPUT"
-SIGNATURE=$(echo "$SIGN_OUTPUT" | grep -o 'sparkle:edSignature="[^"]*"' | sed 's/sparkle:edSignature="//;s/"//')
+SIGNATURE="$SIGN_OUTPUT"
 echo "Signature: $SIGNATURE"
 
 if [ -z "$SIGNATURE" ]; then

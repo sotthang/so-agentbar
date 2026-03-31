@@ -89,6 +89,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git stash -- docs/appcast.xml
+          git fetch origin main
+          git checkout origin/main
+          git stash pop
           git add docs/appcast.xml
           git commit -m "Update appcast.xml for ${GITHUB_REF_NAME}" || echo "No changes"
           git push origin HEAD:main

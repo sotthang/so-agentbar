@@ -5,18 +5,6 @@ import Combine
 import UserNotifications
 import Sparkle
 
-@main
-struct SoAgentBarApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-
-    var body: some Scene {
-        // Dock 없이 메뉴바 전용으로 동작 (Info.plist의 LSUIElement가 처리)
-        Settings {
-            EmptyView()
-        }
-    }
-}
-
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     private var statusItem: NSStatusItem?
@@ -65,11 +53,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             object: nil
         )
 
-        setupStatusItem()
-        setupPopover()
-        startIconUpdateTimer()
-        setupHotkey()
-        observePinState()
+        // 런루프가 완전히 준비된 후 상태바 아이템 생성 — 첫 실행 시 메뉴바 미표시 방지
+        DispatchQueue.main.async { [self] in
+            setupStatusItem()
+            setupPopover()
+            startIconUpdateTimer()
+            setupHotkey()
+            observePinState()
+        }
     }
 
     // 앱이 실행 중일 때 알림을 클릭하면 새 인스턴스 없이 이 메서드가 호출됨

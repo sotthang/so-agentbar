@@ -10,6 +10,7 @@
 		15B59B5D2F7973AA00170E5B /* logo.png in Resources */ = {isa = PBXBuildFile; fileRef = 15B59B5C2F7973AA00170E5B /* logo.png */; };
 		15B59B5F2F797D2700170E5B /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 15B59B5E2F797D2700170E5B /* AppIcon.icns */; };
 		3E1ED4571EA5484EA2B785AA /* SoAgentBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785AB /* SoAgentBarApp.swift */; };
+		D0MAIN00012F8000000000000 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0MAIN00012F8000000000001 /* main.swift */; };
 		3E1ED4571EA5484EA2B785AC /* AgentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785AD /* AgentStore.swift */; };
 		3E1ED4571EA5484EA2B785B0 /* MenuBarIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785B1 /* MenuBarIconView.swift */; };
 		3E1ED4571EA5484EA2B785B2 /* AgentListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785B3 /* AgentListView.swift */; };
@@ -39,6 +40,7 @@
 		D0A7CBE42F76505F0052C5A3 /* UsageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageView.swift; sourceTree = "<group>"; };
 		D0A7CBE72F766AA30052C5A3 /* StatsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsStore.swift; sourceTree = "<group>"; };
 		D0A7CBE92F766AD00052C5A3 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
+		D0MAIN00012F8000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -70,6 +72,7 @@
 				D0A7CBE92F766AD00052C5A3 /* StatsView.swift */,
 				15B59B5C2F7973AA00170E5B /* logo.png */,
 				15B59B5E2F797D2700170E5B /* AppIcon.icns */,
+				D0MAIN00012F8000000000001 /* main.swift */,
 			);
 			path = SoAgentBar;
 			sourceTree = "<group>";
@@ -174,6 +177,7 @@
 				D0A7CBDC2F7556870052C5A3 /* SettingsView.swift in Sources */,
 				3E1ED4571EA5484EA2B785B0 /* MenuBarIconView.swift in Sources */,
 				3E1ED4571EA5484EA2B785B2 /* AgentListView.swift in Sources */,
+				D0MAIN00012F8000000000000 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -68,10 +68,7 @@ struct ClaudeSession: Identifiable {
         // 5분 이상 = idle
         if age > 300 { return .idle }
 
-        // 1~5분 = 응답 완료 후 대기 (사용자가 다음 입력 안 한 상태)
-        if age > 60 { return .responded }
-
-        // 60초 이내: 마지막 이벤트로 판단
+        // 마지막 이벤트로 판단
         // assistant with text only → Claude가 방금 응답 완료
         if lastEventType == "assistant" && !lastAssistantHasToolUse {
             return .responded

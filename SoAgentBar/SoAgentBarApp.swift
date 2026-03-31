@@ -6,7 +6,7 @@ import UserNotifications
 import Sparkle
 
 @MainActor
-class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate, SPUStandardUserDriverDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var store = AgentStore()
@@ -14,19 +14,67 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var hotkeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
     private var cancellables = Set<AnyCancellable>()
-    let updaterController: SPUStandardUpdaterController
+    private(set) var updaterController: SPUStandardUpdaterController!
 
     private static let showPopoverNotification = Notification.Name("com.sotthang.so-agentbar.showPopover")
+    private static let updateNotificationIdentifier = "SparkleUpdateAvailable"
 
     // 가능한 가장 이른 시점에 delegate 설정 — 새 인스턴스 런치 방지
     override init() {
+        super.init()
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: nil,
-            userDriverDelegate: nil
+            userDriverDelegate: self
         )
-        super.init()
         UNUserNotificationCenter.current().delegate = self
+    }
+
+    // MARK: - SPUStandardUserDriverDelegate (Gentle Reminders)
+
+    nonisolated var supportsGentleScheduledUpdateReminders: Bool { true }
+
+    nonisolated func standardUserDriverShouldHandleShowingScheduledUpdate(
+        _ update: SUAppcastItem,
+        andInImmediateFocus immediateFocus: Bool
+    ) -> Bool {
+        // 즉시 포커스일 때만 Sparkle 기본 모달 표시, 아니면 gentle reminder로 처리
+        return immediateFocus
+    }
+
+    nonisolated func standardUserDriverWillHandleShowingUpdate(
+        _ handleShowingUpdate: Bool,
+        forUpdate update: SUAppcastItem,
+        state: SPUUserUpdateState
+    ) {
+        // Sparkle이 직접 처리하는 경우 (즉시 포커스) → 추가 알림 불필요
+        guard !handleShowingUpdate else { return }
+
+        // 백그라운드 업데이트 감지 → macOS 알림센터로 알림
+        let content = UNMutableNotificationContent()
+        content.title = "so-agentbar Update Available"
+        content.body = "Version \(update.displayVersionString) is now available"
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: Self.updateNotificationIdentifier,
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    nonisolated func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) {
+        // 사용자가 업데이트에 주목 → 알림 제거
+        UNUserNotificationCenter.current().removeDeliveredNotifications(
+            withIdentifiers: [Self.updateNotificationIdentifier]
+        )
+    }
+
+    nonisolated func standardUserDriverWillFinishUpdateSession() {
+        UNUserNotificationCenter.current().removeDeliveredNotifications(
+            withIdentifiers: [Self.updateNotificationIdentifier]
+        )
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -69,7 +117,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        let identifier = response.notification.request.identifier
         let userInfo = response.notification.request.content.userInfo
+
+        // Sparkle 업데이트 알림 클릭 → 업데이트 확인 창 열기
+        if identifier == Self.updateNotificationIdentifier,
+           response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            Task { @MainActor in
+                self.updaterController.checkForUpdates(nil)
+            }
+            completionHandler()
+            return
+        }
+
         let path = userInfo["workingPath"] as? String
         let sourceStr = userInfo["source"] as? String
 

@@ -38,6 +38,25 @@ struct ClaudeSession: Identifiable {
     var lastToolName: String = "running"
     var lastAssistantText: String = ""      // 마지막 Claude 응답 미리보기
     var currentModel: String = ""           // 마지막 assistant 이벤트의 모델명
+    var permissionMode: String = "default"  // "default", "acceptEdits", "plan", "auto", "bypassPermissions"
+
+    // 현재 permissionMode에서 해당 도구가 자동 승인되는지 판단
+    // 모든 모드에서 읽기 전용/내부 도구는 승인 불필요
+    private static let readOnlyTools: Set<String> = ["read", "glob", "grep", "agent", "todowrite"]
+
+    func isToolAutoApproved(_ toolName: String) -> Bool {
+        // 읽기 전용 및 내부 도구는 어떤 모드에서든 자동 승인
+        if Self.readOnlyTools.contains(toolName) { return true }
+
+        switch permissionMode {
+        case "bypassPermissions", "auto":
+            return true
+        case "acceptEdits":
+            return ["edit", "write"].contains(toolName)
+        default: // "default", "plan"
+            return false
+        }
+    }
 
     // JSONL 이벤트 기반 상태 판단
     var sessionStatus: SessionStatus {
@@ -60,9 +79,11 @@ struct ClaudeSession: Identifiable {
 
         // tool_use 후 파일이 3초 이상 변화 없음 → 사용자 승인 대기
         // (실행 중인 명령은 bash_progress 이벤트로 파일이 계속 갱신됨)
-        if lastAssistantHasToolUse, let toolUseTime = lastToolUseTime {
+        // 단, 현재 permissionMode에서 자동 승인되는 도구는 제외
+        if lastAssistantHasToolUse, let toolUseTime = lastToolUseTime,
+           !isToolAutoApproved(lastToolName) {
             let timeSinceToolUse = Date().timeIntervalSince(toolUseTime)
-            if timeSinceToolUse > 3 && age > 3 {
+            if timeSinceToolUse > 5 && age > 5 {
                 return .waitingForApproval
             }
         }
@@ -374,6 +395,9 @@ class SessionMonitor {
             // cwd 필드가 있으면 정확한 경로로 업데이트
             if let cwd = json["cwd"] as? String {
                 session.workingPath = cwd
+            }
+            if let mode = json["permissionMode"] as? String {
+                session.permissionMode = mode
             }
 
         // 메타데이터 이벤트: 대화 상태와 무관 → lastEventType 덮어쓰지 않음

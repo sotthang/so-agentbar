@@ -15,3 +15,6 @@ build/
 .vscode/
 .idea/
 .DS_Store
+
+# Claude Code
+CLAUDE.local.md

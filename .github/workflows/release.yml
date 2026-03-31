@@ -91,7 +91,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-          git checkout origin/main
+          git checkout -f origin/main
           cp /tmp/appcast.xml docs/appcast.xml
           git add docs/appcast.xml
           git commit -m "Update appcast.xml for ${GITHUB_REF_NAME}" || echo "No changes"

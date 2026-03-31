@@ -184,6 +184,16 @@ struct AgentRowView: View {
                     HStack {
                         Text(agent.name)
                             .font(.system(size: 13, weight: .medium))
+                        Text(agent.modeDisplayName)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(agent.permissionMode == "acceptEdits" || agent.permissionMode == "auto" ? .green : .orange)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(
+                                (agent.permissionMode == "acceptEdits" || agent.permissionMode == "auto" ? Color.green : Color.orange)
+                                    .opacity(0.15)
+                            )
+                            .cornerRadius(3)
                         if !agent.modelDisplayName.isEmpty {
                             Text(agent.modelDisplayName)
                                 .font(.system(size: 10))

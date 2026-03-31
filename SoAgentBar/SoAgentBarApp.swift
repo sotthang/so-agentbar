@@ -199,7 +199,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             .receive(on: RunLoop.main)
             .sink { [weak self] agents in
                 self?.updateIcon()
-                self?.adjustTimerForActivity(hasWorking: agents.contains { $0.status == .working })
+                let needsTimer = agents.contains { $0.status == .working || $0.status == .waitingApproval }
+                self?.adjustTimerForActivity(hasWorking: needsTimer)
             }
             .store(in: &cancellables)
 
@@ -230,6 +231,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         let agents = store.agents
         let activeCount = agents.filter { $0.status == .working }.count
+        let approvalCount = agents.filter { $0.status == .waitingApproval }.count
         if agents.isEmpty {
             if let img = NSImage(named: "logo") {
                 img.size = NSSize(width: 18, height: 18)
@@ -243,17 +245,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             return
         }
 
+        // 승인 대기 중인 세션이 있으면 느낌표 뱃지 추가
+        let approvalBadge = approvalCount > 0 ? "❗" : ""
+
         switch store.menubarStyle {
         case .emoji:
-            button.title = agents.prefix(4).map { store.displayEmoji(for: $0) }.joined()
+            button.title = agents.prefix(4).map { store.displayEmoji(for: $0) }.joined() + approvalBadge
         case .emojiCount:
             let emoji = agents.first.map { store.displayEmoji(for: $0) } ?? "🤖"
-            button.title = "\(emoji) \(agents.count)"
+            button.title = "\(emoji) \(agents.count)" + approvalBadge
         case .countOnly:
-            button.title = "\(agents.count)"
+            button.title = "\(agents.count)" + approvalBadge
         }
 
-        button.toolTip = "so-agentbar — \(activeCount) \(store.t("개 에이전트 실행 중", "agents running"))"
+        if approvalCount > 0 {
+            button.toolTip = "so-agentbar — \(approvalCount) \(store.t("개 승인 대기", "awaiting approval"))"
+        } else {
+            button.toolTip = "so-agentbar — \(activeCount) \(store.t("개 에이전트 실행 중", "agents running"))"
+        }
     }
 
     @objc func togglePopover(_ sender: NSStatusBarButton) {

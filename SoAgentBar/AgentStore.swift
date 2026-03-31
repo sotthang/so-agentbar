@@ -130,6 +130,7 @@ struct Agent: Identifiable {
     var source: SessionSource
     var lastResponse: String
     var currentModel: String
+    var permissionMode: String
     var pid: Int?
 
     var elapsedDisplay: String {
@@ -149,6 +150,17 @@ struct Agent: Identifiable {
         if m.contains("sonnet") { return "Sonnet" }
         if m.contains("haiku") { return "Haiku" }
         return m
+    }
+
+    /// "default" → "Ask", "acceptEdits" → "Auto", "plan" → "Plan"
+    var modeDisplayName: String {
+        switch permissionMode {
+        case "acceptEdits": return "Auto"
+        case "plan":        return "Plan"
+        case "auto":        return "Auto+"
+        case "bypassPermissions": return "Bypass"
+        default:            return "Ask"
+        }
     }
 }
 
@@ -521,6 +533,7 @@ class AgentStore: ObservableObject {
                 source: session.source,
                 lastResponse: session.lastAssistantText,
                 currentModel: session.currentModel,
+                permissionMode: session.permissionMode,
                 pid: nil
             )
         }

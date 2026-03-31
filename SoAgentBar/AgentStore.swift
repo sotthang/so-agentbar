@@ -41,6 +41,7 @@ enum OpenWith: String, CaseIterable {
     case vscode       = "vscode"
     case cursor       = "cursor"
     case antigravity  = "antigravity"
+    case intellij     = "intellij"
     case terminal     = "terminal"
     case finder       = "finder"
 
@@ -49,6 +50,7 @@ enum OpenWith: String, CaseIterable {
         case .vscode:       return "VSCode"
         case .cursor:       return "Cursor"
         case .antigravity:  return "Antigravity"
+        case .intellij:     return "IntelliJ IDEA"
         case .terminal:     return "Terminal"
         case .finder:       return "Finder"
         }
@@ -83,6 +85,11 @@ enum OpenWith: String, CaseIterable {
             let task = Process()
             task.launchPath = "/usr/bin/open"
             task.arguments = ["-a", "Antigravity", path]
+            try? task.run()
+        case .intellij:
+            let task = Process()
+            task.launchPath = "/usr/bin/open"
+            task.arguments = ["-a", "IntelliJ IDEA", path]
             try? task.run()
         case .terminal:
             let task = Process()

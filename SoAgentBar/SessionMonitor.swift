@@ -8,6 +8,7 @@ enum SessionStatus {
     case waitingForApproval // tool_use 후 파일 변화 없음 = 사용자 승인 대기
     case responded          // Claude 응답 완료, 사용자 입력 대기
     case completed          // "result" 이벤트 감지 = 세션 정상 종료
+    case error              // "result" 이벤트에서 isError 감지
     case idle               // 5분 이상 아무 변화 없음
 }
 
@@ -30,15 +31,27 @@ struct ClaudeSession: Identifiable {
 
     // JSONL 파싱 상태 (오프셋 기반으로 누적)
     var sawResultEvent: Bool = false
+    var sawErrorEvent: Bool = false
     var lastEventType: String = ""         // "user", "assistant", "tool_result", "result"
     var lastAssistantHasToolUse: Bool = false
     var lastToolUseTime: Date? = nil       // tool_use 감지 시각 (승인 대기 판단용)
-    var inputTokens: Int = 0
-    var outputTokens: Int = 0
+    var tokensByModel: [String: (input: Int, output: Int)] = [:]  // 모델별 누적 토큰
     var lastToolName: String = "running"
     var lastAssistantText: String = ""      // 마지막 Claude 응답 미리보기
     var currentModel: String = ""           // 마지막 assistant 이벤트의 모델명
     var permissionMode: String = "default"  // "default", "acceptEdits", "plan", "auto", "bypassPermissions"
+
+    var totalTokens: Int {
+        tokensByModel.values.reduce(0) { $0 + $1.input + $1.output }
+    }
+
+    var estimatedCost: Double? {
+        let costs = tokensByModel.compactMap { (model, tokens) in
+            CostCalculator.estimate(model: model, inputTokens: tokens.input, outputTokens: tokens.output)
+        }
+        guard !costs.isEmpty else { return nil }
+        return costs.reduce(0, +)
+    }
 
     // 현재 permissionMode에서 해당 도구가 자동 승인되는지 판단
     // 모든 모드에서 읽기 전용/내부 도구는 승인 불필요
@@ -60,8 +73,8 @@ struct ClaudeSession: Identifiable {
 
     // JSONL 이벤트 기반 상태 판단
     var sessionStatus: SessionStatus {
-        // result 이벤트 = 세션 완전 종료
-        if sawResultEvent { return .completed }
+        // result 이벤트 = 세션 종료 (정상 or 에러)
+        if sawResultEvent { return sawErrorEvent ? .error : .completed }
 
         let age = Date().timeIntervalSince(lastModified)
 
@@ -144,6 +157,9 @@ class SessionMonitor {
         for dir in projectsDirs {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
+
+        // 앱 재시작 후에도 파일 오프셋 복원 (전체 재파싱 방지)
+        loadFileOffsets()
 
         // 초기 폴링
         dispatchQueue.async { [weak self] in self?.poll() }
@@ -284,6 +300,15 @@ class SessionMonitor {
             }
         }
 
+        // 안전장치: 캐시가 비정상적으로 클 경우 오래된 항목 제거
+        if sessionCache.count > 500 {
+            let excess = sessionCache.count - 400
+            sessionCache.keys.prefix(excess).forEach { sessionCache.removeValue(forKey: $0) }
+        }
+
+        // 변경된 오프셋 영속화
+        saveFileOffsets()
+
         DispatchQueue.main.async { [weak self] in
             self?.onSessionsChanged?(results)
         }
@@ -306,13 +331,21 @@ class SessionMonitor {
 
         // 새로 추가된 데이터만 읽기
         let newData = fileHandle.readDataToEndOfFile()
-        guard !newData.isEmpty,
-              let text = String(data: newData, encoding: .utf8) else { return }
+        guard !newData.isEmpty else { return }
 
-        // 오프셋 업데이트
-        fileOffsets[url.path] = fileSize
+        // 마지막 개행 위치까지만 처리 — 파일 쓰는 도중인 불완전한 줄 제외
+        // 개행이 없으면 아직 한 줄도 완성되지 않은 것이므로 전부 건너뜀
+        let newlineByte = UInt8(ascii: "\n")
+        guard let lastNewlineIdx = newData.lastIndex(of: newlineByte) else { return }
 
-        // 새 줄만 파싱
+        // 완성된 줄까지만 슬라이싱 & 오프셋 전진
+        // 나머지 부분 줄은 다음 폴링 때 재처리됨
+        let completeData = newData[newData.startIndex...lastNewlineIdx]
+        fileOffsets[url.path] = currentOffset + UInt64(completeData.count)
+
+        guard let text = String(data: completeData, encoding: .utf8) else { return }
+
+        // 완성된 줄만 파싱
         for line in text.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty,
@@ -339,6 +372,11 @@ class SessionMonitor {
         case "result":
             session.sawResultEvent = true
             session.lastEventType = type
+            // 에러 감지: isError 필드 또는 subtype == "error"
+            if (json["isError"] as? Bool == true) ||
+               (json["subtype"] as? String == "error") {
+                session.sawErrorEvent = true
+            }
 
         // Claude 응답 파싱
         case "assistant":
@@ -358,12 +396,15 @@ class SessionMonitor {
             session.lastEventType = type
             session.lastAssistantHasToolUse = stopReason == "tool_use"
 
-            // 토큰 사용량
-            if let usage = message["usage"] as? [String: Any] {
-                session.inputTokens += (usage["input_tokens"] as? Int ?? 0)
-                    + (usage["cache_creation_input_tokens"] as? Int ?? 0)
-                    + (usage["cache_read_input_tokens"] as? Int ?? 0)
-                session.outputTokens += usage["output_tokens"] as? Int ?? 0
+            // 토큰 사용량 (모델별 누적)
+            if let model = message["model"] as? String,
+               let usage = message["usage"] as? [String: Any] {
+                let input = (usage["input_tokens"] as? Int ?? 0)
+                          + (usage["cache_creation_input_tokens"] as? Int ?? 0)
+                          + (usage["cache_read_input_tokens"] as? Int ?? 0)
+                let output = usage["output_tokens"] as? Int ?? 0
+                let existing = session.tokensByModel[model] ?? (0, 0)
+                session.tokensByModel[model] = (existing.0 + input, existing.1 + output)
             }
 
             // 응답 텍스트 추출
@@ -452,6 +493,29 @@ class SessionMonitor {
             return cwd
         }
         return nil
+    }
+
+    // MARK: - fileOffsets 영속화
+
+    private func saveFileOffsets() {
+        let encoded = Dictionary(uniqueKeysWithValues: fileOffsets.map { ($0.key, String($0.value)) })
+        if let data = try? JSONEncoder().encode(encoded) {
+            UserDefaults.standard.set(data, forKey: "fileOffsets")
+        }
+    }
+
+    private func loadFileOffsets() {
+        guard let data = UserDefaults.standard.data(forKey: "fileOffsets"),
+              let dict = try? JSONDecoder().decode([String: String].self, from: data) else { return }
+        for (path, offsetStr) in dict {
+            // 파일이 실제로 존재하고 오프셋이 파일 크기 이하인 경우만 복원
+            if let offset = UInt64(offsetStr),
+               let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+               let size = attrs[.size] as? UInt64,
+               offset <= size {
+                fileOffsets[path] = offset
+            }
+        }
     }
 
     private static let iso8601Formatter: ISO8601DateFormatter = {

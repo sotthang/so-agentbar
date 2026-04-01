@@ -155,6 +155,96 @@ struct SettingsView: View {
 
                     Divider().padding(.leading, 16)
 
+                    settingRow {
+                        Toggle(isOn: $store.respectFocusMode) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(store.t("집중 모드 중 알림 억제", "Suppress during Focus mode"))
+                                    .font(.system(size: 13))
+                                Text(store.t("Do Not Disturb / 집중 모드 활성화 시 알림 보내지 않음", "Skip notifications when Do Not Disturb or Focus is active"))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                    }
+
+                    settingRow {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Toggle(isOn: $store.quietHoursEnabled) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(store.t("조용한 시간대", "Quiet Hours"))
+                                        .font(.system(size: 13))
+                                    Text(store.t("설정 시간 동안 알림을 보내지 않습니다", "Suppress all notifications during set hours"))
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .toggleStyle(.switch)
+
+                            if store.quietHoursEnabled {
+                                HStack(spacing: 8) {
+                                    Text(store.t("시작", "Start"))
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                    Picker("", selection: $store.quietHoursStart) {
+                                        ForEach(0..<24, id: \.self) { h in
+                                            Text(String(format: "%02d:00", h)).tag(h)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .fixedSize()
+                                    .labelsHidden()
+
+                                    Text("~")
+                                        .foregroundColor(.secondary)
+
+                                    Text(store.t("종료", "End"))
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                    Picker("", selection: $store.quietHoursEnd) {
+                                        ForEach(0..<24, id: \.self) { h in
+                                            Text(String(format: "%02d:00", h)).tag(h)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .fixedSize()
+                                    .labelsHidden()
+                                }
+
+                                if store.quietHoursStart == store.quietHoursEnd {
+                                    Text(store.t("시작과 종료가 같으면 Quiet Hours가 적용되지 않습니다",
+                                                 "Quiet Hours won't apply when start and end are the same"))
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.orange)
+                                }
+                            }
+                        }
+                    }
+
+                    Divider().padding(.leading, 16)
+
+                    settingRow {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(store.t("알림 사운드", "Notification sound"))
+                                .font(.system(size: 13))
+                            Picker("", selection: $store.completionSound) {
+                                Text(store.t("없음", "None")).tag("none")
+                                Text(store.t("기본", "Default")).tag("default")
+                                Text("Glass").tag("Glass")
+                                Text("Ping").tag("Ping")
+                                Text("Sosumi").tag("Sosumi")
+                                Text("Hero").tag("Hero")
+                                Text("Funk").tag("Funk")
+                            }
+                            .pickerStyle(.menu)
+                            .fixedSize()
+                            .labelsHidden()
+                            .onChange(of: store.completionSound) { _, newSound in
+                                previewSound(newSound)
+                            }
+                        }
+                    }
+
                     // 쿼터 임계값 알림
                     settingRow {
                         Toggle(isOn: $store.notifyOnQuotaThreshold) {
@@ -336,7 +426,7 @@ struct SettingsView: View {
                             .foregroundColor(.accentColor)
 
                             Button(action: {
-                                NSWorkspace.shared.open(URL(string: "https://github.com/sotthang/so-agentbar/issues/new")!)
+                                NSWorkspace.shared.open(URL(string: "https://github.com/sotthang/so-agentbar/issues/new?template=bug_report.yml")!)
                             }) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "ladybug")
@@ -373,7 +463,15 @@ struct SettingsView: View {
         .background(Color(NSColor.windowBackgroundColor))
     }
 
-    // MARK: - 헬퍼 뷰
+    // MARK: - 헬퍼
+
+    private func previewSound(_ sound: String) {
+        switch sound {
+        case "none":    break
+        case "default": NSSound.beep()
+        default:        NSSound(named: NSSound.Name(sound))?.play()
+        }
+    }
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)

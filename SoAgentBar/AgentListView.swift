@@ -47,6 +47,12 @@ struct AgentListView: View {
 
     private var header: some View {
         HStack {
+            if let img = NSImage(named: "logo") {
+                Image(nsImage: img)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 18, height: 18)
+            }
             Text("so-agentbar")
                 .font(.headline)
                 .fontWeight(.semibold)
@@ -119,10 +125,13 @@ struct AgentListView: View {
 
     private var groupedList: some View {
         let grouped = Dictionary(grouping: store.agents, by: \.projectDir)
-        // 그룹 내 최신 세션 기준으로 프로젝트 정렬
+        // 그룹 내 active 세션 우선, 그 다음 최신 lastActivity 기준으로 프로젝트 정렬
         let sortedKeys = grouped.keys.sorted { a, b in
-            let aDate = grouped[a]?.first?.lastActivity ?? .distantPast
-            let bDate = grouped[b]?.first?.lastActivity ?? .distantPast
+            let aActive = grouped[a]?.contains(where: { $0.status == .working || $0.status == .waitingApproval }) ?? false
+            let bActive = grouped[b]?.contains(where: { $0.status == .working || $0.status == .waitingApproval }) ?? false
+            if aActive != bActive { return aActive }
+            let aDate = grouped[a]?.map(\.lastActivity).max() ?? .distantPast
+            let bDate = grouped[b]?.map(\.lastActivity).max() ?? .distantPast
             return aDate > bDate
         }
         return ForEach(sortedKeys, id: \.self) { projectDir in
@@ -228,6 +237,14 @@ struct AgentRowView: View {
                     Image(systemName: "arrow.up.right.square")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
+                } else if let costStr = CostCalculator.formatCost(agent.estimatedCost) {
+                    Text(costStr)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(Color(NSColor.quaternaryLabelColor))
+                        .cornerRadius(4)
                 } else if agent.totalTokens > 0 {
                     Text(formatTokens(agent.totalTokens))
                         .font(.system(size: 10, design: .monospaced))

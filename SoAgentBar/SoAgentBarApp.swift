@@ -17,7 +17,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private(set) var updaterController: SPUStandardUpdaterController!
 
     private static let showPopoverNotification = Notification.Name("com.sotthang.so-agentbar.showPopover")
-    private static let updateNotificationIdentifier = "SparkleUpdateAvailable"
+    nonisolated static let updateNotificationIdentifier = "SparkleUpdateAvailable"
 
     // 가능한 가장 이른 시점에 delegate 설정 — 새 인스턴스 런치 방지
     override init() {
@@ -250,9 +250,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         switch store.menubarStyle {
         case .emoji:
-            button.title = agents.prefix(4).map { store.displayEmoji(for: $0) }.joined() + approvalBadge
+            button.title = agents.prefix(4).map { store.menuBarEmoji(for: $0) }.joined() + approvalBadge
         case .emojiCount:
-            let emoji = agents.first.map { store.displayEmoji(for: $0) } ?? "🤖"
+            let emoji = agents.first.map { store.menuBarEmoji(for: $0) } ?? "🤖"
             button.title = "\(emoji) \(agents.count)" + approvalBadge
         case .countOnly:
             button.title = "\(agents.count)" + approvalBadge

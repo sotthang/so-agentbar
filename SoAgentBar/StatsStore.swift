@@ -17,6 +17,10 @@ struct DailyStats: Codable {
     var projects: [String: ProjectStats] = [:]
     var cliSessions: Int = 0
     var xcodeSessions: Int = 0
+    /// 시간대별 세션 수 (key: "0"~"23")
+    var hourlyActivity: [String: Int] = [:]
+    /// 일별 비용 합계 ($). 기본값 0.0으로 기존 stats.json 하위 호환성 보장.
+    var estimatedCost: Double = 0.0
 
     var totalTokens: Int { inputTokens + outputTokens }
 }
@@ -76,6 +80,15 @@ class StatsStore: ObservableObject {
         case .xcode: day.xcodeSessions += 1
         }
 
+        // 시간대별 활동 기록
+        let hour = Calendar.current.component(.hour, from: Date())
+        day.hourlyActivity["\(hour)", default: 0] += 1
+
+        // 비용 누적
+        if let cost = agent.estimatedCost {
+            day.estimatedCost += cost
+        }
+
         data.daily[key] = day
         save()
     }
@@ -96,6 +109,23 @@ class StatsStore: ObservableObject {
         }.reversed()
     }
 
+    /// 최근 N일 시간대별 세션 합계 반환 (key: 0~23)
+    func hourlyActivitySummary(days: Int = 7) -> [Int: Int] {
+        var result = [Int: Int]()
+        let cal = Calendar.current
+        for offset in 0..<days {
+            guard let date = cal.date(byAdding: .day, value: -offset, to: Date()) else { continue }
+            let key = Self.dateFormatter.string(from: date)
+            guard let day = data.daily[key] else { continue }
+            for (hourStr, count) in day.hourlyActivity {
+                if let hour = Int(hourStr) {
+                    result[hour, default: 0] += count
+                }
+            }
+        }
+        return result
+    }
+
     func topProjects(days: Int = 7, limit: Int = 5) -> [(name: String, tokens: Int, sessions: Int)] {
         var merged: [String: ProjectStats] = [:]
         let cal = Calendar.current
@@ -106,8 +136,8 @@ class StatsStore: ObservableObject {
             guard let day = data.daily[key] else { continue }
             for (name, proj) in day.projects {
                 var m = merged[name] ?? ProjectStats()
-                m.sessions += proj.sessions
-                m.inputTokens += proj.inputTokens
+                m.sessions     += proj.sessions
+                m.inputTokens  += proj.inputTokens
                 m.outputTokens += proj.outputTokens
                 merged[name] = m
             }

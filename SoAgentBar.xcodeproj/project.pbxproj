@@ -22,6 +22,9 @@
 		D0A7CBE62F76505F0052C5A3 /* UsageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A7CBE42F76505F0052C5A3 /* UsageView.swift */; };
 		D0A7CBE82F766AA30052C5A3 /* StatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A7CBE72F766AA30052C5A3 /* StatsStore.swift */; };
 		D0A7CBEA2F766AD00052C5A3 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A7CBE92F766AD00052C5A3 /* StatsView.swift */; };
+		CC001CC001CC001CC001CC01 /* CostCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC001CC001CC001CC001CC02 /* CostCalculator.swift */; };
+		CC001CC001CC001CC001CC03 /* CostCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC001CC001CC001CC001CC04 /* CostCalculatorTests.swift */; };
+		CC001CC001CC001CC001CC05 /* QuietHoursTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC001CC001CC001CC001CC06 /* QuietHoursTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,6 +44,10 @@
 		D0A7CBE72F766AA30052C5A3 /* StatsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsStore.swift; sourceTree = "<group>"; };
 		D0A7CBE92F766AD00052C5A3 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
 		D0MAIN00012F8000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		CC001CC001CC001CC001CC02 /* CostCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostCalculator.swift; sourceTree = "<group>"; };
+		CC001CC001CC001CC001CC04 /* CostCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostCalculatorTests.swift; sourceTree = "<group>"; };
+		CC001CC001CC001CC001CC06 /* QuietHoursTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuietHoursTests.swift; sourceTree = "<group>"; };
+		CC001CC001CC001CC001CC07 /* SoAgentBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SoAgentBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -49,6 +56,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				D04D14F12F7A4750001113FE /* Sparkle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC001CC001CC001CC001CC08 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,6 +84,7 @@
 				3E1ED4571EA5484EA2B785B4 /* Info.plist */,
 				D0A7CBE72F766AA30052C5A3 /* StatsStore.swift */,
 				D0A7CBE92F766AD00052C5A3 /* StatsView.swift */,
+				CC001CC001CC001CC001CC02 /* CostCalculator.swift */,
 				15B59B5C2F7973AA00170E5B /* logo.png */,
 				15B59B5E2F797D2700170E5B /* AppIcon.icns */,
 				D0MAIN00012F8000000000001 /* main.swift */,
@@ -81,14 +96,25 @@
 			isa = PBXGroup;
 			children = (
 				3E1ED4571EA5484EA2B785A0 /* SoAgentBar.app */,
+				CC001CC001CC001CC001CC07 /* SoAgentBarTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		CC001CC001CC001CC001CC09 /* SoAgentBarTests */ = {
+			isa = PBXGroup;
+			children = (
+				CC001CC001CC001CC001CC04 /* CostCalculatorTests.swift */,
+				CC001CC001CC001CC001CC06 /* QuietHoursTests.swift */,
+			);
+			path = SoAgentBarTests;
 			sourceTree = "<group>";
 		};
 		3E1ED4571EA5484EA2B78502 = {
 			isa = PBXGroup;
 			children = (
 				3E1ED4571EA5484EA2B78500 /* SoAgentBar */,
+				CC001CC001CC001CC001CC09 /* SoAgentBarTests */,
 				3E1ED4571EA5484EA2B78501 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -113,6 +139,23 @@
 			productReference = 3E1ED4571EA5484EA2B785A0 /* SoAgentBar.app */;
 			productType = "com.apple.product-type.application";
 		};
+		CC001CC001CC001CC001CC10 /* SoAgentBarTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CC001CC001CC001CC001CC11 /* Build configuration list for PBXNativeTarget "SoAgentBarTests" */;
+			buildPhases = (
+				CC001CC001CC001CC001CC12 /* Sources */,
+				CC001CC001CC001CC001CC08 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CC001CC001CC001CC001CC13 /* PBXTargetDependency */,
+			);
+			name = SoAgentBarTests;
+			productName = SoAgentBarTests;
+			productReference = CC001CC001CC001CC001CC07 /* SoAgentBarTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -125,6 +168,10 @@
 				TargetAttributes = {
 					3E1ED4571EA5484EA2B785C0 = {
 						CreatedOnToolsVersion = 15.0;
+					};
+					CC001CC001CC001CC001CC10 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = 3E1ED4571EA5484EA2B785C0;
 					};
 				};
 			};
@@ -145,6 +192,7 @@
 			projectRoot = "";
 			targets = (
 				3E1ED4571EA5484EA2B785C0 /* SoAgentBar */,
+				CC001CC001CC001CC001CC10 /* SoAgentBarTests */,
 			);
 		};
 /* End PBXProject section */
@@ -177,11 +225,39 @@
 				D0A7CBDC2F7556870052C5A3 /* SettingsView.swift in Sources */,
 				3E1ED4571EA5484EA2B785B0 /* MenuBarIconView.swift in Sources */,
 				3E1ED4571EA5484EA2B785B2 /* AgentListView.swift in Sources */,
+				CC001CC001CC001CC001CC01 /* CostCalculator.swift in Sources */,
 				D0MAIN00012F8000000000000 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CC001CC001CC001CC001CC12 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC001CC001CC001CC001CC03 /* CostCalculatorTests.swift in Sources */,
+				CC001CC001CC001CC001CC05 /* QuietHoursTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		CC001CC001CC001CC001CC14 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3E1ED4571EA5484EA2B78503 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3E1ED4571EA5484EA2B785C0;
+			remoteInfo = SoAgentBar;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		CC001CC001CC001CC001CC13 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3E1ED4571EA5484EA2B785C0 /* SoAgentBar */;
+			targetProxy = CC001CC001CC001CC001CC14 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		3E1ED4571EA5484EA2B785D3 /* Debug */ = {
@@ -362,6 +438,36 @@
 		};
 /* End XCBuildConfiguration section */
 
+		CC001CC001CC001CC001CC15 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sotthang.soagentbar.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SoAgentBar.app/Contents/MacOS/SoAgentBar";
+			};
+			name = Debug;
+		};
+		CC001CC001CC001CC001CC16 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sotthang.soagentbar.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SoAgentBar.app/Contents/MacOS/SoAgentBar";
+			};
+			name = Release;
+		};
 /* Begin XCConfigurationList section */
 		3E1ED4571EA5484EA2B785D0 /* Build configuration list for PBXNativeTarget "SoAgentBar" */ = {
 			isa = XCConfigurationList;
@@ -377,6 +483,15 @@
 			buildConfigurations = (
 				3E1ED4571EA5484EA2B785D3 /* Debug */,
 				3E1ED4571EA5484EA2B785D4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CC001CC001CC001CC001CC11 /* Build configuration list for PBXNativeTarget "SoAgentBarTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC001CC001CC001CC001CC15 /* Debug */,
+				CC001CC001CC001CC001CC16 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

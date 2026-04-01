@@ -42,6 +42,13 @@ enum OpenWith: String, CaseIterable {
     case cursor       = "cursor"
     case antigravity  = "antigravity"
     case intellij     = "intellij"
+    case intellijCE   = "intellijCE"
+    case pycharm      = "pycharm"
+    case pycharmCE    = "pycharmCE"
+    case webstorm     = "webstorm"
+    case androidStudio = "androidStudio"
+    case zed          = "zed"
+    case windsurf     = "windsurf"
     case terminal     = "terminal"
     case finder       = "finder"
 
@@ -51,6 +58,13 @@ enum OpenWith: String, CaseIterable {
         case .cursor:       return "Cursor"
         case .antigravity:  return "Antigravity"
         case .intellij:     return "IntelliJ IDEA"
+        case .intellijCE:   return "IntelliJ IDEA CE"
+        case .pycharm:      return "PyCharm"
+        case .pycharmCE:    return "PyCharm CE"
+        case .webstorm:     return "WebStorm"
+        case .androidStudio: return "Android Studio"
+        case .zed:          return "Zed"
+        case .windsurf:     return "Windsurf"
         case .terminal:     return "Terminal"
         case .finder:       return "Finder"
         }
@@ -70,35 +84,30 @@ enum OpenWith: String, CaseIterable {
     }
 
     private func openInEditor(path: String) {
-        switch self {
-        case .vscode:
-            let task = Process()
-            task.launchPath = "/usr/bin/open"
-            task.arguments = ["-a", "Visual Studio Code", path]
-            try? task.run()
-        case .cursor:
-            let task = Process()
-            task.launchPath = "/usr/bin/open"
-            task.arguments = ["-a", "Cursor", path]
-            try? task.run()
-        case .antigravity:
-            let task = Process()
-            task.launchPath = "/usr/bin/open"
-            task.arguments = ["-a", "Antigravity", path]
-            try? task.run()
-        case .intellij:
-            let task = Process()
-            task.launchPath = "/usr/bin/open"
-            task.arguments = ["-a", "IntelliJ IDEA", path]
-            try? task.run()
-        case .terminal:
-            let task = Process()
-            task.launchPath = "/usr/bin/open"
-            task.arguments = ["-a", "Terminal", path]
-            try? task.run()
-        case .finder:
+        if self == .finder {
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            return
         }
+        let appName: String
+        switch self {
+        case .vscode:         appName = "Visual Studio Code"
+        case .cursor:         appName = "Cursor"
+        case .antigravity:    appName = "Antigravity"
+        case .intellij:       appName = "IntelliJ IDEA"
+        case .intellijCE:     appName = "IntelliJ IDEA CE"
+        case .pycharm:        appName = "PyCharm"
+        case .pycharmCE:      appName = "PyCharm CE"
+        case .webstorm:       appName = "WebStorm"
+        case .androidStudio:  appName = "Android Studio"
+        case .zed:            appName = "Zed"
+        case .windsurf:       appName = "Windsurf"
+        case .terminal:       appName = "Terminal"
+        case .finder:         return  // handled above
+        }
+        let task = Process()
+        task.launchPath = "/usr/bin/open"
+        task.arguments = ["-a", appName, path]
+        try? task.run()
     }
 }
 
@@ -120,6 +129,16 @@ enum AgentStatus: Equatable {
         case .error:            return "😵"
         }
     }
+
+    var statusIndicator: String {
+        switch self {
+        case .idle:             return ""
+        case .thinking:         return "…"
+        case .working:          return "▶"
+        case .waitingApproval:  return "❗"
+        case .error:            return "⚠"
+        }
+    }
 }
 
 struct Agent: Identifiable {
@@ -128,17 +147,29 @@ struct Agent: Identifiable {
     var status: AgentStatus
     var currentTask: String
     var elapsedSeconds: Int
-    var inputTokens: Int
-    var outputTokens: Int
+    var tokensByModel: [String: (input: Int, output: Int)]
+    var currentModel: String
     var sessionID: String
     var projectDir: String
     var workingPath: String
     var lastActivity: Date
     var source: SessionSource
     var lastResponse: String
-    var currentModel: String
     var permissionMode: String
     var pid: Int?
+
+    // 기존 호환성 유지: computed properties
+    var inputTokens: Int { tokensByModel.values.reduce(0) { $0 + $1.input } }
+    var outputTokens: Int { tokensByModel.values.reduce(0) { $0 + $1.output } }
+    var totalTokens: Int { inputTokens + outputTokens }
+
+    var estimatedCost: Double? {
+        let costs = tokensByModel.compactMap { (model, tokens) in
+            CostCalculator.estimate(model: model, inputTokens: tokens.input, outputTokens: tokens.output)
+        }
+        guard !costs.isEmpty else { return nil }
+        return costs.reduce(0, +)
+    }
 
     var elapsedDisplay: String {
         let m = elapsedSeconds / 60
@@ -147,16 +178,13 @@ struct Agent: Identifiable {
         return "\(s)s"
     }
 
-    var totalTokens: Int { inputTokens + outputTokens }
-
     /// "claude-sonnet-4-6" → "Sonnet 4.6"
     var modelDisplayName: String {
-        let m = currentModel
-        if m.isEmpty { return "" }
-        if m.contains("opus") { return "Opus" }
-        if m.contains("sonnet") { return "Sonnet" }
-        if m.contains("haiku") { return "Haiku" }
-        return m
+        guard !currentModel.isEmpty else { return "" }
+        if currentModel.contains("opus")   { return "Opus" }
+        if currentModel.contains("sonnet") { return "Sonnet" }
+        if currentModel.contains("haiku")  { return "Haiku" }
+        return currentModel
     }
 
     /// "default" → "Ask", "acceptEdits" → "Auto", "plan" → "Plan"
@@ -236,6 +264,28 @@ class AgentStore: ObservableObject {
         didSet { UserDefaults.standard.set(notifyOnApprovalRequired, forKey: "notifyOnApprovalRequired") }
     }
 
+    // 알림 사운드
+    @Published var completionSound: String {
+        didSet { UserDefaults.standard.set(completionSound, forKey: "completionSound") }
+    }
+
+    // 집중 모드(DND) 중 알림 억제
+    @Published var respectFocusMode: Bool {
+        didSet { UserDefaults.standard.set(respectFocusMode, forKey: "respectFocusMode") }
+    }
+    private var isDNDActive: Bool = false
+
+    // Quiet Hours 설정
+    @Published var quietHoursEnabled: Bool {
+        didSet { UserDefaults.standard.set(quietHoursEnabled, forKey: "quietHoursEnabled") }
+    }
+    @Published var quietHoursStart: Int {
+        didSet { UserDefaults.standard.set(quietHoursStart, forKey: "quietHoursStart") }
+    }
+    @Published var quietHoursEnd: Int {
+        didSet { UserDefaults.standard.set(quietHoursEnd, forKey: "quietHoursEnd") }
+    }
+
     // 쿼터 알림
     @Published var notifyOnQuotaThreshold: Bool {
         didSet {
@@ -279,11 +329,20 @@ class AgentStore: ObservableObject {
         }
     }
 
-    /// 세션 이모지 → 프로젝트 이모지 → 상태 이모지
+    /// 세션 이모지 → 프로젝트 이모지 → 상태 이모지 (팝오버 표시용)
     func displayEmoji(for agent: Agent) -> String {
         sessionEmojis[agent.id]
             ?? projectEmojis[agent.projectDir]
             ?? agent.status.emoji
+    }
+
+    /// 메뉴바 표시용: 커스텀 이모지가 있으면 상태 기호를 suffix로 붙여 상태도 표시
+    func menuBarEmoji(for agent: Agent) -> String {
+        let custom = sessionEmojis[agent.id] ?? projectEmojis[agent.projectDir]
+        if let custom {
+            return custom + agent.status.statusIndicator
+        }
+        return agent.status.emoji
     }
 
     func setEmoji(_ emoji: String, for agent: Agent, projectWide: Bool) {
@@ -317,11 +376,13 @@ class AgentStore: ObservableObject {
     private var previousStatuses: [String: AgentStatus] = [:]
     private var workingSince: [String: Date] = [:]  // working 시작 시각 추적
     private var recordedSessionIDs: Set<String> = [] // 이미 통계에 기록된 세션
+    private var lastNotificationTime: [String: Date] = [:]  // 알림 중복 방지용
+    private let notificationCooldown: TimeInterval = 60     // 같은 이벤트 재알림 최소 간격
 
     init() {
         self.showIdleSessions   = UserDefaults.standard.object(forKey: "showIdleSessions") as? Bool ?? true
         self.pollInterval       = UserDefaults.standard.object(forKey: "pollInterval") as? Double ?? 10.0
-        self.language           = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "language") ?? "ko") ?? .korean
+        self.language           = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "language") ?? "en") ?? .english
         self.menubarStyle       = MenubarStyle(rawValue: UserDefaults.standard.string(forKey: "menubarStyle") ?? "emoji") ?? .emoji
         self.listStyle          = ListStyle(rawValue: UserDefaults.standard.string(forKey: "listStyle") ?? "flat") ?? .flat
         self.openWith           = OpenWith(rawValue: UserDefaults.standard.string(forKey: "openWith") ?? "vscode") ?? .vscode
@@ -329,6 +390,11 @@ class AgentStore: ObservableObject {
         self.hotkeyEnabled             = UserDefaults.standard.object(forKey: "hotkeyEnabled") as? Bool ?? true
         self.hotkeyKeyCode             = UserDefaults.standard.object(forKey: "hotkeyKeyCode") as? Int ?? Int(kVK_ANSI_S)
         self.hotkeyModifiers           = UserDefaults.standard.object(forKey: "hotkeyModifiers") as? Int ?? Int(optionKey | shiftKey)
+        self.completionSound           = UserDefaults.standard.string(forKey: "completionSound") ?? "default"
+        self.respectFocusMode          = UserDefaults.standard.object(forKey: "respectFocusMode") as? Bool ?? false
+        self.quietHoursEnabled         = UserDefaults.standard.object(forKey: "quietHoursEnabled") as? Bool ?? false
+        self.quietHoursStart           = UserDefaults.standard.object(forKey: "quietHoursStart") as? Int ?? 23
+        self.quietHoursEnd             = UserDefaults.standard.object(forKey: "quietHoursEnd") as? Int ?? 9
         self.notifyOnComplete          = UserDefaults.standard.object(forKey: "notifyOnComplete") as? Bool ?? true
         self.notifyOnError             = UserDefaults.standard.object(forKey: "notifyOnError") as? Bool ?? true
         self.notifyOnApprovalRequired  = UserDefaults.standard.object(forKey: "notifyOnApprovalRequired") as? Bool ?? true
@@ -346,6 +412,7 @@ class AgentStore: ObservableObject {
         }
 
         requestNotificationPermission()
+        setupDNDObserver()
 
         monitor.onSessionsChanged = { [weak self] sessions in
             // 현재 렌더 사이클이 끝난 뒤 실행되도록 한 번 더 async로 미룸
@@ -357,6 +424,9 @@ class AgentStore: ObservableObject {
         }
         monitor.start()
         syncUsageMonitorSettings()
+        usageMonitor.sendNotificationHandler = { [weak self] title, body in
+            self?.sendNotification(title: title, body: body)
+        }
         usageMonitor.start()
 
         elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -394,17 +464,10 @@ class AgentStore: ObservableObject {
 
     func relativeTime(_ date: Date) -> String {
         let diff = Int(Date().timeIntervalSince(date))
-        if language == .korean {
-            if diff < 60    { return "\(diff)초 전" }
-            if diff < 3600  { return "\(diff / 60)분 전" }
-            if diff < 86400 { return "\(diff / 3600)시간 전" }
-            return "\(diff / 86400)일 전"
-        } else {
-            if diff < 60    { return "\(diff)s ago" }
-            if diff < 3600  { return "\(diff / 60)m ago" }
-            if diff < 86400 { return "\(diff / 3600)h ago" }
-            return "\(diff / 86400)d ago"
-        }
+        if diff < 60    { return t("\(diff)초 전",           "\(diff)s ago") }
+        if diff < 3600  { return t("\(diff / 60)분 전",      "\(diff / 60)m ago") }
+        if diff < 86400 { return t("\(diff / 3600)시간 전",  "\(diff / 3600)h ago") }
+        return t("\(diff / 86400)일 전", "\(diff / 86400)d ago")
     }
 
     // MARK: - 핫키 표시
@@ -457,11 +520,68 @@ class AgentStore: ObservableObject {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    func sendNotification(title: String, body: String, workingPath: String? = nil, source: SessionSource? = nil) {
+    // MARK: - DND / Focus 모드 감지
+
+    private func setupDNDObserver() {
+        // 앱 시작 시 현재 DND 상태 확인
+        isDNDActive = currentDNDState()
+
+        // DND 시작/종료 알림 구독 (macOS 집중 모드 포함)
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.notificationcenterui.dndStart"),
+            object: nil, queue: .main
+        ) { [weak self] _ in Task { @MainActor [weak self] in self?.isDNDActive = true } }
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.notificationcenterui.dndEnd"),
+            object: nil, queue: .main
+        ) { [weak self] _ in Task { @MainActor [weak self] in self?.isDNDActive = false } }
+    }
+
+    private func currentDNDState() -> Bool {
+        UserDefaults(suiteName: "com.apple.notificationcenterui")?.bool(forKey: "dndEnabled") ?? false
+    }
+
+    // MARK: - Quiet Hours
+
+    /// Quiet Hours 범위 내인지 확인 (nonisolated static: 테스트 가능, Date() 의존 없음)
+    nonisolated static func isInQuietHours(currentHour: Int, startHour: Int, endHour: Int) -> Bool {
+        if startHour == endHour { return false }
+        if startHour < endHour {
+            return currentHour >= startHour && currentHour < endHour
+        } else {
+            // 자정 넘김
+            return currentHour >= startHour || currentHour < endHour
+        }
+    }
+
+    func sendNotification(title: String, body: String, workingPath: String? = nil, source: SessionSource? = nil, dedupeKey: String? = nil) {
+        // 집중 모드(DND) 중엔 알림 억제
+        if respectFocusMode && isDNDActive { return }
+
+        // Quiet Hours 체크
+        if quietHoursEnabled {
+            let currentHour = Calendar.current.component(.hour, from: Date())
+            if Self.isInQuietHours(currentHour: currentHour, startHour: quietHoursStart, endHour: quietHoursEnd) {
+                return
+            }
+        }
+
+        // 같은 키로 cooldown 이내에 보낸 알림은 억제
+        if let key = dedupeKey {
+            if let last = lastNotificationTime[key],
+               Date().timeIntervalSince(last) < notificationCooldown { return }
+            lastNotificationTime[key] = Date()
+        }
+
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.sound = .default
+        switch completionSound {
+        case "none":    content.sound = nil
+        case "default": content.sound = .default
+        default:        content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: completionSound))
+        }
 
         if let path = workingPath, let src = source {
             content.userInfo = [
@@ -509,6 +629,9 @@ class AgentStore: ObservableObject {
             case .completed:
                 status = .idle
                 task = t("세션 종료", "Session ended")
+            case .error:
+                status = .error
+                task = t("에러 발생", "Error occurred")
             case .idle:
                 status = .idle
                 task = t("대기 중", "Idle")
@@ -531,15 +654,14 @@ class AgentStore: ObservableObject {
                 status: status,
                 currentTask: task,
                 elapsedSeconds: elapsed,
-                inputTokens: session.inputTokens,
-                outputTokens: session.outputTokens,
+                tokensByModel: session.tokensByModel,
+                currentModel: session.currentModel,
                 sessionID: session.id,
                 projectDir: session.projectDir,
                 workingPath: session.workingPath,
                 lastActivity: session.lastActivity,
                 source: session.source,
                 lastResponse: session.lastAssistantText,
-                currentModel: session.currentModel,
                 permissionMode: session.permissionMode,
                 pid: nil
             )
@@ -565,7 +687,8 @@ class AgentStore: ObservableObject {
                     title: t("응답 완료", "Response ready"),
                     body: "\(agent.name) — \(t("Claude가 응답했습니다", "Claude responded"))",
                     workingPath: agent.workingPath,
-                    source: agent.source
+                    source: agent.source,
+                    dedupeKey: "\(agent.id).complete"
                 )
                 workingSince.removeValue(forKey: agent.id)
             }
@@ -575,7 +698,8 @@ class AgentStore: ObservableObject {
                     title: t("승인 필요", "Approval required"),
                     body: "\(agent.name) — \(t("작업 진행을 위해 승인이 필요합니다", "requires your approval to proceed"))",
                     workingPath: agent.workingPath,
-                    source: agent.source
+                    source: agent.source,
+                    dedupeKey: "\(agent.id).approval"
                 )
             }
 
@@ -584,7 +708,8 @@ class AgentStore: ObservableObject {
                     title: t("에러 발생", "Error occurred"),
                     body: "\(agent.name) — \(t("에러가 발생했습니다", "encountered an error"))",
                     workingPath: agent.workingPath,
-                    source: agent.source
+                    source: agent.source,
+                    dedupeKey: "\(agent.id).error"
                 )
             }
 

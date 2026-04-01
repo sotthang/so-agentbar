@@ -12,6 +12,13 @@
   <a href="https://github.com/sotthang/so-agentbar/releases/latest">Download</a> · <a href="https://sotthang.github.io/so-agentbar/">Website</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/sotthang/so-agentbar/releases/latest"><img src="https://img.shields.io/github/v/release/sotthang/so-agentbar?style=flat-square" alt="Latest Release"></a>
+  <img src="https://img.shields.io/badge/macOS-14.0%2B-blue?style=flat-square" alt="macOS 14.0+">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/sotthang/so-agentbar?style=flat-square" alt="License"></a>
+  <a href="https://github.com/sotthang/so-adk"><img src="https://img.shields.io/badge/Built%20with-SO--ADK-blueviolet?style=flat-square" alt="Built with SO-ADK"></a>
+</p>
+
 ## Screenshots
 
 <p align="center">
@@ -30,6 +37,8 @@
 
 - **Real-time Session Monitoring** — Automatically detects and tracks all running Claude Code sessions (CLI & Xcode)
 - **Token & Quota Tracking** — Monitor input/output tokens and API quota usage with 5-hour/weekly utilization
+- **Cost Estimation** — View estimated API costs per session based on model-specific token pricing
+- **Quiet Hours** — Suppress notifications during designated time windows (e.g., 22:00~09:00)
 - **Smart Notifications** — Get notified on task completion, errors, approval requests, quota threshold, and quota refill. Tap a notification to open the project directly in your editor
 - **Human-in-the-loop Detection** — Automatically detects when an agent is waiting for your approval and sends an alert
 - **Statistics Dashboard** — Daily summary, 7-day chart, and top project rankings
@@ -56,7 +65,7 @@
 ```bash
 git clone https://github.com/sotthang/so-agentbar.git
 cd so-agentbar
-open AgentBar.xcodeproj
+open SoAgentBar.xcodeproj
 ```
 
 Build and run with Xcode (⌘R).
@@ -78,11 +87,32 @@ Session status is determined by parsing JSONL log events. Quota usage is fetched
 | Menu Bar Style | Emoji, Emoji + Count, Count Only |
 | Editor | VSCode, Cursor, Antigravity, Terminal, Finder |
 | Notifications | Completion, Approval Required, Error, Quota Threshold (50-95%), Refill |
+| Quiet Hours | Suppress all notifications during a set time window (e.g. 23:00–09:00) |
 | Global Hotkey | Customizable keyboard shortcut |
 | Poll Interval | 10s / 30s / 60s fallback polling |
 | Idle Sessions | Show or hide idle sessions |
 | Launch at Login | Auto-start with macOS |
 | Auto Update | Check for updates automatically via Sparkle |
+
+## Changelog
+
+See [Releases](https://github.com/sotthang/so-agentbar/releases) for the full version history and release notes.
+
+## Contributing
+
+Issues and feature requests are welcome! Feel free to open an [issue](https://github.com/sotthang/so-agentbar/issues).
+
+## Built with SO-ADK
+
+This project was developed using [SO-ADK](https://github.com/sotthang/so-adk) — an agentic development kit that orchestrates AI agents through a full TDD pipeline (plan → spec → architect → test → implement → review → docs).
+
+## ☕ Support my work
+
+If this project helped you, please consider sponsoring.
+
+Your support helps me maintain and improve this project.
+
+👉 [https://github.com/sponsors/sotthang](https://github.com/sponsors/sotthang)
 
 ## License
 

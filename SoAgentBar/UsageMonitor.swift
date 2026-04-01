@@ -46,6 +46,9 @@ class UsageMonitor: ObservableObject {
     var notifyOnReset: Bool = true
     var localizer: ((String, String) -> String) = { ko, _ in ko }
 
+    // AgentStore가 주입하는 알림 클로저 (Quiet Hours + DND 체크 포함)
+    var sendNotificationHandler: ((String, String) -> Void)?
+
     private var pollingTimer: Timer?
     private let pollInterval: TimeInterval = 300  // 5분
     private var hasNotifiedThreshold = false       // 이번 사이클 알림 여부
@@ -89,7 +92,7 @@ class UsageMonitor: ObservableObject {
         if notifyOnReset,
            hasNotifiedThreshold,
            newUtil < alertThreshold {
-            sendNotification(
+            notifyUser(
                 title: localizer("세션 쿼터 충전됨", "Session Quota Refilled"),
                 body:  localizer("세션 쿼터가 \(Int(newUtil))%로 충전됐습니다", "Session quota refilled to \(Int(newUtil))%")
             )
@@ -101,7 +104,7 @@ class UsageMonitor: ObservableObject {
            !hasNotifiedThreshold,
            newUtil >= alertThreshold,
            (prevUtil ?? 0) < alertThreshold || prevUtil == nil {
-            sendNotification(
+            notifyUser(
                 title: localizer("세션 쿼터 경고", "Session Quota Alert"),
                 body:  localizer("세션 쿼터 \(Int(newUtil))% 사용 중 (임계값: \(Int(alertThreshold))%)",
                                  "Session quota at \(Int(newUtil))% (threshold: \(Int(alertThreshold))%)")
@@ -110,20 +113,14 @@ class UsageMonitor: ObservableObject {
         }
     }
 
-    private func sendNotification(title: String, body: String) {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-        let req = UNNotificationRequest(
-            identifier: "agentbar.quota.\(UUID().uuidString)",
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(req, withCompletionHandler: nil)
+    private func notifyUser(title: String, body: String) {
+        sendNotificationHandler?(title, body)
     }
 
     // MARK: - Keychain 토큰 로드
+    // SecItemCopyMatching 대신 security CLI를 사용:
+    // Claude Code가 만든 Keychain 항목의 ACL에는 security 도구가 신뢰된 앱으로 등록되어 있어
+    // 직접 API 접근 시 매번 암호 승인 팝업이 뜨는 문제를 방지
 
     private func loadOAuthToken() throws -> String {
         let proc = Process()

@@ -33,6 +33,8 @@ struct StatsView: View {
                     Divider().padding(.leading, 16)
                     weeklyChart
                     Divider().padding(.leading, 16)
+                    hourlyHeatmap
+                    Divider().padding(.leading, 16)
                     topProjectsSection
                 }
             }
@@ -69,6 +71,13 @@ struct StatsView: View {
                     value: "\(today.cliSessions)/\(today.xcodeSessions)",
                     label: "CLI/Xcode"
                 )
+                if let costStr = CostCalculator.formatCost(today.estimatedCost > 0 ? today.estimatedCost : nil) {
+                    statBadge(
+                        icon: "dollarsign.circle",
+                        value: costStr,
+                        label: store.t("비용", "Cost")
+                    )
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -127,14 +136,81 @@ struct StatsView: View {
 
             // 주간 합계
             let weekTotal = days.reduce(0) { $0 + $1.stats.totalTokens }
+            let weekCost = days.reduce(0.0) { $0 + $1.stats.estimatedCost }
             if weekTotal > 0 {
-                Text(store.t("주간 총 \(formatTokens(weekTotal)) 토큰", "Weekly total: \(formatTokens(weekTotal)) tokens"))
+                let costSuffix = weekCost > 0 ? (CostCalculator.formatCost(weekCost).map { " (\($0))" } ?? "") : ""
+                Text(store.t("주간 총 \(formatTokens(weekTotal)) 토큰\(costSuffix)",
+                             "Weekly total: \(formatTokens(weekTotal)) tokens\(costSuffix)"))
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    // MARK: - 시간대 히트맵
+
+    private var hourlyHeatmap: some View {
+        let activity = statsStore.hourlyActivitySummary(days: 7)
+        let maxCount = activity.values.max() ?? 1
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(store.t("활성 시간대 (7일)", "Active Hours (7 days)"))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            // AM 행 (0~11)
+            VStack(spacing: 3) {
+                HStack(spacing: 3) {
+                    ForEach(0..<12, id: \.self) { hour in
+                        heatCell(hour: hour, count: activity[hour] ?? 0, max: maxCount)
+                    }
+                }
+                HStack(spacing: 3) {
+                    ForEach(0..<12, id: \.self) { hour in
+                        Text(hour % 3 == 0 ? "\(hour)" : "")
+                            .font(.system(size: 7, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+
+                // PM 행 (12~23)
+                HStack(spacing: 3) {
+                    ForEach(12..<24, id: \.self) { hour in
+                        heatCell(hour: hour, count: activity[hour] ?? 0, max: maxCount)
+                    }
+                }
+                HStack(spacing: 3) {
+                    ForEach(12..<24, id: \.self) { hour in
+                        Text(hour % 3 == 0 ? "\(hour)" : "")
+                            .font(.system(size: 7, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+
+            if activity.isEmpty {
+                Text(store.t("아직 데이터 없음", "No data yet"))
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    private func heatCell(hour: Int, count: Int, max: Int) -> some View {
+        let intensity = max > 0 ? Double(count) / Double(max) : 0
+        return RoundedRectangle(cornerRadius: 2)
+            .fill(count == 0
+                  ? Color(NSColor.separatorColor).opacity(0.5)
+                  : Color.accentColor.opacity(0.2 + intensity * 0.8))
+            .frame(maxWidth: .infinity)
+            .frame(height: 14)
+            .help("\(hour):00 — \(count)\(store.language == .korean ? "회" : " sessions")")
     }
 
     // MARK: - 프로젝트 랭킹

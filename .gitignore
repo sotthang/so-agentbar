@@ -18,3 +18,7 @@ build/
 
 # Claude Code
 CLAUDE.local.md
+.claude/settings.local.json
+
+# so-adk
+specs/

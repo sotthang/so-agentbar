@@ -32,9 +32,13 @@ struct EmojiPickerView: View {
         }
     }
 
-    /// 커스텀 이모지가 하나라도 설정되어 있는지
+    /// 현재 범위(프로젝트/세션)에 커스텀 이모지가 설정되어 있는지
     private var hasCustomEmoji: Bool {
-        store.sessionEmojis[agent.id] != nil || store.projectEmojis[agent.projectDir] != nil
+        if applyToProject {
+            return store.projectEmojis[agent.projectDir] != nil
+        } else {
+            return store.sessionEmojis[agent.id] != nil
+        }
     }
 
     var body: some View {
@@ -90,7 +94,11 @@ struct EmojiPickerView: View {
                 if hasCustomEmoji {
                     Divider()
                     Button(store.t("초기화", "Reset")) {
-                        store.resetProjectEmoji(for: agent)
+                        if applyToProject {
+                            store.resetProjectEmoji(for: agent)
+                        } else {
+                            store.resetEmoji(for: agent)
+                        }
                         isPresented = false
                     }
                     .buttonStyle(.plain)

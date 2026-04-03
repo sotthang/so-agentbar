@@ -14,9 +14,11 @@ enum SessionStatus {
 
 // MARK: - 세션 출처
 
-enum SessionSource {
-    case cli     // 터미널에서 claude 명령어로 실행
-    case xcode   // Xcode Coding Assistant에서 실행
+enum SessionSource: Hashable {
+    case cli           // 터미널에서 claude 명령어로 실행
+    case xcode         // Xcode Coding Assistant에서 실행
+    case desktopCode   // Claude Desktop의 Code 탭
+    case desktopCowork // Claude Desktop의 Cowork 탭 (VM)
 }
 
 // MARK: - Claude 세션 모델
@@ -24,7 +26,7 @@ enum SessionSource {
 struct ClaudeSession: Identifiable {
     let id: String
     let projectDir: String
-    let source: SessionSource
+    var source: SessionSource
     var workingPath: String
     var lastModified: Date
     var lastActivity: Date
@@ -40,6 +42,9 @@ struct ClaudeSession: Identifiable {
     var lastAssistantText: String = ""      // 마지막 Claude 응답 미리보기
     var currentModel: String = ""           // 마지막 assistant 이벤트의 모델명
     var permissionMode: String = "default"  // "default", "acceptEdits", "plan", "auto", "bypassPermissions"
+    var title: String? = nil                // AI 생성 제목 (ai-title 이벤트 또는 Desktop 메타데이터)
+    var currentTurnHadThinking: Bool = false // 현재 턴에 extended thinking이 있었는지 (중간 텍스트 오탐 방지)
+    var isSubagent: Bool = false             // subagents/ 하위 JSONL 여부 (알람 제외 대상)
 
     var totalTokens: Int {
         tokensByModel.values.reduce(0) { $0 + $1.input + $1.output }
@@ -103,6 +108,9 @@ struct ClaudeSession: Identifiable {
     }
 
     var displayName: String {
+        // AI 생성 제목이 있으면 우선 사용
+        if let title, !title.isEmpty { return title }
+
         // projectDir 인코딩: 경로의 특수문자(/, _ 등)를 -로 1:1 치환 → 길이 보존
         // 예: /Users/hs_so/Develop/Dcty-Agent → -Users-hs-so-Develop-Dcty-Agent (둘 다 31자)
         // 이를 이용해 workingPath에서 프로젝트 루트와 서브디렉토리를 분리
@@ -119,8 +127,10 @@ struct ClaudeSession: Identifiable {
         let projectName = URL(fileURLWithPath: projectRoot).lastPathComponent
 
         // workingPath가 프로젝트 루트보다 깊으면 서브디렉토리 표시
+        // 단, .claude/worktrees/ 경로는 내부 워크트리 경로라 사용자에게 불필요 → 생략
         if workingPath.count > projectRootLength + 1 {
             let subdir = String(workingPath.dropFirst(projectRootLength + 1))
+            if subdir.hasPrefix(".claude/worktrees/") { return projectName }
             return "\(projectName) (\(subdir))"
         }
 
@@ -131,7 +141,8 @@ struct ClaudeSession: Identifiable {
 // MARK: - SessionMonitor
 
 class SessionMonitor {
-    private let projectsDirs: [URL]
+    private let projectsDirs: [URL]                            // 직접 스캔하는 정적 프로젝트 디렉토리
+    private let watchedExtraDirs: [URL]                        // FSEvents 감시 추가 경로
     private let dispatchQueue = DispatchQueue(label: "com.sotthang.so-agentbar.sessionmonitor", qos: .utility)
 
     var onSessionsChanged: (([ClaudeSession]) -> Void)?
@@ -142,6 +153,10 @@ class SessionMonitor {
     private var fileOffsets: [String: UInt64] = [:]   // 파일별 마지막 읽은 바이트 위치
     private var sessionCache: [String: ClaudeSession] = [:]
 
+    // Desktop Code: cliSessionId → (title, isArchived) 매핑 (claude-code-sessions/*.json 에서 로드)
+    // isArchived=false인 세션만 Desktop으로 표시 (현재 Desktop에서 열려있는 세션)
+    private var desktopCodeMeta: [String: (title: String, isArchived: Bool)] = [:]
+
     init() {
         let home = URL(fileURLWithPath: NSHomeDirectory())
         projectsDirs = [
@@ -149,6 +164,10 @@ class SessionMonitor {
             home.appendingPathComponent(".claude/projects"),
             // Xcode: Coding Assistant에서 실행한 세션
             home.appendingPathComponent("Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig/projects"),
+        ]
+        watchedExtraDirs = [
+            home.appendingPathComponent("Library/Application Support/Claude/claude-code-sessions"),
+            home.appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions"),
         ]
     }
 
@@ -194,7 +213,7 @@ class SessionMonitor {
     // MARK: - FSEvents 파일 시스템 감시
 
     private func startFSEvents() {
-        let paths = projectsDirs.map(\.path) as CFArray
+        let paths = (projectsDirs + watchedExtraDirs).map(\.path) as CFArray
 
         var context = FSEventStreamContext(
             version: 0,
@@ -242,23 +261,39 @@ class SessionMonitor {
         let now = Date()
         var results: [ClaudeSession] = []
 
+        // Desktop Code 메타데이터 갱신 (cliSessionId → title 매핑)
+        loadDesktopCodeTitles()
+
         // (디렉토리 URL, 출처) 쌍으로 순회
-        let projectDirs: [(url: URL, source: SessionSource)] = projectsDirs.enumerated().flatMap { index, dir in
-            let source: SessionSource = index == 0 ? .cli : .xcode
-            return ((try? FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: [.isDirectoryKey]
+        let staticProjectDirs: [(url: URL, source: SessionSource)] = [
+            (projectsDirs[0], .cli),
+            (projectsDirs[1], .xcode),
+        ].flatMap { (baseDir, source) in
+            ((try? FileManager.default.contentsOfDirectory(
+                at: baseDir, includingPropertiesForKeys: [.isDirectoryKey]
             )) ?? []).map { (url: $0, source: source) }
         }
+
+        let coworkProjectDirs: [(url: URL, source: SessionSource)] = discoverCoworkProjectDirs().flatMap { projectsDir in
+            ((try? FileManager.default.contentsOfDirectory(
+                at: projectsDir, includingPropertiesForKeys: [.isDirectoryKey]
+            )) ?? []).map { (url: $0, source: SessionSource.desktopCowork) }
+        }
+
+        let projectDirs = staticProjectDirs + coworkProjectDirs
 
         for entry in projectDirs {
             guard entry.url.hasDirectoryPath else { continue }
             let folderName = entry.url.lastPathComponent
 
-            // 프로젝트 디렉토리 내 모든 활성 JSONL 파일 순회
-            let jsonlURLs = activeJSONLs(in: entry.url, now: now)
-            for jsonlURL in jsonlURLs {
+            // 직접 JSONL + 서브에이전트 JSONL 모두 수집
+            let directJSONLs = activeJSONLs(in: entry.url, now: now)
+            let subagentJSONLs = activeSubagentJSONLs(in: entry.url, now: now)
+
+            for jsonlURL in directJSONLs + subagentJSONLs {
                 guard let modDate = modificationDate(of: jsonlURL) else { continue }
 
+                let isSubagent = subagentJSONLs.contains(jsonlURL)
                 let sessionID = jsonlURL.deletingPathExtension().lastPathComponent
                 var session = sessionCache[sessionID] ?? ClaudeSession(
                     id: sessionID,
@@ -270,6 +305,20 @@ class SessionMonitor {
                 )
 
                 session.lastModified = modDate
+                session.isSubagent = isSubagent
+
+                // Desktop Code 메타데이터 적용 (직접 JSONL에만 적용, 서브에이전트는 제외)
+                // isArchived=false: 현재 Desktop에서 열려있는 세션 → Desktop으로 표시 + 클릭 시 Claude.app
+                // isArchived=true: 이전에 Desktop에서 열었지만 지금은 닫힘 → CLI 유지, title만 적용
+                if entry.source == .cli, directJSONLs.contains(jsonlURL),
+                   let meta = desktopCodeMeta[sessionID] {
+                    if !meta.isArchived {
+                        session.source = .desktopCode
+                    }
+                    if session.title == nil, !meta.title.isEmpty {
+                        session.title = meta.title
+                    }
+                }
 
                 // 새로 추가된 줄만 파싱
                 parseNewLines(url: jsonlURL, session: &session)
@@ -387,8 +436,35 @@ class SessionMonitor {
                 session.currentModel = model
             }
 
-            // stop_reason이 nil = 아직 스트리밍 중 → 무시
-            guard let stopReason = message["stop_reason"] as? String else { return }
+            let stopReason = message["stop_reason"] as? String
+
+            // stop_reason이 nil인 경우: extended thinking 중간 스트림 or 텍스트 전용 이벤트
+            if stopReason == nil {
+                let content = message["content"] as? [[String: Any]] ?? []
+                let types = Set(content.compactMap { $0["type"] as? String })
+
+                // thinking 전용 이벤트 = extended thinking 시작 → 플래그 설정 후 무시
+                if types.subtracting(["thinking"]).isEmpty {
+                    session.currentTurnHadThinking = true
+                    return
+                }
+
+                // 텍스트가 있는 경우:
+                // - 같은 턴에 thinking이 있었다면 extended thinking 중간 이벤트 → 무시
+                // - thinking이 없었다면 end_turn 누락 케이스(CLI 버그) → 응답 완료로 처리
+                let hasText = types.contains("text")
+                if hasText && !session.currentTurnHadThinking {
+                    session.lastEventType = type
+                    session.lastAssistantHasToolUse = false
+                    let textParts = content
+                        .filter { $0["type"] as? String == "text" }
+                        .compactMap { $0["text"] as? String }
+                    if let text = textParts.last, !text.isEmpty {
+                        session.lastAssistantText = String(text.prefix(200))
+                    }
+                }
+                return
+            }
 
             // API 에러(stop_sequence 등)는 응답 완료가 아님 → 무시
             guard stopReason == "end_turn" || stopReason == "tool_use" else { return }
@@ -429,7 +505,8 @@ class SessionMonitor {
         // user 메시지 = 새 요청 시작 or 툴 결과 수신 (승인 완료)
         case "user":
             session.lastEventType = type
-            session.lastToolUseTime = nil  // 승인 완료 → 대기 상태 해제
+            session.lastToolUseTime = nil       // 승인 완료 → 대기 상태 해제
+            session.currentTurnHadThinking = false  // 새 턴 시작 → thinking 플래그 리셋
             // cwd 필드가 있으면 정확한 경로로 업데이트
             if let cwd = json["cwd"] as? String {
                 session.workingPath = cwd
@@ -438,15 +515,115 @@ class SessionMonitor {
                 session.permissionMode = mode
             }
 
+        // AI 생성 제목
+        case "ai-title":
+            if let title = json["title"] as? String, !title.isEmpty {
+                session.title = title
+            }
+
+        // Cowork 세션: queue-operation enqueue의 content를 title 폴백으로 사용
+        // (ai-title 이벤트가 없거나 오래된 세션의 경우 사용자의 첫 요청으로 제목 표시)
+        case "queue-operation":
+            if session.source == .desktopCowork,
+               (json["operation"] as? String) == "enqueue",
+               session.title == nil,
+               let content = json["content"] as? String,
+               !content.isEmpty {
+                // 단어 경계에서 자르기 (60자 초과 시 마지막 공백 위치에서 truncation)
+                if content.count <= 60 {
+                    session.title = content
+                } else {
+                    let prefix = String(content.prefix(57))
+                    if let lastSpace = prefix.lastIndex(of: " ") {
+                        session.title = String(prefix[..<lastSpace]) + "…"
+                    } else {
+                        session.title = prefix + "…"
+                    }
+                }
+            }
+
         // 메타데이터 이벤트: 대화 상태와 무관 → lastEventType 덮어쓰지 않음
         // (end_turn 후 이런 이벤트가 오면 상태가 running으로 flicker → 중복 알림 발생 방지)
-        case "progress", "file-history-snapshot", "queue-operation",
-             "ai-title", "last-prompt", "system":
+        case "progress", "file-history-snapshot", "last-prompt", "system":
             break
 
         default:
             session.lastEventType = type
         }
+    }
+
+    // MARK: - Desktop Code / Cowork 디렉토리 탐색
+
+    /// claude-code-sessions 디렉토리를 스캔해 cliSessionId → (title, isArchived) 매핑 갱신
+    private func loadDesktopCodeTitles() {
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        let base = home.appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
+        guard let userDirs = try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: nil) else { return }
+
+        var meta: [String: (title: String, isArchived: Bool)] = [:]
+        for userDir in userDirs {
+            guard let windowDirs = try? FileManager.default.contentsOfDirectory(at: userDir, includingPropertiesForKeys: nil) else { continue }
+            for windowDir in windowDirs {
+                guard let jsonFiles = try? FileManager.default.contentsOfDirectory(at: windowDir, includingPropertiesForKeys: nil) else { continue }
+                for jsonFile in jsonFiles where jsonFile.pathExtension == "json" {
+                    guard let data = try? Data(contentsOf: jsonFile),
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let cliSessionId = json["cliSessionId"] as? String else { continue }
+                    let title = json["title"] as? String ?? ""
+                    let isArchived = json["isArchived"] as? Bool ?? true
+                    // 같은 세션에 여러 항목이 있으면 isArchived=false 우선
+                    if let existing = meta[cliSessionId] {
+                        if !isArchived && existing.isArchived {
+                            meta[cliSessionId] = (title: title, isArchived: false)
+                        }
+                    } else {
+                        meta[cliSessionId] = (title: title, isArchived: isArchived)
+                    }
+                }
+            }
+        }
+        desktopCodeMeta = meta
+    }
+
+    /// local-agent-mode-sessions 아래의 모든 .claude/projects 디렉토리 반환
+    private func discoverCoworkProjectDirs() -> [URL] {
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        let base = home.appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
+        let fm = FileManager.default
+        var result: [URL] = []
+
+        guard let userDirs = try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey]) else { return [] }
+        for userDir in userDirs {
+            guard userDir.hasDirectoryPath, looksLikeUUID(userDir.lastPathComponent) else { continue }
+            guard let sessionDirs = try? fm.contentsOfDirectory(at: userDir, includingPropertiesForKeys: [.isDirectoryKey]) else { continue }
+            for sessionDir in sessionDirs {
+                guard sessionDir.hasDirectoryPath, looksLikeUUID(sessionDir.lastPathComponent) else { continue }
+                guard let localDirs = try? fm.contentsOfDirectory(at: sessionDir, includingPropertiesForKeys: [.isDirectoryKey]) else { continue }
+                for localDir in localDirs {
+                    guard localDir.hasDirectoryPath else { continue }
+                    let name = localDir.lastPathComponent
+                    if name.hasPrefix("local_") {
+                        let projectsDir = localDir.appendingPathComponent(".claude/projects")
+                        if fm.fileExists(atPath: projectsDir.path) { result.append(projectsDir) }
+                    } else if name == "agent" {
+                        // agent/ 서브디렉토리 내 local_ditto_xxx 탐색
+                        guard let agentSubDirs = try? fm.contentsOfDirectory(at: localDir, includingPropertiesForKeys: [.isDirectoryKey]) else { continue }
+                        for agentSubDir in agentSubDirs where agentSubDir.hasDirectoryPath && agentSubDir.lastPathComponent.hasPrefix("local_") {
+                            let projectsDir = agentSubDir.appendingPathComponent(".claude/projects")
+                            if fm.fileExists(atPath: projectsDir.path) { result.append(projectsDir) }
+                        }
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    /// 디렉토리명이 UUID 형식인지 확인 (skills-plugin 등 제외용)
+    private func looksLikeUUID(_ name: String) -> Bool {
+        guard name.count == 36 else { return false }
+        let chars = Array(name)
+        return chars[8] == "-" && chars[13] == "-" && chars[18] == "-" && chars[23] == "-"
     }
 
     // MARK: - 유틸
@@ -468,6 +645,34 @@ class SessionMonitor {
                 (modificationDate(of: $0) ?? .distantPast) >
                 (modificationDate(of: $1) ?? .distantPast)
             }
+    }
+
+    /// 프로젝트 디렉토리 내 서브에이전트 JSONL 파일 목록 반환
+    /// 경로: {projectURL}/{sessionId}/subagents/agent-xxx.jsonl
+    private func activeSubagentJSONLs(in projectURL: URL, now: Date) -> [URL] {
+        guard let sessionDirs = try? FileManager.default.contentsOfDirectory(
+            at: projectURL,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ) else { return [] }
+
+        var result: [URL] = []
+        for sessionDir in sessionDirs {
+            guard sessionDir.hasDirectoryPath else { continue }
+            let subagentsDir = sessionDir.appendingPathComponent("subagents")
+            guard let files = try? FileManager.default.contentsOfDirectory(
+                at: subagentsDir,
+                includingPropertiesForKeys: [.contentModificationDateKey]
+            ) else { continue }
+
+            let recent = files
+                .filter { $0.pathExtension == "jsonl" }
+                .filter { url in
+                    guard let mod = modificationDate(of: url) else { return false }
+                    return now.timeIntervalSince(mod) < 86400
+                }
+            result.append(contentsOf: recent)
+        }
+        return result
     }
 
     private func modificationDate(of url: URL) -> Date? {

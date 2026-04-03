@@ -80,6 +80,12 @@ enum OpenWith: String, CaseIterable {
             try? task.run()
         case .cli:
             cliEditor.openInEditor(path: path)
+        case .desktopCode, .desktopCowork:
+            // Cowork 세션은 VM 내부 경로라 로컬에서 열 수 없음 → Claude Desktop 앱 열기
+            let task = Process()
+            task.launchPath = "/usr/bin/open"
+            task.arguments = ["-a", "Claude"]
+            try? task.run()
         }
     }
 
@@ -156,6 +162,7 @@ struct Agent: Identifiable {
     var source: SessionSource
     var lastResponse: String
     var permissionMode: String
+    var isSubagent: Bool
     var pid: Int?
 
     // 기존 호환성 유지: computed properties
@@ -185,6 +192,16 @@ struct Agent: Identifiable {
         if currentModel.contains("sonnet") { return "Sonnet" }
         if currentModel.contains("haiku")  { return "Haiku" }
         return currentModel
+    }
+
+    /// source 배지 텍스트 (CLI는 nil → 배지 없음)
+    var sourceBadgeName: String? {
+        switch source {
+        case .cli:           return nil
+        case .xcode:         return "Xcode"
+        case .desktopCode:   return "Code"
+        case .desktopCowork: return "Cowork"
+        }
     }
 
     /// "default" → "Ask", "acceptEdits" → "Auto", "plan" → "Plan"
@@ -384,7 +401,7 @@ class AgentStore: ObservableObject {
         self.pollInterval       = UserDefaults.standard.object(forKey: "pollInterval") as? Double ?? 10.0
         self.language           = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "language") ?? "en") ?? .english
         self.menubarStyle       = MenubarStyle(rawValue: UserDefaults.standard.string(forKey: "menubarStyle") ?? "emoji") ?? .emoji
-        self.listStyle          = ListStyle(rawValue: UserDefaults.standard.string(forKey: "listStyle") ?? "flat") ?? .flat
+        self.listStyle          = ListStyle(rawValue: UserDefaults.standard.string(forKey: "listStyle") ?? "grouped") ?? .grouped
         self.openWith           = OpenWith(rawValue: UserDefaults.standard.string(forKey: "openWith") ?? "vscode") ?? .vscode
         self.isPinned                  = UserDefaults.standard.object(forKey: "isPinned") as? Bool ?? false
         self.hotkeyEnabled             = UserDefaults.standard.object(forKey: "hotkeyEnabled") as? Bool ?? true
@@ -584,10 +601,14 @@ class AgentStore: ObservableObject {
         }
 
         if let path = workingPath, let src = source {
-            content.userInfo = [
-                "workingPath": path,
-                "source": src == .xcode ? "xcode" : "cli"
-            ]
+            let srcStr: String
+            switch src {
+            case .cli:           srcStr = "cli"
+            case .xcode:         srcStr = "xcode"
+            case .desktopCode:   srcStr = "desktopCode"
+            case .desktopCowork: srcStr = "desktopCowork"
+            }
+            content.userInfo = ["workingPath": path, "source": srcStr]
         }
 
         let request = UNNotificationRequest(
@@ -663,6 +684,7 @@ class AgentStore: ObservableObject {
                 source: session.source,
                 lastResponse: session.lastAssistantText,
                 permissionMode: session.permissionMode,
+                isSubagent: session.isSubagent,
                 pid: nil
             )
         }
@@ -679,6 +701,7 @@ class AgentStore: ObservableObject {
             // working → thinking = JSONL에서 "assistant" (tool 없음) 이벤트 감지
             // = Claude가 실제로 응답 완료한 순간
             if notifyOnComplete,
+               !agent.isSubagent,
                prev == .working,
                agent.status == .thinking,
                let since = workingSince[agent.id],
@@ -693,7 +716,7 @@ class AgentStore: ObservableObject {
                 workingSince.removeValue(forKey: agent.id)
             }
 
-            if notifyOnApprovalRequired, agent.status == .waitingApproval, prev != .waitingApproval {
+            if notifyOnApprovalRequired, !agent.isSubagent, agent.status == .waitingApproval, prev != .waitingApproval {
                 sendNotification(
                     title: t("승인 필요", "Approval required"),
                     body: "\(agent.name) — \(t("작업 진행을 위해 승인이 필요합니다", "requires your approval to proceed"))",
@@ -703,7 +726,7 @@ class AgentStore: ObservableObject {
                 )
             }
 
-            if notifyOnError, agent.status == .error, prev != .error {
+            if notifyOnError, !agent.isSubagent, agent.status == .error, prev != .error {
                 sendNotification(
                     title: t("에러 발생", "Error occurred"),
                     body: "\(agent.name) — \(t("에러가 발생했습니다", "encountered an error"))",

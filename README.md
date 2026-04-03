@@ -35,7 +35,9 @@
 
 ## Features
 
-- **Real-time Session Monitoring** — Automatically detects and tracks all running Claude Code sessions (CLI & Xcode)
+- **Real-time Session Monitoring** — Automatically detects and tracks all running Claude sessions: CLI, Xcode, Claude Desktop Code, and Claude Desktop Cowork
+- **Source Badges** — Each session is labeled by origin (Code, Cowork, Xcode) so you always know where it's running. Click a Desktop session to open Claude Desktop directly
+- **Session Titles** — AI-generated session titles from Claude Desktop are shown automatically, replacing cryptic path names
 - **Token & Quota Tracking** — Monitor input/output tokens and API quota usage with 5-hour/weekly utilization
 - **Cost Estimation** — View estimated API costs per session based on model-specific token pricing
 - **Quiet Hours** — Suppress notifications during designated time windows (e.g., 22:00~09:00)
@@ -76,6 +78,8 @@ so-agentbar monitors Claude Code session logs via FSEvents:
 
 - **CLI sessions** — `~/.claude/projects/`
 - **Xcode sessions** — `~/Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig/projects/`
+- **Desktop Code sessions** — detected via Claude Desktop metadata (`claude-code-sessions/*.json`)
+- **Desktop Cowork sessions** — `~/Library/Application Support/Claude/local-agent-mode-sessions/`
 
 Session status is determined by parsing JSONL log events. Quota usage is fetched from Anthropic's OAuth API using the token stored in Keychain.
 

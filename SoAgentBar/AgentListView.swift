@@ -154,7 +154,7 @@ struct AgentListView: View {
 
     private var footer: some View {
         HStack {
-            Text(store.t("CLI + Xcode 세션 감지 중", "Monitoring CLI + Xcode sessions"))
+            Text(store.t("CLI + Xcode + Desktop 세션 감지 중", "Monitoring CLI + Xcode + Desktop sessions"))
                 .font(.caption)
                 .foregroundColor(.secondary)
             Spacer()
@@ -193,6 +193,8 @@ struct AgentRowView: View {
                     HStack {
                         Text(agent.name)
                             .font(.system(size: 13, weight: .medium))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                         Text(agent.modeDisplayName)
                             .font(.system(size: 9, weight: .medium))
                             .foregroundColor(agent.permissionMode == "acceptEdits" || agent.permissionMode == "auto" ? .green : .orange)
@@ -210,6 +212,16 @@ struct AgentRowView: View {
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1)
                                 .background(Color(NSColor.quaternaryLabelColor))
+                                .cornerRadius(3)
+                        }
+                        if let badge = agent.sourceBadgeName {
+                            let badgeColor = sourceBadgeColor(agent.source)
+                            Text(badge)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(badgeColor)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(badgeColor.opacity(0.12))
                                 .cornerRadius(3)
                         }
                         Spacer()
@@ -282,6 +294,15 @@ struct AgentRowView: View {
     private func formatTokens(_ count: Int) -> String {
         count >= 1000 ? String(format: "%.1fk", Double(count) / 1000) : "\(count)"
     }
+
+    private func sourceBadgeColor(_ source: SessionSource) -> Color {
+        switch source {
+        case .cli:           return .secondary
+        case .xcode:         return .blue
+        case .desktopCode:   return .purple
+        case .desktopCowork: return .orange
+        }
+    }
 }
 
 // MARK: - 프로젝트 그룹 뷰 (트리형)
@@ -310,6 +331,13 @@ struct ProjectGroupView: View {
         return "📁"
     }
 
+    /// 그룹 내 고유 source 목록 (순서 고정)
+    private var uniqueSources: [SessionSource] {
+        let order: [SessionSource] = [.cli, .xcode, .desktopCode, .desktopCowork]
+        let present = Set(sessions.map(\.source))
+        return order.filter { present.contains($0) }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // 프로젝트 헤더
@@ -332,10 +360,17 @@ struct ProjectGroupView: View {
                     Text(projectName)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
                     Text("(\(sessions.count))")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
+
+                    // source 아이콘 배지
+                    ForEach(uniqueSources, id: \.self) { source in
+                        sourceIcon(source)
+                    }
 
                     Spacer()
 
@@ -358,6 +393,32 @@ struct ProjectGroupView: View {
                     })
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func sourceIcon(_ source: SessionSource) -> some View {
+        switch source {
+        case .cli:
+            Image(systemName: "terminal")
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+                .help("Claude Code (CLI)")
+        case .xcode:
+            Image(systemName: "hammer")
+                .font(.system(size: 9))
+                .foregroundColor(.blue)
+                .help("Xcode")
+        case .desktopCode:
+            Image(systemName: "chevron.left.forwardslash.chevron.right")
+                .font(.system(size: 9))
+                .foregroundColor(.purple)
+                .help("Claude Desktop Code")
+        case .desktopCowork:
+            Image(systemName: "cloud")
+                .font(.system(size: 9))
+                .foregroundColor(.orange)
+                .help("Claude Cowork")
         }
     }
 }

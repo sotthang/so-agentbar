@@ -30,6 +30,7 @@ struct ClaudeSession: Identifiable {
     var workingPath: String
     var lastModified: Date
     var lastActivity: Date
+    var lastContentChange: Date  // 실제로 새 jsonl 줄이 파싱된 시각 (mtime 단순 갱신 제외)
 
     // JSONL 파싱 상태 (오프셋 기반으로 누적)
     var sawResultEvent: Bool = false
@@ -45,6 +46,12 @@ struct ClaudeSession: Identifiable {
     var title: String? = nil                // AI 생성 제목 (ai-title 이벤트 또는 Desktop 메타데이터)
     var currentTurnHadThinking: Bool = false // 현재 턴에 extended thinking이 있었는지 (중간 텍스트 오탐 방지)
     var isSubagent: Bool = false             // subagents/ 하위 JSONL 여부 (알람 제외 대상)
+    var parentSessionId: String? = nil       // 서브에이전트인 경우 부모 세션 ID
+    // 부모 세션 한정: spawn한 서브에이전트의 agentId → (type, description) 매핑
+    // (Agent tool_use → tool_result 쌍을 파싱해서 채워짐, 완료된 서브만 등록됨)
+    var subagentMeta: [String: (type: String, description: String)] = [:]
+    // 부모 세션 한정: tool_use_id → (type, description) 임시 저장 (tool_result 도착 전)
+    var pendingAgentSpawns: [String: (type: String, description: String)] = [:]
 
     var totalTokens: Int {
         tokensByModel.values.reduce(0) { $0 + $1.input + $1.output }
@@ -81,7 +88,8 @@ struct ClaudeSession: Identifiable {
         // result 이벤트 = 세션 종료 (정상 or 에러)
         if sawResultEvent { return sawErrorEvent ? .error : .completed }
 
-        let age = Date().timeIntervalSince(lastModified)
+        // 상태 판정은 실제 새 이벤트 파싱 시각 기준 (단순 mtime 갱신은 무시)
+        let age = Date().timeIntervalSince(lastContentChange)
 
         // 5분 이상 = idle
         if age > 300 { return .idle }
@@ -92,13 +100,17 @@ struct ClaudeSession: Identifiable {
             return .responded
         }
 
-        // tool_use 후 파일이 3초 이상 변화 없음 → 사용자 승인 대기
-        // (실행 중인 명령은 bash_progress 이벤트로 파일이 계속 갱신됨)
-        // 단, 현재 permissionMode에서 자동 승인되는 도구는 제외
+        // tool_use 후 jsonl이 일정 시간 정적 → 사용자 승인 대기로 간주
+        // 주의: Claude Code는 도구 실행 중 jsonl에 진행 이벤트를 쓰지 않는다.
+        // 따라서 "실행 중인 긴 명령"과 "승인 대기"는 jsonl만으로는 구분 불가.
+        // → Bash처럼 오래 걸릴 수 있는 도구는 임계값을 크게 잡아 오탐을 줄인다.
+        //   (pytest/서버/빌드 등 10분까지 가는 명령이 흔함)
+        // 단, 현재 permissionMode에서 자동 승인되는 도구는 제외.
         if lastAssistantHasToolUse, let toolUseTime = lastToolUseTime,
            !isToolAutoApproved(lastToolName) {
             let timeSinceToolUse = Date().timeIntervalSince(toolUseTime)
-            if timeSinceToolUse > 5 && age > 5 {
+            let threshold: TimeInterval = (lastToolName == "bash") ? 600 : 5
+            if timeSinceToolUse > threshold && age > threshold {
                 return .waitingForApproval
             }
         }
@@ -110,6 +122,16 @@ struct ClaudeSession: Identifiable {
     var displayName: String {
         // AI 생성 제목이 있으면 우선 사용
         if let title, !title.isEmpty { return title }
+
+        // workingPath가 jsonl 저장소 내부면 readCWD()가 실패한 fallback 상태.
+        // 이 경우 길이 기반 분할을 적용하면 "/Users/hs_so/.claude/projects/-U" 처럼
+        // 엉뚱한 위치에서 잘려서 깨진 이름이 나옴 → projectDir 기반 best-effort 이름으로 표시.
+        if workingPath.contains("/.claude/projects/") || workingPath.isEmpty {
+            // "-Users-hs-so-Develop-Dcty-Agent" → "Dcty-Agent" 비슷하게 추정 불가능(인코딩 lossy)
+            // → 그냥 인코딩된 형태에서 앞 prefix를 떼고 보여줌
+            let trimmed = projectDir.hasPrefix("-") ? String(projectDir.dropFirst()) : projectDir
+            return trimmed
+        }
 
         // projectDir 인코딩: 경로의 특수문자(/, _ 등)를 -로 1:1 치환 → 길이 보존
         // 예: /Users/hs_so/Develop/Dcty-Agent → -Users-hs-so-Develop-Dcty-Agent (둘 다 31자)
@@ -295,17 +317,38 @@ class SessionMonitor {
 
                 let isSubagent = subagentJSONLs.contains(jsonlURL)
                 let sessionID = jsonlURL.deletingPathExtension().lastPathComponent
+                // 서브에이전트 jsonl 경로: {projectURL}/{parentSessionId}/subagents/agent-xxx.jsonl
+                // → 두 단계 위 디렉토리 이름이 부모 sessionId
+                let parentSessionId: String? = isSubagent
+                    ? jsonlURL.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent
+                    : nil
+
+                // 캐시 미스 = 앱 재시작 직후 또는 새 세션
+                // → 저장된 fileOffset을 무시하고 처음부터 재파싱해서 토큰/비용 복원
+                let isCacheMiss = sessionCache[sessionID] == nil
+                if isCacheMiss {
+                    fileOffsets.removeValue(forKey: jsonlURL.path)
+                }
+
                 var session = sessionCache[sessionID] ?? ClaudeSession(
                     id: sessionID,
                     projectDir: folderName,
                     source: entry.source,
                     workingPath: readCWD(from: jsonlURL) ?? entry.url.path,
                     lastModified: modDate,
-                    lastActivity: modDate
+                    lastActivity: .distantPast,  // 파싱 중 이벤트 timestamp로 채워짐
+                    lastContentChange: .distantPast
                 )
 
                 session.lastModified = modDate
                 session.isSubagent = isSubagent
+                session.parentSessionId = parentSessionId
+
+                // 캐시된 workingPath가 fallback 상태(.claude/projects 내부)면 매 폴링마다 재시도
+                if session.workingPath.contains("/.claude/projects/"),
+                   let cwd = readCWD(from: jsonlURL) {
+                    session.workingPath = cwd
+                }
 
                 // Desktop Code 메타데이터 적용 (직접 JSONL에만 적용, 서브에이전트는 제외)
                 // isArchived=false: 현재 Desktop에서 열려있는 세션 → Desktop으로 표시 + 클릭 시 Claude.app
@@ -349,10 +392,21 @@ class SessionMonitor {
             }
         }
 
-        // 안전장치: 캐시가 비정상적으로 클 경우 오래된 항목 제거
-        if sessionCache.count > 500 {
-            let excess = sessionCache.count - 400
-            sessionCache.keys.prefix(excess).forEach { sessionCache.removeValue(forKey: $0) }
+        // 안전장치: 캐시가 비정상적으로 클 경우 가장 오래된 항목부터 제거 (lastModified 기준)
+        if sessionCache.count > 200 {
+            let sortedByAge = sessionCache.sorted { $0.value.lastModified < $1.value.lastModified }
+            let excess = sessionCache.count - 150
+            for (key, _) in sortedByAge.prefix(excess) {
+                sessionCache.removeValue(forKey: key)
+            }
+        }
+
+        // pendingAgentSpawns가 tool_result를 못 받고 누적되는 것 방지 (Agent 호출당 최대 32개)
+        for key in sessionCache.keys {
+            guard var s = sessionCache[key], s.pendingAgentSpawns.count > 32 else { continue }
+            let toDrop = s.pendingAgentSpawns.count - 32
+            s.pendingAgentSpawns.keys.prefix(toDrop).forEach { s.pendingAgentSpawns.removeValue(forKey: $0) }
+            sessionCache[key] = s
         }
 
         // 변경된 오프셋 영속화
@@ -394,6 +448,11 @@ class SessionMonitor {
 
         guard let text = String(data: completeData, encoding: .utf8) else { return }
 
+        // 실제 파싱된 이벤트의 timestamp를 기준으로 lastContentChange 갱신
+        // (processEvent에서 session.lastActivity를 이벤트 timestamp로 업데이트하므로
+        //  파싱 전 스냅샷과 비교해서 바뀌었으면 "새 이벤트가 있었다"고 판단)
+        let activityBefore = session.lastActivity
+
         // 완성된 줄만 파싱
         for line in text.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -403,6 +462,12 @@ class SessionMonitor {
             else { continue }
 
             processEvent(json, session: &session)
+        }
+
+        // 파싱 후 lastActivity가 실제로 전진했으면 그 timestamp를 lastContentChange로 사용
+        // (앱 재시작 시 과거 이벤트를 한꺼번에 읽어도 "지금 활동 중"으로 오판되지 않음)
+        if session.lastActivity > activityBefore {
+            session.lastContentChange = session.lastActivity
         }
     }
 
@@ -494,16 +559,38 @@ class SessionMonitor {
                 }
 
                 // tool 이름 기록 + 승인 대기 타이머 시작
+                // 이벤트 timestamp를 기준으로 해야 앱 재시작 시 과거 이벤트를 "방금 tool_use"로 오판하지 않음
                 if stopReason == "tool_use",
                    let lastTool = content.last(where: { $0["type"] as? String == "tool_use" }),
                    let name = lastTool["name"] as? String {
                     session.lastToolName = name.lowercased()
-                    session.lastToolUseTime = Date()
+                    if let tsStr = json["timestamp"] as? String, let ts = parseISO8601(tsStr) {
+                        session.lastToolUseTime = ts
+                    } else {
+                        session.lastToolUseTime = Date()
+                    }
+                }
+
+                // Agent tool_use(서브에이전트 spawn) 감지 → tool_use_id로 임시 저장
+                // 나중에 같은 id의 tool_result에서 agentId가 나오면 확정 매핑
+                for item in content where item["type"] as? String == "tool_use" {
+                    guard let name = item["name"] as? String, name == "Agent",
+                          let id = item["id"] as? String,
+                          let input = item["input"] as? [String: Any],
+                          let subagentType = input["subagent_type"] as? String else { continue }
+                    let desc = (input["description"] as? String) ?? ""
+                    session.pendingAgentSpawns[id] = (type: subagentType, description: desc)
                 }
             }
 
         // user 메시지 = 새 요청 시작 or 툴 결과 수신 (승인 완료)
         case "user":
+            // 세션 resume 감지: 이전에 result/error로 종료된 세션에 새 user 이벤트가 오면 부활
+            // (같은 jsonl에서 사용자가 대화를 이어서 시작하는 케이스)
+            if session.sawResultEvent {
+                session.sawResultEvent = false
+                session.sawErrorEvent = false
+            }
             session.lastEventType = type
             session.lastToolUseTime = nil       // 승인 완료 → 대기 상태 해제
             session.currentTurnHadThinking = false  // 새 턴 시작 → thinking 플래그 리셋
@@ -513,6 +600,26 @@ class SessionMonitor {
             }
             if let mode = json["permissionMode"] as? String {
                 session.permissionMode = mode
+            }
+
+            // Agent tool 결과인 경우: toolUseResult.agentId / agentType 추출하여 확정 매핑
+            // (subagent jsonl 파일명이 "agent-{agentId}.jsonl"이라 이걸로 매칭됨)
+            if let toolUseResult = json["toolUseResult"] as? [String: Any],
+               let agentId = toolUseResult["agentId"] as? String {
+                let agentType = (toolUseResult["agentType"] as? String) ?? ""
+                // tool_use_id로 description 회수
+                var description = ""
+                if let message = json["message"] as? [String: Any],
+                   let content = message["content"] as? [[String: Any]],
+                   let firstResult = content.first(where: { $0["type"] as? String == "tool_result" }),
+                   let toolUseId = firstResult["tool_use_id"] as? String,
+                   let pending = session.pendingAgentSpawns[toolUseId] {
+                    description = pending.description
+                    session.pendingAgentSpawns.removeValue(forKey: toolUseId)
+                }
+                if !agentType.isEmpty {
+                    session.subagentMeta[agentId] = (type: agentType, description: description)
+                }
             }
 
         // AI 생성 제목
@@ -679,23 +786,35 @@ class SessionMonitor {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
     }
 
-    /// JSONL 파일의 처음 몇 줄에서 cwd 필드를 읽어 정확한 프로젝트 경로 반환
+    /// JSONL 파일에서 cwd 필드를 가진 첫 이벤트를 찾아 반환
+    /// queue-operation 등 큰 메타 이벤트가 앞에 있을 수 있어 청크 단위로 확장 탐색
     private func readCWD(from jsonlURL: URL) -> String? {
         guard let fileHandle = try? FileHandle(forReadingFrom: jsonlURL) else { return nil }
         defer { try? fileHandle.close() }
 
-        // 첫 4KB만 읽으면 cwd가 포함된 초기 이벤트를 충분히 커버
-        let data = fileHandle.readData(ofLength: 4096)
-        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        let chunkSize = 16384
+        let maxBytes = 262144 // 256KB까지 확장 (큰 메타 이벤트 대비)
+        var accumulated = Data()
+        while accumulated.count < maxBytes {
+            let chunk = fileHandle.readData(ofLength: chunkSize)
+            if chunk.isEmpty { break }
+            accumulated.append(chunk)
 
-        for line in text.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty,
-                  let lineData = trimmed.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                  let cwd = json["cwd"] as? String
-            else { continue }
-            return cwd
+            // 마지막 개행까지만 안전하게 파싱
+            let newlineByte = UInt8(ascii: "\n")
+            guard let lastNewlineIdx = accumulated.lastIndex(of: newlineByte) else { continue }
+            let parsable = accumulated[accumulated.startIndex...lastNewlineIdx]
+            guard let text = String(data: parsable, encoding: .utf8) else { continue }
+
+            for line in text.components(separatedBy: "\n") {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty,
+                      let lineData = trimmed.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                      let cwd = json["cwd"] as? String
+                else { continue }
+                return cwd
+            }
         }
         return nil
     }

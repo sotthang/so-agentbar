@@ -175,6 +175,7 @@ struct AgentRowView: View {
     @ObservedObject var store: AgentStore
     var onEmojiTap: () -> Void
     @State private var isHovering = false
+    @State private var subagentsExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -223,6 +224,23 @@ struct AgentRowView: View {
                                 .padding(.vertical, 1)
                                 .background(badgeColor.opacity(0.12))
                                 .cornerRadius(3)
+                        }
+                        if agent.subagentCount > 0 {
+                            Button(action: { subagentsExpanded.toggle() }) {
+                                HStack(spacing: 2) {
+                                    Image(systemName: subagentsExpanded ? "chevron.down" : "chevron.right")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text("🤖×\(agent.subagentCount)")
+                                        .font(.system(size: 9, weight: .medium))
+                                }
+                                .foregroundColor(.purple)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.purple.opacity(0.12))
+                                .cornerRadius(3)
+                            }
+                            .buttonStyle(.plain)
+                            .help(store.t("서브에이전트 펼치기/접기", "Expand/collapse subagents"))
                         }
                         Spacer()
                         if agent.status == .working || agent.status == .waitingApproval {
@@ -289,6 +307,18 @@ struct AgentRowView: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .onTapGesture { store.openProject(agent.workingPath, source: agent.source) }
+
+        // 서브에이전트 펼치기 영역
+        if subagentsExpanded, !agent.subagents.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(agent.subagents) { sub in
+                    SubagentRowView(agent: sub, store: store)
+                }
+            }
+            .padding(.leading, 46)
+            .padding(.bottom, 6)
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+        }
     }
 
     private func formatTokens(_ count: Int) -> String {
@@ -302,6 +332,65 @@ struct AgentRowView: View {
         case .desktopCode:   return .purple
         case .desktopCowork: return .orange
         }
+    }
+}
+
+// MARK: - 서브에이전트 행 (펼치기 영역에서 사용)
+
+struct SubagentRowView: View {
+    let agent: Agent
+    @ObservedObject var store: AgentStore
+    @State private var isHovering = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                StatusDot(status: agent.status)
+                Text(agent.name)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                if !agent.modelDisplayName.isEmpty {
+                    Text(agent.modelDisplayName)
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 1)
+                        .background(Color(NSColor.quaternaryLabelColor))
+                        .cornerRadius(2)
+                }
+                Spacer(minLength: 4)
+                Text(agent.currentTask)
+                    .font(.system(size: 10))
+                    .foregroundColor(Color(NSColor.tertiaryLabelColor))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if agent.status == .working || agent.status == .waitingApproval {
+                    Text(agent.elapsedDisplay)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(agent.status == .waitingApproval ? .orange : .secondary)
+                }
+            }
+
+            // 호버 시 마지막 응답 미리보기
+            if isHovering, !agent.lastResponse.isEmpty {
+                Text(agent.lastResponse)
+                    .font(.system(size: 10))
+                    .foregroundColor(Color(NSColor.tertiaryLabelColor))
+                    .lineLimit(3)
+                    .truncationMode(.tail)
+                    .padding(.leading, 14) // StatusDot + spacing 정렬
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .background(
+            isHovering
+                ? Color(NSColor.selectedContentBackgroundColor).opacity(0.08)
+                : Color.clear
+        )
+        .onHover { isHovering = $0 }
     }
 }
 

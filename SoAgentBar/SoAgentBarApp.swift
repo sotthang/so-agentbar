@@ -246,16 +246,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
 
         // 승인 대기 중인 세션이 있으면 느낌표 뱃지 추가
-        let approvalBadge = approvalCount > 0 ? "❗" : ""
-
+        // .emoji 모드: 각 에이전트 이모지에 이미 상태가 표현됨(⏳ 또는 커스텀+❗) → 글로벌 뱃지 불필요
+        // .emojiCount: 첫 에이전트만 보여지므로, 그 외 승인 대기가 있으면 글로벌 뱃지 필요
+        // .countOnly: 이모지 없음 → 항상 글로벌 뱃지 필요
         switch store.menubarStyle {
         case .emoji:
-            button.title = agents.prefix(4).map { store.menuBarEmoji(for: $0) }.joined() + approvalBadge
+            button.title = agents.prefix(4).map { store.menuBarEmoji(for: $0) }.joined()
         case .emojiCount:
             let emoji = agents.first.map { store.menuBarEmoji(for: $0) } ?? "🤖"
-            button.title = "\(emoji) \(agents.count)" + approvalBadge
+            let firstIsWaiting = agents.first?.status == .waitingApproval
+            // 첫 에이전트에 이미 대기 표시가 있으면 중복 방지
+            let needsBadge = approvalCount > 0 && !firstIsWaiting
+            button.title = "\(emoji) \(agents.count)" + (needsBadge ? "❗" : "")
         case .countOnly:
-            button.title = "\(agents.count)" + approvalBadge
+            button.title = "\(agents.count)" + (approvalCount > 0 ? "❗" : "")
         }
 
         if approvalCount > 0 {

@@ -36,10 +36,11 @@
 ## Features
 
 - **Real-time Session Monitoring** — Automatically detects and tracks all running Claude sessions: CLI, Xcode, Claude Desktop Code, and Claude Desktop Cowork
+- **Subagent Grouping** — Sessions spawned via the `Agent` tool (e.g. SO-ADK pipelines) are folded under their parent session with a `🤖×N` badge. Click to expand the dropdown and see each subagent's type, current task, and last response on hover. While the parent waits, the parent row mirrors the most active subagent's status, and the parent's token/cost totals include every subagent's usage so you see the full pipeline cost in one place
 - **Source Badges** — Each session is labeled by origin (Code, Cowork, Xcode) so you always know where it's running. Click a Desktop session to open Claude Desktop directly
 - **Session Titles** — AI-generated session titles from Claude Desktop are shown automatically, replacing cryptic path names
 - **Token & Quota Tracking** — Monitor input/output tokens and API quota usage with 5-hour/weekly utilization
-- **Cost Estimation** — View estimated API costs per session based on model-specific token pricing
+- **Cost Estimation** — View estimated API costs per session based on model-specific token pricing. Costs and token counts are restored after app restart by re-parsing recent session logs
 - **Quiet Hours** — Suppress notifications during designated time windows (e.g., 22:00~09:00)
 - **Smart Notifications** — Get notified on task completion, errors, approval requests, quota threshold, and quota refill. Tap a notification to open the project directly in your editor
 - **Human-in-the-loop Detection** — Automatically detects when an agent is waiting for your approval and sends an alert

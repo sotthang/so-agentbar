@@ -163,6 +163,8 @@ struct Agent: Identifiable {
     var lastResponse: String
     var permissionMode: String
     var isSubagent: Bool
+    var subagentCount: Int = 0  // 이 부모에 속한 활성 서브에이전트 수
+    var subagents: [Agent] = [] // 펼쳐 보기용 자식 에이전트 목록
     var pid: Int?
 
     // 기존 호환성 유지: computed properties
@@ -622,9 +624,44 @@ class AgentStore: ObservableObject {
     // MARK: - 세션 업데이트
 
     private func updateAgents(from sessions: [ClaudeSession]) {
-        let filtered = showIdleSessions
+        let preFiltered = showIdleSessions
             ? sessions
             : sessions.filter { $0.sessionStatus == .running || $0.sessionStatus == .responded }
+
+        // 서브에이전트를 부모별로 그룹화
+        // - 부모 세션은 그대로 표시 + subagentCount 누적
+        // - 부모가 idle인데 서브가 활성이면 가장 활동적인 서브의 상태/도구로 부모 표시 오버라이드
+        // - 부모를 못 찾는 고아 서브는 숨김
+        var subagentsByParent: [String: [ClaudeSession]] = [:]
+        var topLevelSessions: [ClaudeSession] = []
+        let allSessionIds = Set(sessions.map { $0.id })
+        for session in preFiltered {
+            if session.isSubagent, let parentId = session.parentSessionId, allSessionIds.contains(parentId) {
+                subagentsByParent[parentId, default: []].append(session)
+            } else if !session.isSubagent {
+                topLevelSessions.append(session)
+            }
+            // 고아 서브에이전트(부모 jsonl 없음)는 무시
+        }
+
+        // 부모 → 활성 서브 우선순위(running > waitingForApproval > responded > 그 외) + 최신
+        func pickActiveSubagent(_ subs: [ClaudeSession]) -> ClaudeSession? {
+            func rank(_ s: ClaudeSession) -> Int {
+                switch s.sessionStatus {
+                case .running: return 0
+                case .waitingForApproval: return 1
+                case .responded: return 2
+                default: return 3
+                }
+            }
+            return subs.sorted {
+                let r1 = rank($0), r2 = rank($1)
+                if r1 != r2 { return r1 < r2 }
+                return $0.lastModified > $1.lastModified
+            }.first
+        }
+
+        let filtered = topLevelSessions
 
         // 같은 프로젝트에 세션이 여러 개면 번호 붙이기
         var projectSessionCounts: [String: Int] = [:]
@@ -633,14 +670,21 @@ class AgentStore: ObservableObject {
         }
         var projectSessionIndex: [String: Int] = [:]
 
-        let newAgents = filtered.map { session -> Agent in
+        // 단일 세션을 Agent로 변환 (부모/서브 공통 사용)
+        // displayOverride: 표시 정보를 다른 세션으로 가져오고 싶을 때 사용 (예: 부모 표시를 서브로)
+        func makeAgent(
+            from session: ClaudeSession,
+            displayOverride: ClaudeSession? = nil,
+            nameOverride: String? = nil,
+            isSubagent: Bool = false
+        ) -> Agent {
+            let display = displayOverride ?? session
             let status: AgentStatus
             let task: String
-
-            switch session.sessionStatus {
+            switch display.sessionStatus {
             case .running:
                 status = .working
-                task = translateToolName(session.lastToolName)
+                task = translateToolName(display.lastToolName)
             case .waitingForApproval:
                 status = .waitingApproval
                 task = t("승인 대기 중", "Waiting for approval")
@@ -657,36 +701,86 @@ class AgentStore: ObservableObject {
                 status = .idle
                 task = t("대기 중", "Idle")
             }
-
             let existing = agents.first(where: { $0.id == session.id })
-            let elapsed = session.sessionStatus == .running ? (existing?.elapsedSeconds ?? 0) : 0
-
-            // 같은 프로젝트에 세션이 2개 이상이면 "#1", "#2" 붙이기
-            var name = session.displayName
-            if (projectSessionCounts[session.projectDir] ?? 1) > 1 {
-                let idx = (projectSessionIndex[session.projectDir] ?? 0) + 1
-                projectSessionIndex[session.projectDir] = idx
-                name += " #\(idx)"
-            }
-
+                ?? agents.flatMap { [$0] + $0.subagents }.first(where: { $0.id == session.id })
+            let elapsed = display.sessionStatus == .running ? (existing?.elapsedSeconds ?? 0) : 0
             return Agent(
                 id: session.id,
-                name: name,
+                name: nameOverride ?? session.displayName,
                 status: status,
                 currentTask: task,
                 elapsedSeconds: elapsed,
                 tokensByModel: session.tokensByModel,
-                currentModel: session.currentModel,
+                currentModel: display.currentModel,
                 sessionID: session.id,
                 projectDir: session.projectDir,
                 workingPath: session.workingPath,
-                lastActivity: session.lastActivity,
+                lastActivity: max(session.lastActivity, display.lastActivity),
                 source: session.source,
-                lastResponse: session.lastAssistantText,
+                lastResponse: display.lastAssistantText,
                 permissionMode: session.permissionMode,
-                isSubagent: session.isSubagent,
+                isSubagent: isSubagent,
+                subagentCount: 0,
+                subagents: [],
                 pid: nil
             )
+        }
+
+        let newAgents = filtered.map { parentSession -> Agent in
+            // 활성 서브가 있고 부모가 일하고 있지 않으면, 부모 표시를 서브 정보로 오버라이드
+            let subs = subagentsByParent[parentSession.id] ?? []
+            let activeSub = pickActiveSubagent(subs)
+            let parentIsActive = parentSession.sessionStatus == .running
+                || parentSession.sessionStatus == .waitingForApproval
+            let displayOverride: ClaudeSession? = (!parentIsActive && activeSub != nil) ? activeSub : nil
+
+            // 같은 프로젝트에 세션이 2개 이상이면 "#1", "#2" 붙이기
+            var name = parentSession.displayName
+            if (projectSessionCounts[parentSession.projectDir] ?? 1) > 1 {
+                let idx = (projectSessionIndex[parentSession.projectDir] ?? 0) + 1
+                projectSessionIndex[parentSession.projectDir] = idx
+                name += " #\(idx)"
+            }
+
+            // 서브에이전트들도 Agent로 변환 (활성 우선 → 최신순)
+            let sortedSubs = subs.sorted {
+                let r1: Int = ($0.sessionStatus == .running) ? 0 : ($0.sessionStatus == .waitingForApproval ? 1 : 2)
+                let r2: Int = ($1.sessionStatus == .running) ? 0 : ($1.sessionStatus == .waitingForApproval ? 1 : 2)
+                if r1 != r2 { return r1 < r2 }
+                return $0.lastModified > $1.lastModified
+            }
+            let subAgents = sortedSubs.enumerated().map { idx, sub -> Agent in
+                // 서브에이전트 jsonl 파일명: "agent-{agentId}" → prefix 제거 후 부모 매핑 조회
+                let bareAgentId = sub.id.hasPrefix("agent-") ? String(sub.id.dropFirst("agent-".count)) : sub.id
+                let meta = parentSession.subagentMeta[bareAgentId]
+                let subName: String
+                if let meta = meta {
+                    if !meta.description.isEmpty {
+                        subName = "↳ \(meta.type) — \(meta.description)"
+                    } else {
+                        subName = "↳ \(meta.type)"
+                    }
+                } else {
+                    subName = "↳ subagent #\(idx + 1)"
+                }
+                return makeAgent(from: sub, nameOverride: subName, isSubagent: true)
+            }
+
+            var parentAgent = makeAgent(from: parentSession, displayOverride: displayOverride, nameOverride: name)
+            parentAgent.subagentCount = subs.count
+            parentAgent.subagents = subAgents
+
+            // 부모 토큰에 서브에이전트 토큰 합산 (모델별로 누적)
+            // → 파이프라인 전체 비용을 부모 행에서 한눈에 볼 수 있음
+            var combined = parentAgent.tokensByModel
+            for sub in subAgents {
+                for (model, tokens) in sub.tokensByModel {
+                    let existing = combined[model] ?? (0, 0)
+                    combined[model] = (existing.input + tokens.input, existing.output + tokens.output)
+                }
+            }
+            parentAgent.tokensByModel = combined
+            return parentAgent
         }
 
         // 상태 변화 감지 → 알림

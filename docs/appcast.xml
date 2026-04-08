@@ -4,15 +4,15 @@
     <title>so-agentbar</title>
     <link>https://sotthang.github.io/so-agentbar/appcast.xml</link>
     <item>
-      <title>Version 1.4.1</title>
-      <pubDate>Fri, 03 Apr 2026 09:48:49 +0000</pubDate>
-      <sparkle:version>1.4.1</sparkle:version>
-      <sparkle:shortVersionString>1.4.1</sparkle:shortVersionString>
+      <title>Version 1.4.2</title>
+      <pubDate>Wed, 08 Apr 2026 00:23:02 +0000</pubDate>
+      <sparkle:version>1.4.2</sparkle:version>
+      <sparkle:shortVersionString>1.4.2</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
       <enclosure
-        url="https://github.com/sotthang/so-agentbar/releases/download/v1.4.1/so-agentbar.dmg"
-        sparkle:edSignature="o8smNMvg5Pm6vjQI8YNGQwkbWzJnZb9tf5RJbLZpN3Dz8dYRe1OJ8UA8qB4Km+0JuVBEUSlMv+46Hwb/PWguAw=="
-        length="3031798"
+        url="https://github.com/sotthang/so-agentbar/releases/download/v1.4.2/so-agentbar.dmg"
+        sparkle:edSignature="3KOgDRGSLtJ/b0zlctTzYfp3kBFKDEHlOyz+97WUK9lNbWb1dVpRLC6frQwdYHNDS7DzFwhVu0STESsX+UrDDQ=="
+        length="3103438"
         type="application/x-apple-diskimage"
       />
     </item>

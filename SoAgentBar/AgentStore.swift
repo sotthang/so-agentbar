@@ -220,10 +220,18 @@ struct Agent: Identifiable {
 
 // MARK: - AgentStore
 
-@MainActor
+@preconcurrency @MainActor
 class AgentStore: ObservableObject {
     @Published var agents: [Agent] = []
     @Published var popoverOpenCount = 0
+
+    // 픽셀 에이전트 윈도우
+    @Published var isPixelWindowVisible: Bool {
+        didSet { UserDefaults.standard.set(isPixelWindowVisible, forKey: "isPixelWindowVisible") }
+    }
+    @Published var pixelWindowOpacity: Double {
+        didSet { UserDefaults.standard.set(pixelWindowOpacity, forKey: "pixelWindowOpacity") }
+    }
 
     // 세션 설정
     @Published var showIdleSessions: Bool {
@@ -333,6 +341,14 @@ class AgentStore: ObservableObject {
     }
 
     // 커스텀 이모지: 세션별 / 프로젝트별 2단계
+    @Published var pixelCharacterOverrides: [String: Int] = [:] {
+        didSet {
+            if let data = try? JSONEncoder().encode(pixelCharacterOverrides) {
+                UserDefaults.standard.set(data, forKey: "pixelCharacterOverrides")
+            }
+        }
+    }
+
     @Published var sessionEmojis: [String: String] = [:] {
         didSet {
             if let data = try? JSONEncoder().encode(sessionEmojis) {
@@ -399,6 +415,8 @@ class AgentStore: ObservableObject {
     private let notificationCooldown: TimeInterval = 60     // 같은 이벤트 재알림 최소 간격
 
     init() {
+        self.isPixelWindowVisible = UserDefaults.standard.object(forKey: "isPixelWindowVisible") as? Bool ?? false
+        self.pixelWindowOpacity   = UserDefaults.standard.object(forKey: "pixelWindowOpacity") as? Double ?? 0.8
         self.showIdleSessions   = UserDefaults.standard.object(forKey: "showIdleSessions") as? Bool ?? true
         self.pollInterval       = UserDefaults.standard.object(forKey: "pollInterval") as? Double ?? 10.0
         self.language           = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "language") ?? "en") ?? .english
@@ -421,6 +439,10 @@ class AgentStore: ObservableObject {
         self.notifyOnQuotaReset        = UserDefaults.standard.object(forKey: "notifyOnQuotaReset") as? Bool ?? true
         self.sessionAlertThreshold     = UserDefaults.standard.object(forKey: "sessionAlertThreshold") as? Double ?? 80
 
+        if let data = UserDefaults.standard.data(forKey: "pixelCharacterOverrides"),
+           let overrides = try? JSONDecoder().decode([String: Int].self, from: data) {
+            self.pixelCharacterOverrides = overrides
+        }
         if let data = UserDefaults.standard.data(forKey: "projectEmojis"),
            let emojis = try? JSONDecoder().decode([String: String].self, from: data) {
             self.projectEmojis = emojis

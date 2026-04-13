@@ -15,6 +15,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var eventHandlerRef: EventHandlerRef?
     private var cancellables = Set<AnyCancellable>()
     private(set) var updaterController: SPUStandardUpdaterController!
+    private var pixelWindowController: PixelAgentsWindowController?
 
     private static let showPopoverNotification = Notification.Name("com.sotthang.so-agentbar.showPopover")
     nonisolated static let updateNotificationIdentifier = "SparkleUpdateAvailable"
@@ -103,6 +104,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         // 런루프가 완전히 준비된 후 상태바 아이템 생성 — 첫 실행 시 메뉴바 미표시 방지
         DispatchQueue.main.async { [self] in
+            pixelWindowController = PixelAgentsWindowController(store: store)
             setupStatusItem()
             setupPopover()
             startIconUpdateTimer()

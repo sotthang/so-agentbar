@@ -46,6 +46,7 @@
 - **Human-in-the-loop Detection** — Automatically detects when an agent is waiting for your approval and sends an alert
 - **Statistics Dashboard** — Daily summary, 7-day chart, and top project rankings
 - **Global Hotkey** — Toggle the session panel from anywhere (default: ⌥⇧S)
+- **Pixel Agents Window** — Visualize active Claude Code sessions as animated pixel art characters in a floating macOS window. Toggle the window from the session panel header, customize opacity in settings, and watch characters animate based on session status (working, waiting for approval, etc.)
 - **Custom Emoji** — Assign unique emoji icons to each project for quick identification
 - **Editor Integration** — Open projects directly in VSCode, Cursor, Antigravity, Terminal, or Finder
 - **Auto Update** — Built-in updater via Sparkle keeps the app up to date automatically
@@ -95,6 +96,7 @@ Session status is determined by parsing JSONL log events. Quota usage is fetched
 | Quiet Hours | Suppress all notifications during a set time window (e.g. 23:00–09:00) |
 | Global Hotkey | Customizable keyboard shortcut |
 | Poll Interval | 10s / 30s / 60s fallback polling |
+| Pixel Agents | Opacity slider for the floating pixel character window |
 | Idle Sessions | Show or hide idle sessions |
 | Launch at Login | Auto-start with macOS |
 | Auto Update | Check for updates automatically via Sparkle |

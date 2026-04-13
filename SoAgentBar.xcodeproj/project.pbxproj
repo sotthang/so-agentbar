@@ -18,6 +18,7 @@
 		D04D14F12F7A4750001113FE /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = D04D14F02F7A4750001113FE /* Sparkle */; };
 		D0A7CBDC2F7556870052C5A3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A7CBDB2F7556860052C5A3 /* SettingsView.swift */; };
 		D0A7CBDE2F7591410052C5A3 /* EmojiPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A7CBDD2F7591410052C5A3 /* EmojiPickerView.swift */; };
+		PA1041PA1041PA1041PA1001 /* CharacterPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = PA1041PA1041PA1041PA1002 /* CharacterPickerView.swift */; };
 		D0A7CBE52F76505F0052C5A3 /* UsageMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A7CBE32F76505F0052C5A3 /* UsageMonitor.swift */; };
 		D0A7CBE62F76505F0052C5A3 /* UsageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A7CBE42F76505F0052C5A3 /* UsageView.swift */; };
 		D0A7CBE82F766AA30052C5A3 /* StatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A7CBE72F766AA30052C5A3 /* StatsStore.swift */; };
@@ -25,6 +26,38 @@
 		CC001CC001CC001CC001CC01 /* CostCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC001CC001CC001CC001CC02 /* CostCalculator.swift */; };
 		CC001CC001CC001CC001CC03 /* CostCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC001CC001CC001CC001CC04 /* CostCalculatorTests.swift */; };
 		CC001CC001CC001CC001CC05 /* QuietHoursTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC001CC001CC001CC001CC06 /* QuietHoursTests.swift */; };
+		PA0001PA0001PA0001PA0001 /* PixelCharacterProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = PA0001PA0001PA0001PA0002 /* PixelCharacterProvider.swift */; };
+		PA0002PA0002PA0002PA0001 /* PixelCharacterNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = PA0002PA0002PA0002PA0002 /* PixelCharacterNode.swift */; };
+		PA0003PA0003PA0003PA0001 /* PixelAgentsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = PA0003PA0003PA0003PA0002 /* PixelAgentsScene.swift */; };
+		PA0004PA0004PA0004PA0001 /* SKViewRepresentable.swift in Sources */ = {isa = PBXBuildFile; fileRef = PA0004PA0004PA0004PA0002 /* SKViewRepresentable.swift */; };
+		PA0005PA0005PA0005PA0001 /* PixelAgentsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = PA0005PA0005PA0005PA0002 /* PixelAgentsWindowController.swift */; };
+		PA0006PA0006PA0006PA0001 /* PixelAgentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PA0006PA0006PA0006PA0002 /* PixelAgentsTests.swift */; };
+		PA1000PA1000PA1000PA1001 /* char_0.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1000PA1000PA1000PA1002 /* char_0.png */; };
+		PA1001PA1001PA1001PA1001 /* char_1.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1001PA1001PA1001PA1002 /* char_1.png */; };
+		PA1002PA1002PA1002PA1001 /* char_2.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1002PA1002PA1002PA1002 /* char_2.png */; };
+		PA1003PA1003PA1003PA1001 /* char_3.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1003PA1003PA1003PA1002 /* char_3.png */; };
+		PA1004PA1004PA1004PA1001 /* char_4.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1004PA1004PA1004PA1002 /* char_4.png */; };
+		PA1005PA1005PA1005PA1001 /* char_5.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1005PA1005PA1005PA1002 /* char_5.png */; };
+		PA1010PA1010PA1010PA1001 /* floor_0.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1010PA1010PA1010PA1002 /* floor_0.png */; };
+		PA1010PA1010PA1010PA1003 /* floor_3.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1010PA1010PA1010PA1004 /* floor_3.png */; };
+		PA1020PA1020PA1020PA1001 /* DESK_FRONT.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1020PA1020PA1020PA1002 /* DESK_FRONT.png */; };
+		PA1021PA1021PA1021PA1001 /* DESK_SIDE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1021PA1021PA1021PA1002 /* DESK_SIDE.png */; };
+		PA1022PA1022PA1022PA1001 /* PC_FRONT_ON_1.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1022PA1022PA1022PA1002 /* PC_FRONT_ON_1.png */; };
+		PA1023PA1023PA1023PA1001 /* PC_FRONT_ON_2.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1023PA1023PA1023PA1002 /* PC_FRONT_ON_2.png */; };
+		PA1024PA1024PA1024PA1001 /* PC_FRONT_ON_3.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1024PA1024PA1024PA1002 /* PC_FRONT_ON_3.png */; };
+		PA1025PA1025PA1025PA1001 /* PC_SIDE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1025PA1025PA1025PA1002 /* PC_SIDE.png */; };
+		PA1030PA1030PA1030PA1001 /* SOFA_FRONT.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1030PA1030PA1030PA1002 /* SOFA_FRONT.png */; };
+		PA1031PA1031PA1031PA1001 /* CUSHIONED_BENCH.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1031PA1031PA1031PA1002 /* CUSHIONED_BENCH.png */; };
+		PA1032PA1032PA1032PA1001 /* SOFA_SIDE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1032PA1032PA1032PA1002 /* SOFA_SIDE.png */; };
+		PA1033PA1033PA1033PA1001 /* SMALL_TABLE_FRONT.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1033PA1033PA1033PA1002 /* SMALL_TABLE_FRONT.png */; };
+		PA1045PA1045PA1045PA1001 /* PLANT_LEFT.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1045PA1045PA1045PA1002 /* PLANT_LEFT.png */; };
+		PA1046PA1046PA1046PA1001 /* PLANT_RIGHT.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1046PA1046PA1046PA1002 /* PLANT_RIGHT.png */; };
+		PA1047PA1047PA1047PA1001 /* VENDING_MACHINE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1047PA1047PA1047PA1002 /* VENDING_MACHINE.png */; };
+		PA1048PA1048PA1048PA1001 /* MEETING_TABLE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1048PA1048PA1048PA1002 /* MEETING_TABLE.png */; };
+		PA1049PA1049PA1049PA1001 /* FRIDGE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1049PA1049PA1049PA1002 /* FRIDGE.png */; };
+		PA1050PA1050PA1050PA1001 /* FRAME_SMALL.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1050PA1050PA1050PA1002 /* FRAME_SMALL.png */; };
+		PA1051PA1051PA1051PA1001 /* FRAME_LARGE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1051PA1051PA1051PA1002 /* FRAME_LARGE.png */; };
+		PA1052PA1052PA1052PA1001 /* BOOKSHELF.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1052PA1052PA1052PA1002 /* BOOKSHELF.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,6 +72,7 @@
 		3E1ED4571EA5484EA2B785B6 /* SessionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitor.swift; sourceTree = "<group>"; };
 		D0A7CBDB2F7556860052C5A3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		D0A7CBDD2F7591410052C5A3 /* EmojiPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiPickerView.swift; sourceTree = "<group>"; };
+		PA1041PA1041PA1041PA1002 /* CharacterPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterPickerView.swift; sourceTree = "<group>"; };
 		D0A7CBE32F76505F0052C5A3 /* UsageMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageMonitor.swift; sourceTree = "<group>"; };
 		D0A7CBE42F76505F0052C5A3 /* UsageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageView.swift; sourceTree = "<group>"; };
 		D0A7CBE72F766AA30052C5A3 /* StatsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsStore.swift; sourceTree = "<group>"; };
@@ -48,6 +82,38 @@
 		CC001CC001CC001CC001CC04 /* CostCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostCalculatorTests.swift; sourceTree = "<group>"; };
 		CC001CC001CC001CC001CC06 /* QuietHoursTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuietHoursTests.swift; sourceTree = "<group>"; };
 		CC001CC001CC001CC001CC07 /* SoAgentBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SoAgentBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		PA0001PA0001PA0001PA0002 /* PixelCharacterProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelCharacterProvider.swift; sourceTree = "<group>"; };
+		PA0002PA0002PA0002PA0002 /* PixelCharacterNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelCharacterNode.swift; sourceTree = "<group>"; };
+		PA0003PA0003PA0003PA0002 /* PixelAgentsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelAgentsScene.swift; sourceTree = "<group>"; };
+		PA0004PA0004PA0004PA0002 /* SKViewRepresentable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SKViewRepresentable.swift; sourceTree = "<group>"; };
+		PA0005PA0005PA0005PA0002 /* PixelAgentsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelAgentsWindowController.swift; sourceTree = "<group>"; };
+		PA0006PA0006PA0006PA0002 /* PixelAgentsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelAgentsTests.swift; sourceTree = "<group>"; };
+		PA1000PA1000PA1000PA1002 /* char_0.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_0.png; path = "Assets/pixel-agents/characters/char_0.png"; sourceTree = "<group>"; };
+		PA1001PA1001PA1001PA1002 /* char_1.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_1.png; path = "Assets/pixel-agents/characters/char_1.png"; sourceTree = "<group>"; };
+		PA1002PA1002PA1002PA1002 /* char_2.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_2.png; path = "Assets/pixel-agents/characters/char_2.png"; sourceTree = "<group>"; };
+		PA1003PA1003PA1003PA1002 /* char_3.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_3.png; path = "Assets/pixel-agents/characters/char_3.png"; sourceTree = "<group>"; };
+		PA1004PA1004PA1004PA1002 /* char_4.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_4.png; path = "Assets/pixel-agents/characters/char_4.png"; sourceTree = "<group>"; };
+		PA1005PA1005PA1005PA1002 /* char_5.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_5.png; path = "Assets/pixel-agents/characters/char_5.png"; sourceTree = "<group>"; };
+		PA1010PA1010PA1010PA1002 /* floor_0.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = floor_0.png; path = "Assets/pixel-agents/floors/floor_0.png"; sourceTree = "<group>"; };
+		PA1010PA1010PA1010PA1004 /* floor_3.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = floor_3.png; path = "Assets/pixel-agents/floors/floor_3.png"; sourceTree = "<group>"; };
+		PA1020PA1020PA1020PA1002 /* DESK_FRONT.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = DESK_FRONT.png; path = "Assets/pixel-agents/furniture/DESK_FRONT.png"; sourceTree = "<group>"; };
+		PA1021PA1021PA1021PA1002 /* DESK_SIDE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = DESK_SIDE.png; path = "Assets/pixel-agents/furniture/DESK_SIDE.png"; sourceTree = "<group>"; };
+		PA1022PA1022PA1022PA1002 /* PC_FRONT_ON_1.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = PC_FRONT_ON_1.png; path = "Assets/pixel-agents/furniture/PC_FRONT_ON_1.png"; sourceTree = "<group>"; };
+		PA1023PA1023PA1023PA1002 /* PC_FRONT_ON_2.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = PC_FRONT_ON_2.png; path = "Assets/pixel-agents/furniture/PC_FRONT_ON_2.png"; sourceTree = "<group>"; };
+		PA1024PA1024PA1024PA1002 /* PC_FRONT_ON_3.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = PC_FRONT_ON_3.png; path = "Assets/pixel-agents/furniture/PC_FRONT_ON_3.png"; sourceTree = "<group>"; };
+		PA1025PA1025PA1025PA1002 /* PC_SIDE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = PC_SIDE.png; path = "Assets/pixel-agents/furniture/PC_SIDE.png"; sourceTree = "<group>"; };
+		PA1030PA1030PA1030PA1002 /* SOFA_FRONT.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = SOFA_FRONT.png; path = "Assets/pixel-agents/furniture/SOFA_FRONT.png"; sourceTree = "<group>"; };
+		PA1031PA1031PA1031PA1002 /* CUSHIONED_BENCH.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = CUSHIONED_BENCH.png; path = "Assets/pixel-agents/furniture/CUSHIONED_BENCH.png"; sourceTree = "<group>"; };
+		PA1032PA1032PA1032PA1002 /* SOFA_SIDE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = SOFA_SIDE.png; path = "Assets/pixel-agents/furniture/SOFA_SIDE.png"; sourceTree = "<group>"; };
+		PA1033PA1033PA1033PA1002 /* SMALL_TABLE_FRONT.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = SMALL_TABLE_FRONT.png; path = "Assets/pixel-agents/furniture/SMALL_TABLE_FRONT.png"; sourceTree = "<group>"; };
+		PA1045PA1045PA1045PA1002 /* PLANT_LEFT.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = PLANT_LEFT.png; path = "Assets/pixel-agents/furniture/PLANT_LEFT.png"; sourceTree = "<group>"; };
+		PA1046PA1046PA1046PA1002 /* PLANT_RIGHT.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = PLANT_RIGHT.png; path = "Assets/pixel-agents/furniture/PLANT_RIGHT.png"; sourceTree = "<group>"; };
+		PA1047PA1047PA1047PA1002 /* VENDING_MACHINE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = VENDING_MACHINE.png; path = "Assets/pixel-agents/furniture/VENDING_MACHINE.png"; sourceTree = "<group>"; };
+		PA1048PA1048PA1048PA1002 /* MEETING_TABLE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = MEETING_TABLE.png; path = "Assets/pixel-agents/furniture/MEETING_TABLE.png"; sourceTree = "<group>"; };
+		PA1049PA1049PA1049PA1002 /* FRIDGE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = FRIDGE.png; path = "Assets/pixel-agents/furniture/FRIDGE.png"; sourceTree = "<group>"; };
+		PA1050PA1050PA1050PA1002 /* FRAME_SMALL.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = FRAME_SMALL.png; path = "Assets/pixel-agents/furniture/FRAME_SMALL.png"; sourceTree = "<group>"; };
+		PA1051PA1051PA1051PA1002 /* FRAME_LARGE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = FRAME_LARGE.png; path = "Assets/pixel-agents/furniture/FRAME_LARGE.png"; sourceTree = "<group>"; };
+		PA1052PA1052PA1052PA1002 /* BOOKSHELF.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = BOOKSHELF.png; path = "Assets/pixel-agents/furniture/BOOKSHELF.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -75,6 +141,7 @@
 				D0A7CBE32F76505F0052C5A3 /* UsageMonitor.swift */,
 				D0A7CBE42F76505F0052C5A3 /* UsageView.swift */,
 				D0A7CBDD2F7591410052C5A3 /* EmojiPickerView.swift */,
+				PA1041PA1041PA1041PA1002 /* CharacterPickerView.swift */,
 				3E1ED4571EA5484EA2B785AB /* SoAgentBarApp.swift */,
 				3E1ED4571EA5484EA2B785AD /* AgentStore.swift */,
 				3E1ED4571EA5484EA2B785B6 /* SessionMonitor.swift */,
@@ -88,6 +155,37 @@
 				15B59B5C2F7973AA00170E5B /* logo.png */,
 				15B59B5E2F797D2700170E5B /* AppIcon.icns */,
 				D0MAIN00012F8000000000001 /* main.swift */,
+				PA0001PA0001PA0001PA0002 /* PixelCharacterProvider.swift */,
+				PA0002PA0002PA0002PA0002 /* PixelCharacterNode.swift */,
+				PA0003PA0003PA0003PA0002 /* PixelAgentsScene.swift */,
+				PA0004PA0004PA0004PA0002 /* SKViewRepresentable.swift */,
+				PA0005PA0005PA0005PA0002 /* PixelAgentsWindowController.swift */,
+				PA1000PA1000PA1000PA1002 /* char_0.png */,
+				PA1001PA1001PA1001PA1002 /* char_1.png */,
+				PA1002PA1002PA1002PA1002 /* char_2.png */,
+				PA1003PA1003PA1003PA1002 /* char_3.png */,
+				PA1004PA1004PA1004PA1002 /* char_4.png */,
+				PA1005PA1005PA1005PA1002 /* char_5.png */,
+				PA1010PA1010PA1010PA1002 /* floor_0.png */,
+				PA1010PA1010PA1010PA1004 /* floor_3.png */,
+				PA1020PA1020PA1020PA1002 /* DESK_FRONT.png */,
+				PA1021PA1021PA1021PA1002 /* DESK_SIDE.png */,
+				PA1022PA1022PA1022PA1002 /* PC_FRONT_ON_1.png */,
+				PA1023PA1023PA1023PA1002 /* PC_FRONT_ON_2.png */,
+				PA1024PA1024PA1024PA1002 /* PC_FRONT_ON_3.png */,
+				PA1025PA1025PA1025PA1002 /* PC_SIDE.png */,
+				PA1030PA1030PA1030PA1002 /* SOFA_FRONT.png */,
+				PA1031PA1031PA1031PA1002 /* CUSHIONED_BENCH.png */,
+				PA1032PA1032PA1032PA1002 /* SOFA_SIDE.png */,
+				PA1033PA1033PA1033PA1002 /* SMALL_TABLE_FRONT.png */,
+					PA1045PA1045PA1045PA1002 /* PLANT_LEFT.png */,
+				PA1046PA1046PA1046PA1002 /* PLANT_RIGHT.png */,
+				PA1047PA1047PA1047PA1002 /* VENDING_MACHINE.png */,
+				PA1048PA1048PA1048PA1002 /* MEETING_TABLE.png */,
+				PA1049PA1049PA1049PA1002 /* FRIDGE.png */,
+				PA1050PA1050PA1050PA1002 /* FRAME_SMALL.png */,
+				PA1051PA1051PA1051PA1002 /* FRAME_LARGE.png */,
+			PA1052PA1052PA1052PA1002 /* BOOKSHELF.png */,
 			);
 			path = SoAgentBar;
 			sourceTree = "<group>";
@@ -106,6 +204,7 @@
 			children = (
 				CC001CC001CC001CC001CC04 /* CostCalculatorTests.swift */,
 				CC001CC001CC001CC001CC06 /* QuietHoursTests.swift */,
+				PA0006PA0006PA0006PA0002 /* PixelAgentsTests.swift */,
 			);
 			path = SoAgentBarTests;
 			sourceTree = "<group>";
@@ -204,6 +303,32 @@
 			files = (
 				15B59B5D2F7973AA00170E5B /* logo.png in Resources */,
 				15B59B5F2F797D2700170E5B /* AppIcon.icns in Resources */,
+				PA1000PA1000PA1000PA1001 /* char_0.png in Resources */,
+				PA1001PA1001PA1001PA1001 /* char_1.png in Resources */,
+				PA1002PA1002PA1002PA1001 /* char_2.png in Resources */,
+				PA1003PA1003PA1003PA1001 /* char_3.png in Resources */,
+				PA1004PA1004PA1004PA1001 /* char_4.png in Resources */,
+				PA1005PA1005PA1005PA1001 /* char_5.png in Resources */,
+				PA1010PA1010PA1010PA1001 /* floor_0.png in Resources */,
+				PA1010PA1010PA1010PA1003 /* floor_3.png in Resources */,
+				PA1020PA1020PA1020PA1001 /* DESK_FRONT.png in Resources */,
+				PA1021PA1021PA1021PA1001 /* DESK_SIDE.png in Resources */,
+				PA1022PA1022PA1022PA1001 /* PC_FRONT_ON_1.png in Resources */,
+				PA1023PA1023PA1023PA1001 /* PC_FRONT_ON_2.png in Resources */,
+				PA1024PA1024PA1024PA1001 /* PC_FRONT_ON_3.png in Resources */,
+				PA1025PA1025PA1025PA1001 /* PC_SIDE.png in Resources */,
+				PA1030PA1030PA1030PA1001 /* SOFA_FRONT.png in Resources */,
+				PA1031PA1031PA1031PA1001 /* CUSHIONED_BENCH.png in Resources */,
+				PA1032PA1032PA1032PA1001 /* SOFA_SIDE.png in Resources */,
+				PA1033PA1033PA1033PA1001 /* SMALL_TABLE_FRONT.png in Resources */,
+				PA1045PA1045PA1045PA1001 /* PLANT_LEFT.png in Resources */,
+				PA1046PA1046PA1046PA1001 /* PLANT_RIGHT.png in Resources */,
+				PA1047PA1047PA1047PA1001 /* VENDING_MACHINE.png in Resources */,
+				PA1048PA1048PA1048PA1001 /* MEETING_TABLE.png in Resources */,
+				PA1049PA1049PA1049PA1001 /* FRIDGE.png in Resources */,
+				PA1050PA1050PA1050PA1001 /* FRAME_SMALL.png in Resources */,
+				PA1051PA1051PA1051PA1001 /* FRAME_LARGE.png in Resources */,
+			PA1052PA1052PA1052PA1001 /* BOOKSHELF.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -216,6 +341,7 @@
 			files = (
 				D0A7CBEA2F766AD00052C5A3 /* StatsView.swift in Sources */,
 				D0A7CBDE2F7591410052C5A3 /* EmojiPickerView.swift in Sources */,
+				PA1041PA1041PA1041PA1001 /* CharacterPickerView.swift in Sources */,
 				D0A7CBE82F766AA30052C5A3 /* StatsStore.swift in Sources */,
 				3E1ED4571EA5484EA2B785AA /* SoAgentBarApp.swift in Sources */,
 				3E1ED4571EA5484EA2B785AC /* AgentStore.swift in Sources */,
@@ -227,6 +353,11 @@
 				3E1ED4571EA5484EA2B785B2 /* AgentListView.swift in Sources */,
 				CC001CC001CC001CC001CC01 /* CostCalculator.swift in Sources */,
 				D0MAIN00012F8000000000000 /* main.swift in Sources */,
+				PA0001PA0001PA0001PA0001 /* PixelCharacterProvider.swift in Sources */,
+				PA0002PA0002PA0002PA0001 /* PixelCharacterNode.swift in Sources */,
+				PA0003PA0003PA0003PA0001 /* PixelAgentsScene.swift in Sources */,
+				PA0004PA0004PA0004PA0001 /* SKViewRepresentable.swift in Sources */,
+				PA0005PA0005PA0005PA0001 /* PixelAgentsWindowController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -236,6 +367,7 @@
 			files = (
 				CC001CC001CC001CC001CC03 /* CostCalculatorTests.swift in Sources */,
 				CC001CC001CC001CC001CC05 /* QuietHoursTests.swift in Sources */,
+				PA0006PA0006PA0006PA0001 /* PixelAgentsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -376,6 +376,23 @@ struct SettingsView: View {
                         }
                     }
 
+                    // 픽셀 에이전트 섹션
+                    sectionHeader(store.t("픽셀 에이전트", "Pixel Agents"))
+
+                    settingRow {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(store.t("투명도", "Opacity"))
+                                    .font(.system(size: 13))
+                                Spacer()
+                                Text("\(Int(store.pixelWindowOpacity * 100))%")
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                            Slider(value: $store.pixelWindowOpacity, in: 0.1...1.0, step: 0.05)
+                        }
+                    }
+
                     // 앱 섹션
                     sectionHeader(store.t("앱", "App"))
 

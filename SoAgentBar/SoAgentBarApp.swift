@@ -12,6 +12,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var store = AgentStore()
     private var iconUpdateTimer: Timer?
     private var hotkeyRef: EventHotKeyRef?
+    private var pixelHotkeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
     private var cancellables = Set<AnyCancellable>()
     private(set) var updaterController: SPUStandardUpdaterController!
@@ -295,7 +296,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     // MARK: - 글로벌 핫키 — Carbon API (접근성 권한 불필요)
 
     private func setupHotkey() {
-        // Carbon 이벤트 핸들러 1회 설치
+        // Carbon 이벤트 핸들러 1회 설치 — 핫키 ID로 동작 분기
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
@@ -303,10 +304,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         InstallEventHandler(
             GetApplicationEventTarget(),
-            { (_, _, userData) -> OSStatus in
-                guard let userData else { return OSStatus(eventNotHandledErr) }
+            { (_, event, userData) -> OSStatus in
+                guard let event, let userData else { return OSStatus(eventNotHandledErr) }
+                var hotKeyID = EventHotKeyID()
+                let paramStatus = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyID
+                )
+                guard paramStatus == noErr else { return OSStatus(eventNotHandledErr) }
                 let delegate = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
-                DispatchQueue.main.async { delegate.togglePopoverFromHotkey() }
+                DispatchQueue.main.async {
+                    switch hotKeyID.id {
+                    case 1: delegate.togglePopoverFromHotkey()
+                    case 2: delegate.togglePixelWindowFromHotkey()
+                    default: break
+                    }
+                }
                 return noErr
             },
             1,
@@ -317,8 +335,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         // 초기 핫키 등록
         registerCurrentHotkey()
+        registerCurrentPixelHotkey()
 
-        // 설정 변경 감시 → 핫키 재등록
+        // 팝오버 핫키 설정 변경 감시
         store.$hotkeyKeyCode
             .combineLatest(store.$hotkeyModifiers, store.$hotkeyEnabled)
             .dropFirst()
@@ -328,12 +347,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 self?.registerCurrentHotkey()
             }
             .store(in: &cancellables)
+
+        // 픽셀 핫키 설정 변경 감시
+        store.$pixelHotkeyKeyCode
+            .combineLatest(store.$pixelHotkeyModifiers, store.$pixelHotkeyEnabled)
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _, _, _ in
+                self?.unregisterPixelHotkey()
+                self?.registerCurrentPixelHotkey()
+            }
+            .store(in: &cancellables)
     }
 
     private func registerCurrentHotkey() {
         guard store.hotkeyEnabled else { return }
         let hotkeyID = EventHotKeyID(signature: OSType(0x4142_4152), id: 1)
-        RegisterEventHotKey(
+        let status = RegisterEventHotKey(
             UInt32(store.hotkeyKeyCode),
             UInt32(store.hotkeyModifiers),
             hotkeyID,
@@ -341,12 +371,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             0,
             &hotkeyRef
         )
+        if status != noErr {
+            NSLog("[SoAgentBar] 팝오버 핫키 등록 실패 (OSStatus: %d) — 다른 앱과 충돌할 수 있습니다", status)
+        }
     }
 
     private func unregisterHotkey() {
         if let ref = hotkeyRef {
             UnregisterEventHotKey(ref)
             hotkeyRef = nil
+        }
+    }
+
+    private func registerCurrentPixelHotkey() {
+        guard store.pixelHotkeyEnabled else { return }
+        let hotkeyID = EventHotKeyID(signature: OSType(0x4142_4152), id: 2)
+        let status = RegisterEventHotKey(
+            UInt32(store.pixelHotkeyKeyCode),
+            UInt32(store.pixelHotkeyModifiers),
+            hotkeyID,
+            GetApplicationEventTarget(),
+            0,
+            &pixelHotkeyRef
+        )
+        if status != noErr {
+            NSLog("[SoAgentBar] 픽셀 핫키 등록 실패 (OSStatus: %d) — 다른 앱과 충돌할 수 있습니다", status)
+        }
+    }
+
+    private func unregisterPixelHotkey() {
+        if let ref = pixelHotkeyRef {
+            UnregisterEventHotKey(ref)
+            pixelHotkeyRef = nil
         }
     }
 
@@ -359,9 +415,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
     }
 
+    fileprivate func togglePixelWindowFromHotkey() {
+        store.isPixelWindowVisible.toggle()
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         iconUpdateTimer?.invalidate()
         unregisterHotkey()
+        unregisterPixelHotkey()
         if let ref = eventHandlerRef { RemoveEventHandler(ref) }
     }
 }

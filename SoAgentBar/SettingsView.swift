@@ -393,6 +393,34 @@ struct SettingsView: View {
                         }
                     }
 
+                    Divider().padding(.leading, 16)
+
+                    settingRow {
+                        Toggle(isOn: $store.pixelHotkeyEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(store.t("픽셀 창 핫키", "Pixel window hotkey"))
+                                    .font(.system(size: 13))
+                                Text(store.t("어디서든 픽셀 에이전트 창을 보였다 숨겼다 할 수 있습니다", "Toggle pixel agents window from anywhere"))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                    }
+
+                    if store.pixelHotkeyEnabled {
+                        Divider().padding(.leading, 16)
+
+                        settingRow {
+                            HStack {
+                                Text(store.t("단축키", "Shortcut"))
+                                    .font(.system(size: 13))
+                                Spacer()
+                                PixelHotkeyRecorderButton(store: store)
+                            }
+                        }
+                    }
+
                     // 앱 섹션
                     sectionHeader(store.t("앱", "App"))
 
@@ -576,6 +604,65 @@ struct HotkeyRecorderButton: View {
             NSEvent.removeMonitor(m)
             monitor = nil
         }
+    }
+}
+
+// MARK: - 픽셀 핫키 레코더
+
+struct PixelHotkeyRecorderButton: View {
+    @ObservedObject var store: AgentStore
+    @State private var isRecording = false
+    @State private var monitor: Any?
+
+    var body: some View {
+        Button(action: { toggleRecording() }) {
+            Text(isRecording
+                 ? store.t("키를 누르세요…", "Press shortcut…")
+                 : store.pixelHotkeyDisplayString)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(isRecording ? .accentColor : .primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isRecording
+                              ? Color.accentColor.opacity(0.15)
+                              : Color(NSColor.controlBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(isRecording ? Color.accentColor : Color(NSColor.separatorColor), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .onDisappear { stopRecording() }
+    }
+
+    private func toggleRecording() {
+        if isRecording { stopRecording() } else { startRecording() }
+    }
+
+    private func startRecording() {
+        isRecording = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+            if event.keyCode == 53 { stopRecording(); return nil }
+
+            guard flags.contains(.command) || flags.contains(.option) || flags.contains(.control) else {
+                return nil
+            }
+
+            store.pixelHotkeyKeyCode = Int(event.keyCode)
+            store.pixelHotkeyModifiers = AgentStore.nsModifiersToCarbonModifiers(flags)
+            stopRecording()
+            return nil
+        }
+    }
+
+    private func stopRecording() {
+        isRecording = false
+        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
     }
 }
 

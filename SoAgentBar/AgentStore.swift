@@ -280,6 +280,17 @@ class AgentStore: ObservableObject {
         didSet { UserDefaults.standard.set(hotkeyModifiers, forKey: "hotkeyModifiers") }
     }
 
+    // 픽셀 에이전트 글로벌 핫키
+    @Published var pixelHotkeyEnabled: Bool {
+        didSet { UserDefaults.standard.set(pixelHotkeyEnabled, forKey: "pixelHotkeyEnabled") }
+    }
+    @Published var pixelHotkeyKeyCode: Int {
+        didSet { UserDefaults.standard.set(pixelHotkeyKeyCode, forKey: "pixelHotkeyKeyCode") }
+    }
+    @Published var pixelHotkeyModifiers: Int {
+        didSet { UserDefaults.standard.set(pixelHotkeyModifiers, forKey: "pixelHotkeyModifiers") }
+    }
+
     // 알림
     @Published var notifyOnComplete: Bool {
         didSet { UserDefaults.standard.set(notifyOnComplete, forKey: "notifyOnComplete") }
@@ -427,6 +438,9 @@ class AgentStore: ObservableObject {
         self.hotkeyEnabled             = UserDefaults.standard.object(forKey: "hotkeyEnabled") as? Bool ?? true
         self.hotkeyKeyCode             = UserDefaults.standard.object(forKey: "hotkeyKeyCode") as? Int ?? Int(kVK_ANSI_S)
         self.hotkeyModifiers           = UserDefaults.standard.object(forKey: "hotkeyModifiers") as? Int ?? Int(optionKey | shiftKey)
+        self.pixelHotkeyEnabled        = UserDefaults.standard.object(forKey: "pixelHotkeyEnabled") as? Bool ?? false
+        self.pixelHotkeyKeyCode        = UserDefaults.standard.object(forKey: "pixelHotkeyKeyCode") as? Int ?? Int(kVK_ANSI_P)
+        self.pixelHotkeyModifiers      = UserDefaults.standard.object(forKey: "pixelHotkeyModifiers") as? Int ?? Int(optionKey | shiftKey)
         self.completionSound           = UserDefaults.standard.string(forKey: "completionSound") ?? "default"
         self.respectFocusMode          = UserDefaults.standard.object(forKey: "respectFocusMode") as? Bool ?? false
         self.quietHoursEnabled         = UserDefaults.standard.object(forKey: "quietHoursEnabled") as? Bool ?? false
@@ -520,6 +534,15 @@ class AgentStore: ObservableObject {
         if hotkeyModifiers & Int(shiftKey) != 0   { mods += "⇧" }
         if hotkeyModifiers & Int(cmdKey) != 0     { mods += "⌘" }
         return mods + Self.keyCodeName(hotkeyKeyCode)
+    }
+
+    var pixelHotkeyDisplayString: String {
+        var mods = ""
+        if pixelHotkeyModifiers & Int(controlKey) != 0 { mods += "⌃" }
+        if pixelHotkeyModifiers & Int(optionKey) != 0  { mods += "⌥" }
+        if pixelHotkeyModifiers & Int(shiftKey) != 0   { mods += "⇧" }
+        if pixelHotkeyModifiers & Int(cmdKey) != 0     { mods += "⌘" }
+        return mods + Self.keyCodeName(pixelHotkeyKeyCode)
     }
 
     static func keyCodeName(_ code: Int) -> String {

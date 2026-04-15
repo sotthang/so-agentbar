@@ -33,6 +33,11 @@
   <br><em>Settings: language, notifications, quota threshold, and display options</em>
 </p>
 
+<p align="center">
+  <img src="docs/4.png" alt="Pixel Agents floating window" width="400">
+  <br><em>Pixel Agents — animated pixel art characters that reflect each session's live status</em>
+</p>
+
 ## Features
 
 - **Real-time Session Monitoring** — Automatically detects and tracks all running Claude sessions: CLI, Xcode, Claude Desktop Code, and Claude Desktop Cowork

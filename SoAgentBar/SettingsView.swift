@@ -408,6 +408,24 @@ struct SettingsView: View {
                         .toggleStyle(.switch)
                     }
 
+                    Divider().padding(.leading, 16)
+
+                    settingRow {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(store.t("창 위치/크기 초기화", "Reset window position/size"))
+                                    .font(.system(size: 13))
+                                Text(store.t("드래그로 변경한 위치와 크기를 기본값으로 되돌립니다", "Restore default position and size after dragging"))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Button(store.t("초기화", "Reset")) {
+                                store.pixelWindowResetRequest.send()
+                            }
+                        }
+                    }
+
                     if store.pixelHotkeyEnabled {
                         Divider().padding(.leading, 16)
 

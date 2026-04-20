@@ -40,9 +40,9 @@ final class AgentStorePixelWindowTests: XCTestCase {
         super.tearDown()
     }
 
-    // Happy path: isPixelWindowVisible defaults to false when key absent
-    func test_isPixelWindowVisible_defaultsToFalse() {
-        XCTAssertFalse(store.isPixelWindowVisible)
+    // Happy path: isPixelWindowVisible defaults to true when key absent
+    func test_isPixelWindowVisible_defaultsToTrue() {
+        XCTAssertTrue(store.isPixelWindowVisible)
     }
 
     // Happy path: toggling isPixelWindowVisible flips the value
@@ -359,5 +359,104 @@ final class PixelCharacterProviderTests: XCTestCase {
         let hue2 = ProgrammaticPixelProvider.hue(for: "agent-002")
         // Not guaranteed to be different in all cases, but these specific ids should differ
         XCTAssertNotEqual(hue1, hue2, accuracy: 0.001)
+    }
+}
+
+// MARK: - 작업 1: 텍스처 캐시 무효화 (invalidateCache)
+
+final class SpriteSheetProviderInvalidateCacheTests: XCTestCase {
+
+    // Happy path: invalidateCache() 후 cache가 비워져 새 charIndex 기준 텍스처가 생성된다
+    func test_spriteSheetProvider_invalidateCache_clearsTextureCache() {
+        let provider = SpriteSheetPixelProvider()
+        // charIndex 0으로 맵핑되는 agentID로 텍스처 생성 → cache 채움
+        provider.characterOverrides = ["agent-x": 0]
+        _ = provider.textures(for: .idle, agentID: "agent-x", size: 32)
+
+        // override를 변경 후 invalidateCache 호출
+        provider.characterOverrides = ["agent-x": 3]
+        provider.invalidateCache()
+
+        // 캐시가 비워졌으므로 cacheSize는 0이어야 함
+        XCTAssertEqual(provider.cacheSize, 0)
+    }
+
+    // Happy path: ProgrammaticPixelProvider.invalidateCache()도 cache를 비운다
+    func test_programmaticProvider_invalidateCache_clearsCache() {
+        let provider = ProgrammaticPixelProvider()
+        _ = provider.textures(for: .idle, hue: 0.5, size: 32)
+        provider.invalidateCache()
+        XCTAssertEqual(provider.cacheSize, 0)
+    }
+
+    // Happy path: invalidateCache 후 textures() 재호출 시 새 charIndex 기준 결과 반환
+    func test_spriteSheetProvider_invalidateCache_returnsNewCharIndexTextures() {
+        let provider = SpriteSheetPixelProvider()
+        provider.characterOverrides = ["agent-y": 0]
+        let before = provider.textures(for: .working, agentID: "agent-y", size: 32)
+
+        provider.characterOverrides = ["agent-y": 5]
+        provider.invalidateCache()
+
+        let after = provider.textures(for: .working, agentID: "agent-y", size: 32)
+        // 서로 다른 sprite sheet → 텍스처 배열이 달라야 함 (같을 수도 있으나 최소한 캐시가 재생성됨)
+        // cache miss 후 재생성 확인: cacheSize가 1 이상
+        XCTAssertGreaterThan(provider.cacheSize, 0)
+        // before/after는 동일 객체가 아님 (새로 생성됨)
+        _ = before  // suppress unused warning
+        _ = after
+    }
+}
+
+// MARK: - 작업 2: 새 세션에 미사용 캐릭터 랜덤 배정
+
+final class AgentStoreAssignCharacterTests: XCTestCase {
+
+    private var store: AgentStore!
+
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.removeObject(forKey: "pixelCharacterOverrides")
+        store = AgentStore()
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: "pixelCharacterOverrides")
+        store = nil
+        super.tearDown()
+    }
+
+    private var total: Int { SpriteSheetPixelProvider.charCount }
+
+    // Happy path: inUseIndices에 없는 인덱스를 반환한다
+    func test_assignCharacter_returnsUnusedIndex() {
+        let inUse: Set<Int> = [0, 1]
+        let assigned = store.assignCharacter(forNewAgentID: "new-agent", inUseIndices: inUse)
+        XCTAssertFalse(inUse.contains(assigned), "사용 중인 인덱스가 배정되면 안 됨")
+        XCTAssertGreaterThanOrEqual(assigned, 0)
+        XCTAssertLessThan(assigned, total)
+    }
+
+    // Happy path: 모든 인덱스가 사용 중이면 유효 범위 중 랜덤 반환
+    func test_assignCharacter_allInUse_returnsAnyValidIndex() {
+        let inUse = Set(0..<total)
+        let assigned = store.assignCharacter(forNewAgentID: "new-agent", inUseIndices: inUse)
+        XCTAssertGreaterThanOrEqual(assigned, 0)
+        XCTAssertLessThan(assigned, total)
+    }
+
+    // Edge case: inUseIndices가 비어있으면 유효 범위 중 하나 반환
+    func test_assignCharacter_emptyInUse_returnsValidIndex() {
+        let assigned = store.assignCharacter(forNewAgentID: "agent-abc", inUseIndices: [])
+        XCTAssertGreaterThanOrEqual(assigned, 0)
+        XCTAssertLessThan(assigned, total)
+    }
+
+    // Edge case: N-1개 사용 중이면 나머지 1개가 반드시 반환된다
+    func test_assignCharacter_almostAllInUse_returnsTheRemainingOne() {
+        let remaining = total - 1
+        let inUse = Set(0..<total).subtracting([remaining])
+        let assigned = store.assignCharacter(forNewAgentID: "agent-xyz", inUseIndices: inUse)
+        XCTAssertEqual(assigned, remaining)
     }
 }

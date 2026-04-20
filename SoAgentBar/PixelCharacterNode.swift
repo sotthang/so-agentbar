@@ -16,8 +16,13 @@ final class PixelCharacterNode: SKNode {
     private let spriteNode: SKSpriteNode
     private var bubbleNode: SKSpriteNode?
     private var nameLabel: SKLabelNode?
+    private var nameBadgeNode: SKShapeNode?
     private var speechBubbleNode: SKNode?
     private var currentSize: Int
+
+    /// Sprite render size: 1.5× the logical character size (keeps pixel art crisp at integer-ish scale).
+    private var renderSize: Int { currentSize * 3 / 2 }
+    private var spriteHalfHeight: CGFloat { CGFloat(renderSize) / 2 }
 
     // MARK: - Init
 
@@ -29,7 +34,8 @@ final class PixelCharacterNode: SKNode {
     }
 
     init(agentID: String, name: String, status: AgentStatus, task: String,
-         provider: PixelCharacterProvider, characterSize: Int) {
+         provider: PixelCharacterProvider, characterSize: Int,
+         sessionColor: NSColor? = nil) {
         self.agentID = agentID
         self.currentStatus = status
         self.provider = provider
@@ -37,8 +43,9 @@ final class PixelCharacterNode: SKNode {
 
         let textures = provider.textures(for: status, agentID: agentID, size: characterSize)
         let firstTexture = textures.first ?? SKTexture()
+        let render = characterSize * 3 / 2
         self.spriteNode = SKSpriteNode(texture: firstTexture,
-                                       size: CGSize(width: characterSize, height: characterSize * 2))
+                                       size: CGSize(width: render, height: render))
         super.init()
 
         addChild(spriteNode)
@@ -51,7 +58,7 @@ final class PixelCharacterNode: SKNode {
             showSpeechBubble(task: task)
         }
 
-        setupNameLabel(name: name, characterSize: characterSize)
+        setupNameLabel(name: name, sessionColor: sessionColor)
     }
 
     required init?(coder aDecoder: NSCoder) {
@@ -91,10 +98,80 @@ final class PixelCharacterNode: SKNode {
         applyAnimation(for: currentStatus)
     }
 
+    // MARK: - Wander (rest zone idle roaming)
+
+    private var isWandering = false
+    private var wanderBounds: CGRect = .zero
+    private var wanderPoints: [CGPoint] = []
+    private var otherIdlePositionsProvider: (() -> [CGPoint])?
+
+    /// 다른 idle 캐릭터와 너무 가까운 목적지 재시도 판정용 최소 거리
+    private static let wanderMinSpacing: CGFloat = 40
+
+    /// Starts roaming randomly within `bounds`, occasionally targeting `interestPoints`.
+    /// - Parameter otherIdlePositions: 다른 idle 캐릭터들의 현재 위치 (분산 로직용)
+    func startWandering(
+        bounds: CGRect,
+        interestPoints: [CGPoint],
+        otherIdlePositions: @escaping () -> [CGPoint] = { [] }
+    ) {
+        guard !isWandering else { return }
+        isWandering = true
+        wanderBounds = bounds
+        wanderPoints = interestPoints
+        otherIdlePositionsProvider = otherIdlePositions
+        scheduleNextWanderStep(initialDelay: Double.random(in: 0.5...3))
+    }
+
+    /// Stops wandering and cancels in-flight walk.
+    func stopWandering() {
+        guard isWandering else { return }
+        isWandering = false
+        removeAllActions()
+        spriteNode.removeAction(forKey: "walkAnim")
+        applyAnimation(for: currentStatus)
+    }
+
+    private func scheduleNextWanderStep(initialDelay: TimeInterval) {
+        let wait = SKAction.wait(forDuration: initialDelay)
+        let step = SKAction.run { [weak self] in self?.wanderStep() }
+        run(SKAction.sequence([wait, step]), withKey: "wanderTimer")
+    }
+
+    private func wanderStep() {
+        guard isWandering else { return }
+        let others = otherIdlePositionsProvider?() ?? []
+        let target = pickWanderTarget(avoiding: others)
+        walk(to: target) { [weak self] in
+            guard let self, self.isWandering else { return }
+            self.scheduleNextWanderStep(initialDelay: Double.random(in: 3...8))
+        }
+    }
+
+    /// 다른 idle 캐릭터들과 최소 간격 이상 떨어진 후보를 우선 선택.
+    /// 5회 재시도 후에도 적절한 후보가 없으면 마지막 후보를 그대로 사용 (수용).
+    private func pickWanderTarget(avoiding others: [CGPoint]) -> CGPoint {
+        var candidate: CGPoint = .zero
+        for _ in 0..<5 {
+            if !wanderPoints.isEmpty && Double.random(in: 0..<1) < 0.4 {
+                candidate = wanderPoints.randomElement()!
+            } else {
+                candidate = CGPoint(
+                    x: CGFloat.random(in: wanderBounds.minX...wanderBounds.maxX),
+                    y: CGFloat.random(in: wanderBounds.minY...wanderBounds.maxY)
+                )
+            }
+            let tooClose = others.contains { hypot($0.x - candidate.x, $0.y - candidate.y) < Self.wanderMinSpacing }
+            if !tooClose { return candidate }
+        }
+        return candidate
+    }
+
     /// Resizes the character sprite.
     func resize(to characterSize: Int) {
         currentSize = characterSize
-        spriteNode.size = CGSize(width: characterSize, height: characterSize * 2)
+        let render = characterSize * 3 / 2
+        spriteNode.size = CGSize(width: render, height: render)
         applyAnimation(for: currentStatus)
     }
 
@@ -123,18 +200,16 @@ final class PixelCharacterNode: SKNode {
         let walkSpeed: CGFloat = 160  // points per second
         let duration = TimeInterval(dist / walkSpeed)
 
-        // 이동 방향에 따라 스프라이트 행 선택
-        // row 0 = 정면(아래), row 1 = 옆면(좌우), row 2 = 뒷면(위)
+        // 이동 방향에 따라 스프라이트 행 선택 (RPG Maker MV 규칙)
+        // row 0 = 아래, row 1 = 왼쪽, row 2 = 오른쪽, row 3 = 위
+        spriteNode.xScale = 1
         let row: Int
         if abs(dx) >= abs(dy) {
-            row = 1                                  // 좌우 이동 → 옆면
-            spriteNode.xScale = dx < 0 ? -1 : 1
+            row = dx < 0 ? SpriteSheetPixelProvider.rowLeft : SpriteSheetPixelProvider.rowRight
         } else if dy > 0 {
-            row = 2                                  // 위로 이동 → 뒷면
-            spriteNode.xScale = 1
+            row = SpriteSheetPixelProvider.rowUp
         } else {
-            row = 0                                  // 아래로 이동 → 정면
-            spriteNode.xScale = 1
+            row = SpriteSheetPixelProvider.rowDown
         }
 
         spriteNode.removeAllActions()
@@ -179,17 +254,50 @@ final class PixelCharacterNode: SKNode {
             let animate = SKAction.animate(with: textures, timePerFrame: interval)
             spriteNode.run(SKAction.repeatForever(animate))
         }
+
+        // idle/thinking: 위아래 가벼운 bob (호흡 느낌)
+        if status == .idle || status == .thinking {
+            spriteNode.position = .zero
+            let bob = SKAction.sequence([
+                SKAction.moveBy(x: 0, y: 2, duration: 0.7),
+                SKAction.moveBy(x: 0, y: -2, duration: 0.7)
+            ])
+            spriteNode.run(SKAction.repeatForever(bob))
+        }
     }
 
-    private func setupNameLabel(name: String, characterSize: Int) {
+    private func setupNameLabel(name: String, sessionColor: NSColor?) {
+        let text = name.count > 15 ? String(name.prefix(15)) + "…" : name
+
         let label = SKLabelNode(fontNamed: "Menlo-Bold")
-        label.text = name.count > 15 ? String(name.prefix(15)) + "…" : name
+        label.text = text
         label.fontSize = 10
         label.fontColor = .white
         label.horizontalAlignmentMode = .center
-        label.verticalAlignmentMode = .bottom
-        label.position = CGPoint(x: 0, y: CGFloat(characterSize) + 2)
-        label.zPosition = 3
+        label.verticalAlignmentMode = .center
+        label.zPosition = 4
+
+        // 배지와 라벨을 같은 중심에 두고 서로 정렬.
+        let bgH: CGFloat = 14
+        let centerY = spriteHalfHeight + 2 + bgH / 2
+
+        if let sessionColor {
+            let textWidth = label.calculateAccumulatedFrame().width
+            let padX: CGFloat = 5
+            let bgW = max(textWidth + padX * 2, 24)
+            let rect = CGRect(x: -bgW / 2, y: -bgH / 2, width: bgW, height: bgH)
+            let path = CGPath(roundedRect: rect, cornerWidth: 3, cornerHeight: 3, transform: nil)
+            let badge = SKShapeNode(path: path)
+            badge.fillColor = sessionColor
+            badge.strokeColor = .clear
+            badge.alpha = 0.85
+            badge.zPosition = 3
+            badge.position = CGPoint(x: 0, y: centerY)
+            addChild(badge)
+            nameBadgeNode = badge
+        }
+
+        label.position = CGPoint(x: 0, y: centerY)
         addChild(label)
         nameLabel = label
     }
@@ -242,8 +350,7 @@ final class PixelCharacterNode: SKNode {
         tail.lineWidth = 0.8
 
         // 배치: 이름 라벨 위쪽
-        // 스프라이트 상단(+currentSize) + 이름 라벨(~12px) + 여백
-        container.position = CGPoint(x: 0, y: CGFloat(currentSize) + 26)
+        container.position = CGPoint(x: 0, y: spriteHalfHeight + 20)
 
         container.addChild(bg)
         container.addChild(tail)
@@ -266,8 +373,8 @@ final class PixelCharacterNode: SKNode {
         let bubble = SKSpriteNode(texture: texture,
                                    size: CGSize(width: currentSize / 2, height: currentSize / 2))
         bubble.name = "bubbleNode"
-        bubble.position = CGPoint(x: CGFloat(currentSize) * 0.35,
-                                   y: CGFloat(currentSize) * 0.85)
+        bubble.position = CGPoint(x: spriteHalfHeight * 0.7,
+                                   y: spriteHalfHeight * 0.85)
         addChild(bubble)
         bubbleNode = bubble
     }

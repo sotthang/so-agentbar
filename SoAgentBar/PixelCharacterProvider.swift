@@ -14,6 +14,13 @@ protocol PixelCharacterProvider {
 
     /// Returns speech bubble texture for waitingApproval.
     func bubbleTexture(size: Int) -> SKTexture
+
+    /// Clears all texture caches so the next call regenerates textures.
+    /// Call after characterOverrides changes to avoid stale textures.
+    func invalidateCache()
+
+    /// Number of entries currently held in the texture cache (for testing).
+    var cacheSize: Int { get }
 }
 
 // MARK: - SpriteSheetPixelProvider
@@ -23,15 +30,22 @@ final class SpriteSheetPixelProvider: PixelCharacterProvider {
 
     var characterOverrides: [String: Int] = [:]
 
-    // Sprite sheet constants
-    private static let sheetWidth: CGFloat = 112
-    private static let sheetHeight: CGFloat = 96
-    private static let frameWidth: CGFloat = 16
+    // Sprite sheet constants — PIPOYA RPG Maker MV format
+    // 3 cols × 4 rows, frames 32x32, rows = down/left/right/up
+    private static let sheetWidth: CGFloat = 96
+    private static let sheetHeight: CGFloat = 128
+    private static let frameWidth: CGFloat = 32
     private static let frameHeight: CGFloat = 32
-    private static let framesPerRow: Int = 7
+    private static let framesPerRow: Int = 3
 
-    // Number of character variants
-    private static let charCount: Int = 6
+    // Row indices for walk directions (RPG Maker MV convention)
+    static let rowDown: Int = 0
+    static let rowLeft: Int = 1
+    static let rowRight: Int = 2
+    static let rowUp: Int = 3
+
+    // Number of character variants (internal so AgentStore can reference it)
+    internal static let charCount: Int = 40
 
     // MARK: - Caches
 
@@ -49,6 +63,14 @@ final class SpriteSheetPixelProvider: PixelCharacterProvider {
 
     // MARK: - PixelCharacterProvider
 
+    func invalidateCache() {
+        cache = [:]
+        walkCache = [:]
+        tintCache = [:]
+    }
+
+    var cacheSize: Int { cache.count }
+
     func textures(for status: AgentStatus, agentID: String, size: Int) -> [SKTexture] {
         let key = "\(status)-\(agentID)-\(size)"
         if let cached = cache[key] { return cached }
@@ -60,24 +82,24 @@ final class SpriteSheetPixelProvider: PixelCharacterProvider {
         let result: [SKTexture]
         switch status {
         case .idle, .thinking:
-            // row 0 (down), frame 0 only — static idle
-            result = [Self.frameTexture(sheet: sheet, row: 0, col: 0)]
+            // row 0 (down), middle frame — static idle pose
+            result = [Self.frameTexture(sheet: sheet, row: 0, col: 1)]
 
         case .working:
-            // row 0 (down), frames 1–6 — typing animation
-            result = (1..<7).map { col in
+            // row 0 (down), all 3 frames — stepping animation
+            result = (0..<3).map { col in
                 Self.frameTexture(sheet: sheet, row: 0, col: col)
             }
 
         case .waitingApproval:
-            // row 0 (down), frames 0–3 loop
-            result = (0..<4).map { col in
+            // row 0 (down), all 3 frames — subtle bob
+            result = (0..<3).map { col in
                 Self.frameTexture(sheet: sheet, row: 0, col: col)
             }
 
         case .error:
-            // row 0 (down), frame 0 with red tint
-            let base = Self.frameTexture(sheet: sheet, row: 0, col: 0)
+            // row 0 (down), middle frame with red tint
+            let base = Self.frameTexture(sheet: sheet, row: 0, col: 1)
             let tintKey = "\(charIndex)-error"
             let tinted: SKTexture
             if let t = tintCache[tintKey] {
@@ -188,6 +210,12 @@ final class ProgrammaticPixelProvider: PixelCharacterProvider {
     private var cache: [String: [SKTexture]] = [:]
 
     // MARK: - PixelCharacterProvider
+
+    func invalidateCache() {
+        cache = [:]
+    }
+
+    var cacheSize: Int { cache.count }
 
     /// Convenience overload for tests that supply a hue directly.
     func textures(for status: AgentStatus, hue: CGFloat, size: Int) -> [SKTexture] {

@@ -38,18 +38,46 @@
 		PA1003PA1003PA1003PA1001 /* char_3.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1003PA1003PA1003PA1002 /* char_3.png */; };
 		PA1004PA1004PA1004PA1001 /* char_4.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1004PA1004PA1004PA1002 /* char_4.png */; };
 		PA1005PA1005PA1005PA1001 /* char_5.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1005PA1005PA1005PA1002 /* char_5.png */; };
+		PA2006PA2006PA2006PA1001 /* char_6.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2006PA2006PA2006PA1002 /* char_6.png */; };
+		PA2007PA2007PA2007PA1001 /* char_7.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2007PA2007PA2007PA1002 /* char_7.png */; };
+		PA2008PA2008PA2008PA1001 /* char_8.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2008PA2008PA2008PA1002 /* char_8.png */; };
+		PA2009PA2009PA2009PA1001 /* char_9.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2009PA2009PA2009PA1002 /* char_9.png */; };
+		PA2010PA2010PA2010PA1001 /* char_10.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2010PA2010PA2010PA1002 /* char_10.png */; };
+		PA2011PA2011PA2011PA1001 /* char_11.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2011PA2011PA2011PA1002 /* char_11.png */; };
+		PA2012PA2012PA2012PA1001 /* char_12.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2012PA2012PA2012PA1002 /* char_12.png */; };
+		PA2013PA2013PA2013PA1001 /* char_13.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2013PA2013PA2013PA1002 /* char_13.png */; };
+		PA2014PA2014PA2014PA1001 /* char_14.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2014PA2014PA2014PA1002 /* char_14.png */; };
+		PA2015PA2015PA2015PA1001 /* char_15.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2015PA2015PA2015PA1002 /* char_15.png */; };
+		PA2016PA2016PA2016PA1001 /* char_16.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2016PA2016PA2016PA1002 /* char_16.png */; };
+		PA2017PA2017PA2017PA1001 /* char_17.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2017PA2017PA2017PA1002 /* char_17.png */; };
+		PA2018PA2018PA2018PA1001 /* char_18.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2018PA2018PA2018PA1002 /* char_18.png */; };
+		PA2019PA2019PA2019PA1001 /* char_19.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2019PA2019PA2019PA1002 /* char_19.png */; };
+		PA2020PA2020PA2020PA1001 /* char_20.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2020PA2020PA2020PA1002 /* char_20.png */; };
+		PA2021PA2021PA2021PA1001 /* char_21.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2021PA2021PA2021PA1002 /* char_21.png */; };
+		PA2022PA2022PA2022PA1001 /* char_22.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2022PA2022PA2022PA1002 /* char_22.png */; };
+		PA2023PA2023PA2023PA1001 /* char_23.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2023PA2023PA2023PA1002 /* char_23.png */; };
+		PA2024PA2024PA2024PA1001 /* char_24.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2024PA2024PA2024PA1002 /* char_24.png */; };
+		PA2025PA2025PA2025PA1001 /* char_25.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2025PA2025PA2025PA1002 /* char_25.png */; };
+		PA2026PA2026PA2026PA1001 /* char_26.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2026PA2026PA2026PA1002 /* char_26.png */; };
+		PA2027PA2027PA2027PA1001 /* char_27.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2027PA2027PA2027PA1002 /* char_27.png */; };
+		PA2028PA2028PA2028PA1001 /* char_28.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2028PA2028PA2028PA1002 /* char_28.png */; };
+		PA2029PA2029PA2029PA1001 /* char_29.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2029PA2029PA2029PA1002 /* char_29.png */; };
+		PA2030PA2030PA2030PA1001 /* char_30.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2030PA2030PA2030PA1002 /* char_30.png */; };
+		PA2031PA2031PA2031PA1001 /* char_31.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2031PA2031PA2031PA1002 /* char_31.png */; };
+		PA2032PA2032PA2032PA1001 /* char_32.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2032PA2032PA2032PA1002 /* char_32.png */; };
+		PA2033PA2033PA2033PA1001 /* char_33.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2033PA2033PA2033PA1002 /* char_33.png */; };
+		PA2034PA2034PA2034PA1001 /* char_34.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2034PA2034PA2034PA1002 /* char_34.png */; };
+		PA2035PA2035PA2035PA1001 /* char_35.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2035PA2035PA2035PA1002 /* char_35.png */; };
+		PA2036PA2036PA2036PA1001 /* char_36.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2036PA2036PA2036PA1002 /* char_36.png */; };
+		PA2037PA2037PA2037PA1001 /* char_37.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2037PA2037PA2037PA1002 /* char_37.png */; };
+		PA2038PA2038PA2038PA1001 /* char_38.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2038PA2038PA2038PA1002 /* char_38.png */; };
+		PA2039PA2039PA2039PA1001 /* char_39.png in Resources */ = {isa = PBXBuildFile; fileRef = PA2039PA2039PA2039PA1002 /* char_39.png */; };
 		PA1010PA1010PA1010PA1001 /* floor_0.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1010PA1010PA1010PA1002 /* floor_0.png */; };
 		PA1010PA1010PA1010PA1003 /* floor_3.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1010PA1010PA1010PA1004 /* floor_3.png */; };
-		PA1020PA1020PA1020PA1001 /* DESK_FRONT.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1020PA1020PA1020PA1002 /* DESK_FRONT.png */; };
 		PA1021PA1021PA1021PA1001 /* DESK_SIDE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1021PA1021PA1021PA1002 /* DESK_SIDE.png */; };
-		PA1022PA1022PA1022PA1001 /* PC_FRONT_ON_1.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1022PA1022PA1022PA1002 /* PC_FRONT_ON_1.png */; };
-		PA1023PA1023PA1023PA1001 /* PC_FRONT_ON_2.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1023PA1023PA1023PA1002 /* PC_FRONT_ON_2.png */; };
-		PA1024PA1024PA1024PA1001 /* PC_FRONT_ON_3.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1024PA1024PA1024PA1002 /* PC_FRONT_ON_3.png */; };
 		PA1025PA1025PA1025PA1001 /* PC_SIDE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1025PA1025PA1025PA1002 /* PC_SIDE.png */; };
 		PA1030PA1030PA1030PA1001 /* SOFA_FRONT.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1030PA1030PA1030PA1002 /* SOFA_FRONT.png */; };
 		PA1031PA1031PA1031PA1001 /* CUSHIONED_BENCH.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1031PA1031PA1031PA1002 /* CUSHIONED_BENCH.png */; };
-		PA1032PA1032PA1032PA1001 /* SOFA_SIDE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1032PA1032PA1032PA1002 /* SOFA_SIDE.png */; };
-		PA1033PA1033PA1033PA1001 /* SMALL_TABLE_FRONT.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1033PA1033PA1033PA1002 /* SMALL_TABLE_FRONT.png */; };
 		PA1045PA1045PA1045PA1001 /* PLANT_LEFT.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1045PA1045PA1045PA1002 /* PLANT_LEFT.png */; };
 		PA1046PA1046PA1046PA1001 /* PLANT_RIGHT.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1046PA1046PA1046PA1002 /* PLANT_RIGHT.png */; };
 		PA1047PA1047PA1047PA1001 /* VENDING_MACHINE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1047PA1047PA1047PA1002 /* VENDING_MACHINE.png */; };
@@ -94,18 +122,46 @@
 		PA1003PA1003PA1003PA1002 /* char_3.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_3.png; path = "Assets/pixel-agents/characters/char_3.png"; sourceTree = "<group>"; };
 		PA1004PA1004PA1004PA1002 /* char_4.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_4.png; path = "Assets/pixel-agents/characters/char_4.png"; sourceTree = "<group>"; };
 		PA1005PA1005PA1005PA1002 /* char_5.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_5.png; path = "Assets/pixel-agents/characters/char_5.png"; sourceTree = "<group>"; };
+		PA2006PA2006PA2006PA1002 /* char_6.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_6.png; path = "Assets/pixel-agents/characters/char_6.png"; sourceTree = "<group>"; };
+		PA2007PA2007PA2007PA1002 /* char_7.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_7.png; path = "Assets/pixel-agents/characters/char_7.png"; sourceTree = "<group>"; };
+		PA2008PA2008PA2008PA1002 /* char_8.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_8.png; path = "Assets/pixel-agents/characters/char_8.png"; sourceTree = "<group>"; };
+		PA2009PA2009PA2009PA1002 /* char_9.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_9.png; path = "Assets/pixel-agents/characters/char_9.png"; sourceTree = "<group>"; };
+		PA2010PA2010PA2010PA1002 /* char_10.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_10.png; path = "Assets/pixel-agents/characters/char_10.png"; sourceTree = "<group>"; };
+		PA2011PA2011PA2011PA1002 /* char_11.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_11.png; path = "Assets/pixel-agents/characters/char_11.png"; sourceTree = "<group>"; };
+		PA2012PA2012PA2012PA1002 /* char_12.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_12.png; path = "Assets/pixel-agents/characters/char_12.png"; sourceTree = "<group>"; };
+		PA2013PA2013PA2013PA1002 /* char_13.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_13.png; path = "Assets/pixel-agents/characters/char_13.png"; sourceTree = "<group>"; };
+		PA2014PA2014PA2014PA1002 /* char_14.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_14.png; path = "Assets/pixel-agents/characters/char_14.png"; sourceTree = "<group>"; };
+		PA2015PA2015PA2015PA1002 /* char_15.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_15.png; path = "Assets/pixel-agents/characters/char_15.png"; sourceTree = "<group>"; };
+		PA2016PA2016PA2016PA1002 /* char_16.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_16.png; path = "Assets/pixel-agents/characters/char_16.png"; sourceTree = "<group>"; };
+		PA2017PA2017PA2017PA1002 /* char_17.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_17.png; path = "Assets/pixel-agents/characters/char_17.png"; sourceTree = "<group>"; };
+		PA2018PA2018PA2018PA1002 /* char_18.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_18.png; path = "Assets/pixel-agents/characters/char_18.png"; sourceTree = "<group>"; };
+		PA2019PA2019PA2019PA1002 /* char_19.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_19.png; path = "Assets/pixel-agents/characters/char_19.png"; sourceTree = "<group>"; };
+		PA2020PA2020PA2020PA1002 /* char_20.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_20.png; path = "Assets/pixel-agents/characters/char_20.png"; sourceTree = "<group>"; };
+		PA2021PA2021PA2021PA1002 /* char_21.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_21.png; path = "Assets/pixel-agents/characters/char_21.png"; sourceTree = "<group>"; };
+		PA2022PA2022PA2022PA1002 /* char_22.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_22.png; path = "Assets/pixel-agents/characters/char_22.png"; sourceTree = "<group>"; };
+		PA2023PA2023PA2023PA1002 /* char_23.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_23.png; path = "Assets/pixel-agents/characters/char_23.png"; sourceTree = "<group>"; };
+		PA2024PA2024PA2024PA1002 /* char_24.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_24.png; path = "Assets/pixel-agents/characters/char_24.png"; sourceTree = "<group>"; };
+		PA2025PA2025PA2025PA1002 /* char_25.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_25.png; path = "Assets/pixel-agents/characters/char_25.png"; sourceTree = "<group>"; };
+		PA2026PA2026PA2026PA1002 /* char_26.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_26.png; path = "Assets/pixel-agents/characters/char_26.png"; sourceTree = "<group>"; };
+		PA2027PA2027PA2027PA1002 /* char_27.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_27.png; path = "Assets/pixel-agents/characters/char_27.png"; sourceTree = "<group>"; };
+		PA2028PA2028PA2028PA1002 /* char_28.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_28.png; path = "Assets/pixel-agents/characters/char_28.png"; sourceTree = "<group>"; };
+		PA2029PA2029PA2029PA1002 /* char_29.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_29.png; path = "Assets/pixel-agents/characters/char_29.png"; sourceTree = "<group>"; };
+		PA2030PA2030PA2030PA1002 /* char_30.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_30.png; path = "Assets/pixel-agents/characters/char_30.png"; sourceTree = "<group>"; };
+		PA2031PA2031PA2031PA1002 /* char_31.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_31.png; path = "Assets/pixel-agents/characters/char_31.png"; sourceTree = "<group>"; };
+		PA2032PA2032PA2032PA1002 /* char_32.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_32.png; path = "Assets/pixel-agents/characters/char_32.png"; sourceTree = "<group>"; };
+		PA2033PA2033PA2033PA1002 /* char_33.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_33.png; path = "Assets/pixel-agents/characters/char_33.png"; sourceTree = "<group>"; };
+		PA2034PA2034PA2034PA1002 /* char_34.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_34.png; path = "Assets/pixel-agents/characters/char_34.png"; sourceTree = "<group>"; };
+		PA2035PA2035PA2035PA1002 /* char_35.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_35.png; path = "Assets/pixel-agents/characters/char_35.png"; sourceTree = "<group>"; };
+		PA2036PA2036PA2036PA1002 /* char_36.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_36.png; path = "Assets/pixel-agents/characters/char_36.png"; sourceTree = "<group>"; };
+		PA2037PA2037PA2037PA1002 /* char_37.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_37.png; path = "Assets/pixel-agents/characters/char_37.png"; sourceTree = "<group>"; };
+		PA2038PA2038PA2038PA1002 /* char_38.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_38.png; path = "Assets/pixel-agents/characters/char_38.png"; sourceTree = "<group>"; };
+		PA2039PA2039PA2039PA1002 /* char_39.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_39.png; path = "Assets/pixel-agents/characters/char_39.png"; sourceTree = "<group>"; };
 		PA1010PA1010PA1010PA1002 /* floor_0.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = floor_0.png; path = "Assets/pixel-agents/floors/floor_0.png"; sourceTree = "<group>"; };
 		PA1010PA1010PA1010PA1004 /* floor_3.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = floor_3.png; path = "Assets/pixel-agents/floors/floor_3.png"; sourceTree = "<group>"; };
-		PA1020PA1020PA1020PA1002 /* DESK_FRONT.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = DESK_FRONT.png; path = "Assets/pixel-agents/furniture/DESK_FRONT.png"; sourceTree = "<group>"; };
 		PA1021PA1021PA1021PA1002 /* DESK_SIDE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = DESK_SIDE.png; path = "Assets/pixel-agents/furniture/DESK_SIDE.png"; sourceTree = "<group>"; };
-		PA1022PA1022PA1022PA1002 /* PC_FRONT_ON_1.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = PC_FRONT_ON_1.png; path = "Assets/pixel-agents/furniture/PC_FRONT_ON_1.png"; sourceTree = "<group>"; };
-		PA1023PA1023PA1023PA1002 /* PC_FRONT_ON_2.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = PC_FRONT_ON_2.png; path = "Assets/pixel-agents/furniture/PC_FRONT_ON_2.png"; sourceTree = "<group>"; };
-		PA1024PA1024PA1024PA1002 /* PC_FRONT_ON_3.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = PC_FRONT_ON_3.png; path = "Assets/pixel-agents/furniture/PC_FRONT_ON_3.png"; sourceTree = "<group>"; };
 		PA1025PA1025PA1025PA1002 /* PC_SIDE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = PC_SIDE.png; path = "Assets/pixel-agents/furniture/PC_SIDE.png"; sourceTree = "<group>"; };
 		PA1030PA1030PA1030PA1002 /* SOFA_FRONT.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = SOFA_FRONT.png; path = "Assets/pixel-agents/furniture/SOFA_FRONT.png"; sourceTree = "<group>"; };
 		PA1031PA1031PA1031PA1002 /* CUSHIONED_BENCH.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = CUSHIONED_BENCH.png; path = "Assets/pixel-agents/furniture/CUSHIONED_BENCH.png"; sourceTree = "<group>"; };
-		PA1032PA1032PA1032PA1002 /* SOFA_SIDE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = SOFA_SIDE.png; path = "Assets/pixel-agents/furniture/SOFA_SIDE.png"; sourceTree = "<group>"; };
-		PA1033PA1033PA1033PA1002 /* SMALL_TABLE_FRONT.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = SMALL_TABLE_FRONT.png; path = "Assets/pixel-agents/furniture/SMALL_TABLE_FRONT.png"; sourceTree = "<group>"; };
 		PA1045PA1045PA1045PA1002 /* PLANT_LEFT.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = PLANT_LEFT.png; path = "Assets/pixel-agents/furniture/PLANT_LEFT.png"; sourceTree = "<group>"; };
 		PA1046PA1046PA1046PA1002 /* PLANT_RIGHT.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = PLANT_RIGHT.png; path = "Assets/pixel-agents/furniture/PLANT_RIGHT.png"; sourceTree = "<group>"; };
 		PA1047PA1047PA1047PA1002 /* VENDING_MACHINE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = VENDING_MACHINE.png; path = "Assets/pixel-agents/furniture/VENDING_MACHINE.png"; sourceTree = "<group>"; };
@@ -166,18 +222,46 @@
 				PA1003PA1003PA1003PA1002 /* char_3.png */,
 				PA1004PA1004PA1004PA1002 /* char_4.png */,
 				PA1005PA1005PA1005PA1002 /* char_5.png */,
+				PA2006PA2006PA2006PA1002 /* char_6.png */,
+				PA2007PA2007PA2007PA1002 /* char_7.png */,
+				PA2008PA2008PA2008PA1002 /* char_8.png */,
+				PA2009PA2009PA2009PA1002 /* char_9.png */,
+				PA2010PA2010PA2010PA1002 /* char_10.png */,
+				PA2011PA2011PA2011PA1002 /* char_11.png */,
+				PA2012PA2012PA2012PA1002 /* char_12.png */,
+				PA2013PA2013PA2013PA1002 /* char_13.png */,
+				PA2014PA2014PA2014PA1002 /* char_14.png */,
+				PA2015PA2015PA2015PA1002 /* char_15.png */,
+				PA2016PA2016PA2016PA1002 /* char_16.png */,
+				PA2017PA2017PA2017PA1002 /* char_17.png */,
+				PA2018PA2018PA2018PA1002 /* char_18.png */,
+				PA2019PA2019PA2019PA1002 /* char_19.png */,
+				PA2020PA2020PA2020PA1002 /* char_20.png */,
+				PA2021PA2021PA2021PA1002 /* char_21.png */,
+				PA2022PA2022PA2022PA1002 /* char_22.png */,
+				PA2023PA2023PA2023PA1002 /* char_23.png */,
+				PA2024PA2024PA2024PA1002 /* char_24.png */,
+				PA2025PA2025PA2025PA1002 /* char_25.png */,
+				PA2026PA2026PA2026PA1002 /* char_26.png */,
+				PA2027PA2027PA2027PA1002 /* char_27.png */,
+				PA2028PA2028PA2028PA1002 /* char_28.png */,
+				PA2029PA2029PA2029PA1002 /* char_29.png */,
+				PA2030PA2030PA2030PA1002 /* char_30.png */,
+				PA2031PA2031PA2031PA1002 /* char_31.png */,
+				PA2032PA2032PA2032PA1002 /* char_32.png */,
+				PA2033PA2033PA2033PA1002 /* char_33.png */,
+				PA2034PA2034PA2034PA1002 /* char_34.png */,
+				PA2035PA2035PA2035PA1002 /* char_35.png */,
+				PA2036PA2036PA2036PA1002 /* char_36.png */,
+				PA2037PA2037PA2037PA1002 /* char_37.png */,
+				PA2038PA2038PA2038PA1002 /* char_38.png */,
+				PA2039PA2039PA2039PA1002 /* char_39.png */,
 				PA1010PA1010PA1010PA1002 /* floor_0.png */,
 				PA1010PA1010PA1010PA1004 /* floor_3.png */,
-				PA1020PA1020PA1020PA1002 /* DESK_FRONT.png */,
 				PA1021PA1021PA1021PA1002 /* DESK_SIDE.png */,
-				PA1022PA1022PA1022PA1002 /* PC_FRONT_ON_1.png */,
-				PA1023PA1023PA1023PA1002 /* PC_FRONT_ON_2.png */,
-				PA1024PA1024PA1024PA1002 /* PC_FRONT_ON_3.png */,
 				PA1025PA1025PA1025PA1002 /* PC_SIDE.png */,
 				PA1030PA1030PA1030PA1002 /* SOFA_FRONT.png */,
 				PA1031PA1031PA1031PA1002 /* CUSHIONED_BENCH.png */,
-				PA1032PA1032PA1032PA1002 /* SOFA_SIDE.png */,
-				PA1033PA1033PA1033PA1002 /* SMALL_TABLE_FRONT.png */,
 					PA1045PA1045PA1045PA1002 /* PLANT_LEFT.png */,
 				PA1046PA1046PA1046PA1002 /* PLANT_RIGHT.png */,
 				PA1047PA1047PA1047PA1002 /* VENDING_MACHINE.png */,
@@ -309,18 +393,46 @@
 				PA1003PA1003PA1003PA1001 /* char_3.png in Resources */,
 				PA1004PA1004PA1004PA1001 /* char_4.png in Resources */,
 				PA1005PA1005PA1005PA1001 /* char_5.png in Resources */,
+				PA2006PA2006PA2006PA1001 /* char_6.png in Resources */,
+				PA2007PA2007PA2007PA1001 /* char_7.png in Resources */,
+				PA2008PA2008PA2008PA1001 /* char_8.png in Resources */,
+				PA2009PA2009PA2009PA1001 /* char_9.png in Resources */,
+				PA2010PA2010PA2010PA1001 /* char_10.png in Resources */,
+				PA2011PA2011PA2011PA1001 /* char_11.png in Resources */,
+				PA2012PA2012PA2012PA1001 /* char_12.png in Resources */,
+				PA2013PA2013PA2013PA1001 /* char_13.png in Resources */,
+				PA2014PA2014PA2014PA1001 /* char_14.png in Resources */,
+				PA2015PA2015PA2015PA1001 /* char_15.png in Resources */,
+				PA2016PA2016PA2016PA1001 /* char_16.png in Resources */,
+				PA2017PA2017PA2017PA1001 /* char_17.png in Resources */,
+				PA2018PA2018PA2018PA1001 /* char_18.png in Resources */,
+				PA2019PA2019PA2019PA1001 /* char_19.png in Resources */,
+				PA2020PA2020PA2020PA1001 /* char_20.png in Resources */,
+				PA2021PA2021PA2021PA1001 /* char_21.png in Resources */,
+				PA2022PA2022PA2022PA1001 /* char_22.png in Resources */,
+				PA2023PA2023PA2023PA1001 /* char_23.png in Resources */,
+				PA2024PA2024PA2024PA1001 /* char_24.png in Resources */,
+				PA2025PA2025PA2025PA1001 /* char_25.png in Resources */,
+				PA2026PA2026PA2026PA1001 /* char_26.png in Resources */,
+				PA2027PA2027PA2027PA1001 /* char_27.png in Resources */,
+				PA2028PA2028PA2028PA1001 /* char_28.png in Resources */,
+				PA2029PA2029PA2029PA1001 /* char_29.png in Resources */,
+				PA2030PA2030PA2030PA1001 /* char_30.png in Resources */,
+				PA2031PA2031PA2031PA1001 /* char_31.png in Resources */,
+				PA2032PA2032PA2032PA1001 /* char_32.png in Resources */,
+				PA2033PA2033PA2033PA1001 /* char_33.png in Resources */,
+				PA2034PA2034PA2034PA1001 /* char_34.png in Resources */,
+				PA2035PA2035PA2035PA1001 /* char_35.png in Resources */,
+				PA2036PA2036PA2036PA1001 /* char_36.png in Resources */,
+				PA2037PA2037PA2037PA1001 /* char_37.png in Resources */,
+				PA2038PA2038PA2038PA1001 /* char_38.png in Resources */,
+				PA2039PA2039PA2039PA1001 /* char_39.png in Resources */,
 				PA1010PA1010PA1010PA1001 /* floor_0.png in Resources */,
 				PA1010PA1010PA1010PA1003 /* floor_3.png in Resources */,
-				PA1020PA1020PA1020PA1001 /* DESK_FRONT.png in Resources */,
 				PA1021PA1021PA1021PA1001 /* DESK_SIDE.png in Resources */,
-				PA1022PA1022PA1022PA1001 /* PC_FRONT_ON_1.png in Resources */,
-				PA1023PA1023PA1023PA1001 /* PC_FRONT_ON_2.png in Resources */,
-				PA1024PA1024PA1024PA1001 /* PC_FRONT_ON_3.png in Resources */,
 				PA1025PA1025PA1025PA1001 /* PC_SIDE.png in Resources */,
 				PA1030PA1030PA1030PA1001 /* SOFA_FRONT.png in Resources */,
 				PA1031PA1031PA1031PA1001 /* CUSHIONED_BENCH.png in Resources */,
-				PA1032PA1032PA1032PA1001 /* SOFA_SIDE.png in Resources */,
-				PA1033PA1033PA1033PA1001 /* SMALL_TABLE_FRONT.png in Resources */,
 				PA1045PA1045PA1045PA1001 /* PLANT_LEFT.png in Resources */,
 				PA1046PA1046PA1046PA1001 /* PLANT_RIGHT.png in Resources */,
 				PA1047PA1047PA1047PA1001 /* VENDING_MACHINE.png in Resources */,

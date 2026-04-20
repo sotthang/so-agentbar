@@ -96,9 +96,36 @@ final class PixelAgentsWindowController: NSWindowController {
             .sink { [weak self] overrides in
                 guard let self else { return }
                 self.provider.characterOverrides = overrides
+                self.provider.invalidateCache()
                 self.scene.refreshAllCharacterTextures()
             }
             .store(in: &cancellables)
+
+        // Reset window frame request from settings
+        store.pixelWindowResetRequest
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.resetFrame() }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Reset
+
+    /// Clears the saved window frame and restores the default position/size.
+    func resetFrame() {
+        UserDefaults.standard.removeObject(forKey: Self.windowFrameKey)
+        guard let win = window else { return }
+        let defaultFrame = Self.defaultFrame()
+        win.setFrame(defaultFrame, display: true, animate: true)
+    }
+
+    private static func defaultFrame() -> NSRect {
+        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        return NSRect(
+            x: screen.maxX - 420 - 20,
+            y: screen.minY + 20,
+            width: 420,
+            height: 560
+        )
     }
 
     // MARK: - Show / Hide
@@ -147,13 +174,6 @@ final class PixelAgentsWindowController: NSWindowController {
            let x = dict["x"], let y = dict["y"], let w = dict["w"], let h = dict["h"] {
             return NSRect(x: x, y: y, width: w, height: h)
         }
-        // Default: bottom-right of main screen
-        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        return NSRect(
-            x: screen.maxX - 420 - 20,
-            y: screen.minY + 20,
-            width: 420,
-            height: 560
-        )
+        return Self.defaultFrame()
     }
 }

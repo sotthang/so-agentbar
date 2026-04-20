@@ -8,7 +8,8 @@ struct CharacterPickerView: View {
     @ObservedObject var store: AgentStore
     @Environment(\.dismiss) private var dismiss
 
-    private let charCount = 6
+    private var charCount: Int { SpriteSheetPixelProvider.charCount }
+    private let columns = Array(repeating: GridItem(.fixed(44), spacing: 8), count: 8)
 
     var selectedIndex: Int {
         store.pixelCharacterOverrides[agentID]
@@ -20,18 +21,22 @@ struct CharacterPickerView: View {
             Text(store.t("캐릭터 선택", "Choose Character"))
                 .font(.system(size: 13, weight: .medium))
 
-            HStack(spacing: 8) {
-                ForEach(0..<charCount, id: \.self) { index in
-                    CharacterPreviewCell(
-                        charIndex: index,
-                        isSelected: selectedIndex == index
-                    )
-                    .onTapGesture {
-                        store.pixelCharacterOverrides[agentID] = index
-                        dismiss()
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(0..<charCount, id: \.self) { index in
+                        CharacterPreviewCell(
+                            charIndex: index,
+                            isSelected: selectedIndex == index
+                        )
+                        .onTapGesture {
+                            store.pixelCharacterOverrides[agentID] = index
+                            dismiss()
+                        }
                     }
                 }
+                .padding(.horizontal, 4)
             }
+            .frame(maxHeight: 320)
 
             if store.pixelCharacterOverrides[agentID] != nil {
                 Button(store.t("기본값으로 초기화", "Reset to default")) {
@@ -87,14 +92,12 @@ struct SpriteKitCharacterPreview: NSViewRepresentable {
     private func extractCharacterImage(charIndex: Int) -> NSImage? {
         guard let image = NSImage(named: "char_\(charIndex)") else { return nil }
 
-        // 스프라이트시트에서 row=0, col=0 프레임 추출 (16×32px)
-        let sheetW = image.size.width
+        // PIPOYA 포맷: 32×32 프레임, 3열×4행. row=0(아래 바라봄), col=1(정면 중앙 대기 포즈).
         let sheetH = image.size.height
-        let frameW: CGFloat = 16
+        let frameW: CGFloat = 32
         let frameH: CGFloat = 32
 
-        // row=0, col=0 → top-left
-        let srcRect = NSRect(x: 0, y: sheetH - frameH, width: frameW, height: frameH)
+        let srcRect = NSRect(x: frameW, y: sheetH - frameH, width: frameW, height: frameH)
         let destSize = NSSize(width: frameW, height: frameH)
 
         let result = NSImage(size: destSize)

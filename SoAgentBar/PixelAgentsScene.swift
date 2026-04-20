@@ -45,8 +45,12 @@ final class PixelAgentsScene: SKScene {
     /// WORK zone desks — persistent, fixed slots
     private var workDeskNodes: [SKNode] = []
 
-    /// MEETING zone furniture — persistent
+    /// MEETING zone furniture (frames on wall) — persistent
     private var meetingZoneNodes: [SKNode] = []
+
+    /// MEETING zone tables — dynamic, one per session group
+    private var meetingTableNodes: [SKNode] = []
+    private var meetingGroupCount: Int = 0
 
     private var floorNode: SKNode?
 
@@ -88,13 +92,52 @@ final class PixelAgentsScene: SKScene {
     // 각 존의 캐릭터 기준점
     private static let restCenterX: CGFloat = sceneW / 2        // 휴게실: 상단 중앙
     private static let restBaseY: CGFloat   = splitY + 148      // 휴게실 캐릭터 시작 Y (소파 위치 = splitY+150)
+
+    // 휴게실 wander 영역: 가구 사이를 돌아다닐 수 있는 바닥 공간
+    private static let restWanderBounds = CGRect(
+        x: 40, y: splitY + 20, width: sceneW - 80, height: 120
+    )
+    // 관심 지점: 냉장고 앞, 자판기 앞, 소파 앞 — 캐릭터가 자주 방문
+    private static let restInterestPoints: [CGPoint] = [
+        CGPoint(x: sceneW - 24 - 40, y: splitY + 40),  // 냉장고 앞
+        CGPoint(x: sceneW - 24,      y: splitY + 40),  // 자판기 앞
+        CGPoint(x: restCenterX - 80, y: splitY + 100), // 소파1 앞
+        CGPoint(x: restCenterX + 80, y: splitY + 100), // 소파2 앞
+        CGPoint(x: restCenterX,      y: splitY + 80)   // 벤치 앞
+    ]
     // PC 중심 Y = deskY + 64 = (charBaseY - 40) + 64 = charBaseY + 24
     // 캐릭터를 PC 화면 높이에 맞추기 위해 +24 오프셋 적용
     private static let workCharOffsetY: CGFloat = 24
     private static let waitCenterX: CGFloat = splitX + 105      // 미팅룸 중앙 X
     private static let waitBaseY: CGFloat   = 60                // 미팅룸 캐릭터 시작 Y
     private static let waitColSpacing: CGFloat = 35             // 테이블 양쪽 열 간격
-    private static let meetingTableY: CGFloat = 150             // 미팅 테이블 Y
+
+    /// 부모 세션 ID에서 결정적으로 파생된 배경 색상 (부모+서브에이전트 그룹 색상).
+    /// 어두운 floor 색상 위에서도 글자가 잘 보이도록 중간 명도/채도 팔레트 사용.
+    static func sessionColor(forParentID agentID: String) -> NSColor {
+        var hash: UInt32 = 2166136261
+        for byte in agentID.utf8 {
+            hash ^= UInt32(byte)
+            hash &*= 16777619
+        }
+        let hue = CGFloat(hash % 1000) / 1000.0
+        return NSColor(hue: hue, saturation: 0.55, brightness: 0.55, alpha: 1)
+    }
+
+    // 미팅룸 동적 레이아웃: N개 세션 그룹 수에 따라 테이블 Y 간격 자동 조정
+    private static let meetingMarginY: CGFloat = 30
+    private static let meetingMaxPitch: CGFloat = 120
+    /// 세션이 없어도 항상 유지되는 최소 테이블 수
+    private static let minMeetingTables: Int = 2
+    private static func meetingPitch(groupCount: Int) -> CGFloat {
+        let avail = splitY - 2 * meetingMarginY
+        guard groupCount > 0 else { return meetingMaxPitch }
+        return min(meetingMaxPitch, avail / CGFloat(groupCount))
+    }
+    private static func meetingTableY(index: Int, groupCount: Int) -> CGFloat {
+        let pitch = meetingPitch(groupCount: groupCount)
+        return meetingMarginY + pitch * (CGFloat(index) + 0.5)
+    }
 
     // 가구 고정 Y
     private static let furnitureY: CGFloat = 30
@@ -147,10 +190,21 @@ final class PixelAgentsScene: SKScene {
         // 부모 에이전트 + 활성 서브에이전트 flat 목록
         // 조건: 부모가 활성(non-idle)일 때만, 그 중 활성 서브에이전트만 포함
         var flatAgents = [Agent]()
+        var sessionColors: [String: NSColor] = [:]  // agentID → team color (부모+서브 동일)
         for agent in agents {
             flatAgents.append(agent)
             if agent.status != .idle {
-                flatAgents += agent.subagents.filter { $0.status != .idle }
+                let activeSubs = agent.subagents.filter { $0.status != .idle }
+                if !activeSubs.isEmpty {
+                    let color = Self.sessionColor(forParentID: agent.id)
+                    sessionColors[agent.id] = color
+                    for sub in activeSubs {
+                        flatAgents.append(sub)
+                        sessionColors[sub.id] = color
+                    }
+                } else {
+                    flatAgents += activeSubs
+                }
             }
         }
 
@@ -174,9 +228,30 @@ final class PixelAgentsScene: SKScene {
         var meetingIndexMap: [String: Int] = [:]
         var restIndexMap: [String: Int] = [:]
         var workSlotMap: [String: Int] = [:]
-        for (i, a) in meetingAgents.enumerated() { meetingIndexMap[a.id] = i }
         for (i, a) in restAgents.enumerated()    { restIndexMap[a.id] = i }
         for (i, a) in workAgents.enumerated()    { workSlotMap[a.id] = i }
+
+        // 세션별로 미팅 테이블 배정: 부모(또는 독립 waitingApproval) = 새 테이블, 서브에이전트 = 같은 테이블.
+        // 같은 테이블 4좌석 초과 시 테이블 추가.
+        // composite index: tableIdx*4 + seatIdx
+        var currentTableIdx = -1
+        var currentSeat = 0
+        for agent in meetingAgents {
+            if !agent.isSubagent {
+                currentTableIdx += 1
+                currentSeat = 0
+            } else if currentSeat >= 4 {
+                currentTableIdx += 1
+                currentSeat = 0
+            }
+            meetingIndexMap[agent.id] = currentTableIdx * 4 + currentSeat
+            currentSeat += 1
+        }
+        let newGroupCount = max(0, currentTableIdx + 1)
+        if newGroupCount != meetingGroupCount {
+            rebuildMeetingTables(count: max(Self.minMeetingTables, newGroupCount))
+            meetingGroupCount = newGroupCount
+        }
 
         // Add new agents / update existing
         for agent in flatAgents {
@@ -197,9 +272,25 @@ final class PixelAgentsScene: SKScene {
                 existing.update(status: agent.status, task: agent.currentTask)
 
                 if previousZone != targetZone {
+                    // 존 이동: wander 정지 후 새 목적지로 걸어감
+                    existing.stopWandering()
                     let waypoints = doorWaypoints(from: previousZone ?? targetZone, to: targetZone)
                     currentZones[agent.id] = targetZone
-                    existing.walkPath(through: waypoints, to: dest)
+                    let agentID = agent.id
+                    existing.walkPath(through: waypoints, to: dest) { [weak existing, weak self] in
+                        // 도착 후에도 여전히 휴게실이면 wander 시작 (중간에 zone 변경되었으면 skip)
+                        guard let self, let existing,
+                              self.currentZones[agentID] == .rest else { return }
+                        existing.startWandering(
+                            bounds: Self.restWanderBounds,
+                            interestPoints: Self.restInterestPoints,
+                            otherIdlePositions: { [weak self, weak existing] in
+                                self?.otherIdlePositions(excluding: existing) ?? []
+                            }
+                        )
+                    }
+                } else if case .rest = targetZone {
+                    // 이미 휴게실 안 → wander가 position 관리, 덮어쓰지 않음
                 } else {
                     existing.position = dest
                 }
@@ -211,13 +302,24 @@ final class PixelAgentsScene: SKScene {
                     status: agent.status,
                     task: agent.currentTask,
                     provider: provider,
-                    characterSize: charSize
+                    characterSize: charSize,
+                    sessionColor: sessionColors[agent.id]
                 )
                 characterNodes[agent.id] = node
                 currentZones[agent.id] = targetZone
                 node.position = dest
                 node.zPosition = 2
                 addChild(node)
+                // 신규 노드가 휴게실에 배치 → 바로 wander 시작
+                if case .rest = targetZone {
+                    node.startWandering(
+                        bounds: Self.restWanderBounds,
+                        interestPoints: Self.restInterestPoints,
+                        otherIdlePositions: { [weak self, weak node] in
+                            self?.otherIdlePositions(excluding: node) ?? []
+                        }
+                    )
+                }
             }
         }
 
@@ -236,6 +338,17 @@ final class PixelAgentsScene: SKScene {
         }
     }
 
+    /// 현재 휴게실에 있는 (wander 중인) 다른 캐릭터들의 위치 — 분산 로직용.
+    fileprivate func otherIdlePositions(excluding node: PixelCharacterNode?) -> [CGPoint] {
+        var positions: [CGPoint] = []
+        for (id, n) in characterNodes where n !== node {
+            if case .rest = currentZones[id] {
+                positions.append(n.position)
+            }
+        }
+        return positions
+    }
+
     // MARK: - Zone logic
 
     private func isWorkStatus(_ status: AgentStatus) -> Bool {
@@ -247,12 +360,13 @@ final class PixelAgentsScene: SKScene {
 
     /// 에이전트가 미팅룸에 가야 하는지 판단
     /// - 서브에이전트 본인이면 → 미팅룸
-    /// - 서브에이전트가 있는 부모면 → 미팅룸 (팀 미팅)
     /// - waitingApproval 상태면 → 미팅룸
+    /// - 부모 세션: 현재 **실행 중인 서브에이전트가 하나라도 있을 때만** 미팅룸 (팀 미팅)
     private func isInMeeting(_ agent: Agent) -> Bool {
-        agent.isSubagent
-            || agent.status == .waitingApproval
-            || (agent.subagentCount > 0 && agent.status != .idle)
+        if agent.isSubagent { return true }
+        if agent.status == .waitingApproval { return true }
+        guard agent.status != .idle else { return false }
+        return agent.subagents.contains { $0.status != .idle }
     }
 
     private func zoneForAgent(_ agent: Agent, workSlot: Int) -> Zone {
@@ -302,12 +416,18 @@ final class PixelAgentsScene: SKScene {
             return CGPoint(x: Self.restCenterX + CGFloat(indexInZone % 3 - 1) * 60,
                            y: Self.restBaseY + CGFloat(indexInZone / 3) * Self.charSpacingY)
         case .wait:
-            // 테이블 양쪽 2열 배치: 짝수 인덱스 → 왼쪽, 홀수 → 오른쪽
-            let col = indexInZone % 2
-            let row = indexInZone / 2
+            // composite index = tableIdx*4 + seatIdx
+            // seat 0,1 = 아래쪽 좌/우, seat 2,3 = 위쪽 좌/우
+            let tableIdx = indexInZone / 4
+            let seatIdx  = indexInZone % 4
+            let col = seatIdx % 2
+            let row = seatIdx / 2
+            let count = max(Self.minMeetingTables, meetingGroupCount)
+            let tableY = Self.meetingTableY(index: tableIdx, groupCount: count)
+            let pitch  = Self.meetingPitch(groupCount: count)
             let xOff: CGFloat = col == 0 ? -Self.waitColSpacing : Self.waitColSpacing
-            return CGPoint(x: Self.waitCenterX + xOff,
-                           y: Self.waitBaseY + CGFloat(row) * Self.charSpacingY)
+            let yOff: CGFloat = row == 0 ? -pitch * 0.25 : pitch * 0.25
+            return CGPoint(x: Self.waitCenterX + xOff, y: tableY + yOff)
         case .work(let slot):
             let col = slot % 2   // 0=왼쪽, 1=오른쪽
             let row = slot / 2   // 0=하단, 1=상단
@@ -697,28 +817,9 @@ final class PixelAgentsScene: SKScene {
     // MARK: - Meeting zone setup (우하단)
 
     private func setupMeetingRoom() {
-        let cx = Self.waitCenterX
-        let tableTex = SKTexture(imageNamed: "MEETING_TABLE")
-        tableTex.filteringMode = .nearest
-        // 원본 15×24 → 3배 스케일: 45×72
-        let tableSize = CGSize(width: 45, height: 72)
-
-        // 테이블 2개: 캐릭터 행 사이에 배치
-        // 캐릭터 행: y=60, 120, 180, 240 (waitBaseY + row*charSpacingY)
-        // 테이블1(하단): 행 0~1 사이, 테이블2(상단): 행 2~3 사이
-        let tableYs: [CGFloat] = [
-            Self.waitBaseY + Self.charSpacingY * 0.5,   // 90 (행 0~1 사이)
-            Self.waitBaseY + Self.charSpacingY * 2.5    // 210 (행 2~3 사이)
-        ]
-
-        for y in tableYs {
-            let table = SKSpriteNode(texture: tableTex, size: tableSize)
-            table.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-            table.position = CGPoint(x: cx, y: y)
-            table.zPosition = 1
-            addChild(table)
-            meetingZoneNodes.append(table)
-        }
+        // 초기 테이블: 세션이 없어도 기본 N개는 보이도록 배치.
+        // 이후 세션 그룹 수에 맞춰 rebuildMeetingTables()에서 증감.
+        rebuildMeetingTables(count: Self.minMeetingTables)
 
         // 벽 앞면 패널 중앙 Y: splitY - wallThickness/2 - wallFaceH/2
         let wallFaceCenterY = Self.splitY - Self.wallThickness / 2 - Self.wallFaceH / 2
@@ -743,6 +844,27 @@ final class PixelAgentsScene: SKScene {
         frameLarge.zPosition = 2
         addChild(frameLarge)
         meetingZoneNodes.append(frameLarge)
+    }
+
+    /// 미팅 테이블을 그룹 수에 맞춰 재생성 (동적 레이아웃).
+    private func rebuildMeetingTables(count: Int) {
+        for node in meetingTableNodes { node.removeFromParent() }
+        meetingTableNodes.removeAll()
+        guard count > 0 else { return }
+
+        let tableTex = SKTexture(imageNamed: "MEETING_TABLE")
+        tableTex.filteringMode = .nearest
+        let tableSize = CGSize(width: 45, height: 72)
+
+        for i in 0..<count {
+            let tableY = Self.meetingTableY(index: i, groupCount: count)
+            let table = SKSpriteNode(texture: tableTex, size: tableSize)
+            table.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            table.position = CGPoint(x: Self.waitCenterX, y: tableY)
+            table.zPosition = 1
+            addChild(table)
+            meetingTableNodes.append(table)
+        }
     }
 
     // MARK: - Work zone setup (permanent desks)
@@ -800,7 +922,7 @@ final class PixelAgentsScene: SKScene {
         for i in 0..<2 {
             let shelf = SKSpriteNode(texture: shelfTex, size: shelfSize)
             shelf.anchorPoint = CGPoint(x: 0.5, y: 0)
-            shelf.position = CGPoint(x: CGFloat(10 + i * 34), y: shelfY)
+            shelf.position = CGPoint(x: CGFloat(15 + i * 34), y: shelfY)
             shelf.zPosition = 1
             addChild(shelf)
             workDeskNodes.append(shelf)

@@ -233,6 +233,9 @@ class AgentStore: ObservableObject {
         didSet { UserDefaults.standard.set(pixelWindowOpacity, forKey: "pixelWindowOpacity") }
     }
 
+    /// 픽셀 창의 저장된 위치/크기를 기본값으로 초기화 요청 (WindowController가 구독).
+    let pixelWindowResetRequest = PassthroughSubject<Void, Never>()
+
     // 세션 설정
     @Published var showIdleSessions: Bool {
         didSet { UserDefaults.standard.set(showIdleSessions, forKey: "showIdleSessions") }
@@ -426,7 +429,7 @@ class AgentStore: ObservableObject {
     private let notificationCooldown: TimeInterval = 60     // 같은 이벤트 재알림 최소 간격
 
     init() {
-        self.isPixelWindowVisible = UserDefaults.standard.object(forKey: "isPixelWindowVisible") as? Bool ?? false
+        self.isPixelWindowVisible = UserDefaults.standard.object(forKey: "isPixelWindowVisible") as? Bool ?? true
         self.pixelWindowOpacity   = UserDefaults.standard.object(forKey: "pixelWindowOpacity") as? Double ?? 0.8
         self.showIdleSessions   = UserDefaults.standard.object(forKey: "showIdleSessions") as? Bool ?? true
         self.pollInterval       = UserDefaults.standard.object(forKey: "pollInterval") as? Double ?? 10.0
@@ -887,6 +890,24 @@ class AgentStore: ObservableObject {
             previousStatuses[agent.id] = agent.status
         }
 
+        // 새 세션에 미사용 캐릭터 랜덤 배정
+        let previousIDs = Set(agents.flatMap { [$0.id] + $0.subagents.map { $0.id } })
+        let allNewAgents = newAgents.flatMap { [$0] + $0.subagents }
+        for agent in allNewAgents where !previousIDs.contains(agent.id) && pixelCharacterOverrides[agent.id] == nil {
+            let inUse = Set(allNewAgents.map { a in pixelCharacterOverrides[a.id] ?? SpriteSheetPixelProvider.charIndex(for: a.id) })
+            pixelCharacterOverrides[agent.id] = assignCharacter(forNewAgentID: agent.id, inUseIndices: inUse)
+        }
+
         agents = newAgents
+    }
+
+    /// Returns a character index not in inUseIndices, or a random index if all 6 are used.
+    internal func assignCharacter(forNewAgentID id: String, inUseIndices: Set<Int>) -> Int {
+        let total = SpriteSheetPixelProvider.charCount
+        let available = (0..<total).filter { !inUseIndices.contains($0) }
+        if available.isEmpty {
+            return Int.random(in: 0..<total)
+        }
+        return available.randomElement()!
     }
 }

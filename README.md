@@ -126,6 +126,10 @@ Your support helps me maintain and improve this project.
 
 👉 [https://github.com/sponsors/sotthang](https://github.com/sponsors/sotthang)
 
+## Credits
+
+Pixel Agents character sprites by [PIPOYA](https://pipoya.itch.io/pipoya-free-rpg-character-sprites-32x32) (PIPOYA FREE RPG Character Sprites 32x32).
+
 ## License
 
 [MIT](LICENSE)

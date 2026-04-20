@@ -138,7 +138,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         Task { @MainActor in
             if let path, let sourceStr {
-                let source: SessionSource = sourceStr == "xcode" ? .xcode : .cli
+                let source: SessionSource
+                switch sourceStr {
+                case "xcode":         source = .xcode
+                case "desktopCode":   source = .desktopCode
+                case "desktopCowork": source = .desktopCowork
+                default:              source = .cli
+                }
                 self.store.openProject(path, source: source)
             } else {
                 self.showPopover()

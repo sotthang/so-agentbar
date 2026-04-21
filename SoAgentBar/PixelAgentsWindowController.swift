@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import SpriteKit
 import Combine
 
 // MARK: - PixelAgentsWindowController
@@ -12,6 +13,7 @@ final class PixelAgentsWindowController: NSWindowController {
     private let scene: PixelAgentsScene
     private let provider = SpriteSheetPixelProvider()
     private var cancellables = Set<AnyCancellable>()
+    private weak var skView: SKView?
 
     /// 테스트 전용 scene 접근자.
     var pixelScene: PixelAgentsScene { scene }
@@ -71,8 +73,12 @@ final class PixelAgentsWindowController: NSWindowController {
         win.hasShadow = false
         win.isMovableByWindowBackground = true
 
-        let skView = SKViewRepresentable(scene: scene)
-        win.contentView = NSHostingView(rootView: skView)
+        let view = SKView()
+        view.allowsTransparency = true
+        view.preferredFramesPerSecond = 20
+        view.presentScene(scene)
+        win.contentView = view
+        self.skView = view
 
         self.window = win
         observeWindowFrame()
@@ -145,12 +151,14 @@ final class PixelAgentsWindowController: NSWindowController {
 
     func showWindow() {
         window?.orderFront(nil)
+        skView?.isPaused = false
         scene.resumeSystemPets()
     }
 
     func hideWindow() {
         window?.orderOut(nil)
         scene.pauseSystemPets()
+        skView?.isPaused = true
     }
 
     // MARK: - Frame persistence

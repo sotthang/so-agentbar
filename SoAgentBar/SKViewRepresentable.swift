@@ -10,7 +10,7 @@ struct SKViewRepresentable: NSViewRepresentable {
     func makeNSView(context: Context) -> SKView {
         let view = SKView()
         view.allowsTransparency = true
-        view.preferredFramesPerSecond = 30
+        view.preferredFramesPerSecond = 20
         view.presentScene(scene)
         return view
     }

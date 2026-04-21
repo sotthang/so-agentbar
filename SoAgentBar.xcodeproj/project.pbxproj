@@ -42,6 +42,17 @@
 		PA0005PA0005PA0005PA0001 /* PixelAgentsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = PA0005PA0005PA0005PA0002 /* PixelAgentsWindowController.swift */; };
 		PA0006PA0006PA0006PA0001 /* PixelAgentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PA0006PA0006PA0006PA0002 /* PixelAgentsTests.swift */; };
 		SM004SM004SM004SM004SM01 /* XCTAssertEqualOptional.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM004SM004SM004SM004SM02 /* XCTAssertEqualOptional.swift */; };
+		UF001UF001UF001UF001UF01 /* KeepAwakeManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF001UF001UF001UF001UF02 /* KeepAwakeManagerTests.swift */; };
+		UF002UF002UF002UF002UF01 /* ClipboardMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF002UF002UF002UF002UF02 /* ClipboardMonitorTests.swift */; };
+		UF003UF003UF003UF003UF01 /* QuickNoteStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF003UF003UF003UF003UF02 /* QuickNoteStoreTests.swift */; };
+		UF017UF017UF017UF017UF01 /* TestConformances.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF017UF017UF017UF017UF02 /* TestConformances.swift */; };
+		UF010UF010UF010UF010UF01 /* KeepAwakeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF010UF010UF010UF010UF02 /* KeepAwakeManager.swift */; };
+		UF011UF011UF011UF011UF01 /* ClipboardEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF011UF011UF011UF011UF02 /* ClipboardEntry.swift */; };
+		UF012UF012UF012UF012UF01 /* ClipboardMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF012UF012UF012UF012UF02 /* ClipboardMonitor.swift */; };
+		UF013UF013UF013UF013UF01 /* ClipboardHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF013UF013UF013UF013UF02 /* ClipboardHistoryView.swift */; };
+		UF014UF014UF014UF014UF01 /* QuickNoteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF014UF014UF014UF014UF02 /* QuickNoteStore.swift */; };
+		UF015UF015UF015UF015UF01 /* QuickNoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF015UF015UF015UF015UF02 /* QuickNoteView.swift */; };
+		UF016UF016UF016UF016UF01 /* PopoverTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF016UF016UF016UF016UF02 /* PopoverTab.swift */; };
 		PA1000PA1000PA1000PA1001 /* char_0.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1000PA1000PA1000PA1002 /* char_0.png */; };
 		PA1001PA1001PA1001PA1001 /* char_1.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1001PA1001PA1001PA1002 /* char_1.png */; };
 		PA1002PA1002PA1002PA1001 /* char_2.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1002PA1002PA1002PA1002 /* char_2.png */; };
@@ -141,6 +152,17 @@
 		SP002SP002SP002SP002SP02 /* SystemPet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPet.swift; sourceTree = "<group>"; };
 		SP003SP003SP003SP003SP02 /* SystemPetNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPetNode.swift; sourceTree = "<group>"; };
 		SM004SM004SM004SM004SM02 /* XCTAssertEqualOptional.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XCTAssertEqualOptional.swift; sourceTree = "<group>"; };
+		UF001UF001UF001UF001UF02 /* KeepAwakeManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeepAwakeManagerTests.swift; sourceTree = "<group>"; };
+		UF002UF002UF002UF002UF02 /* ClipboardMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardMonitorTests.swift; sourceTree = "<group>"; };
+		UF003UF003UF003UF003UF02 /* QuickNoteStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickNoteStoreTests.swift; sourceTree = "<group>"; };
+		UF017UF017UF017UF017UF02 /* TestConformances.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestConformances.swift; sourceTree = "<group>"; };
+		UF010UF010UF010UF010UF02 /* KeepAwakeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeepAwakeManager.swift; sourceTree = "<group>"; };
+		UF011UF011UF011UF011UF02 /* ClipboardEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardEntry.swift; sourceTree = "<group>"; };
+		UF012UF012UF012UF012UF02 /* ClipboardMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardMonitor.swift; sourceTree = "<group>"; };
+		UF013UF013UF013UF013UF02 /* ClipboardHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardHistoryView.swift; sourceTree = "<group>"; };
+		UF014UF014UF014UF014UF02 /* QuickNoteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickNoteStore.swift; sourceTree = "<group>"; };
+		UF015UF015UF015UF015UF02 /* QuickNoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickNoteView.swift; sourceTree = "<group>"; };
+		UF016UF016UF016UF016UF02 /* PopoverTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverTab.swift; sourceTree = "<group>"; };
 		PA1000PA1000PA1000PA1002 /* char_0.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_0.png; path = "Assets/pixel-agents/characters/char_0.png"; sourceTree = "<group>"; };
 		PA1001PA1001PA1001PA1002 /* char_1.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_1.png; path = "Assets/pixel-agents/characters/char_1.png"; sourceTree = "<group>"; };
 		PA1002PA1002PA1002PA1002 /* char_2.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_2.png; path = "Assets/pixel-agents/characters/char_2.png"; sourceTree = "<group>"; };
@@ -251,6 +273,13 @@
 				SM005SM005SM005SM005SM02 /* SystemMetricsView.swift */,
 				SP002SP002SP002SP002SP02 /* SystemPet.swift */,
 				SP003SP003SP003SP003SP02 /* SystemPetNode.swift */,
+				UF010UF010UF010UF010UF02 /* KeepAwakeManager.swift */,
+				UF011UF011UF011UF011UF02 /* ClipboardEntry.swift */,
+				UF012UF012UF012UF012UF02 /* ClipboardMonitor.swift */,
+				UF013UF013UF013UF013UF02 /* ClipboardHistoryView.swift */,
+				UF014UF014UF014UF014UF02 /* QuickNoteStore.swift */,
+				UF015UF015UF015UF015UF02 /* QuickNoteView.swift */,
+				UF016UF016UF016UF016UF02 /* PopoverTab.swift */,
 				PA1000PA1000PA1000PA1002 /* char_0.png */,
 				PA1001PA1001PA1001PA1002 /* char_1.png */,
 				PA1002PA1002PA1002PA1002 /* char_2.png */,
@@ -334,6 +363,10 @@
 				SP001SP001SP001SP001SP02 /* SystemPetNodeTests.swift */,
 				SC001SC001SC001SC001SC02 /* SystemPetSceneTests.swift */,
 			PD001PD001PD001PD001PD02 /* PhaseD_WindowControllerTests.swift */,
+				UF001UF001UF001UF001UF02 /* KeepAwakeManagerTests.swift */,
+				UF002UF002UF002UF002UF02 /* ClipboardMonitorTests.swift */,
+				UF003UF003UF003UF003UF02 /* QuickNoteStoreTests.swift */,
+				UF017UF017UF017UF017UF02 /* TestConformances.swift */,
 			);
 			path = SoAgentBarTests;
 			sourceTree = "<group>";
@@ -525,6 +558,13 @@
 				SM005SM005SM005SM005SM01 /* SystemMetricsView.swift in Sources */,
 				SP002SP002SP002SP002SP01 /* SystemPet.swift in Sources */,
 				SP003SP003SP003SP003SP01 /* SystemPetNode.swift in Sources */,
+				UF010UF010UF010UF010UF01 /* KeepAwakeManager.swift in Sources */,
+				UF011UF011UF011UF011UF01 /* ClipboardEntry.swift in Sources */,
+				UF012UF012UF012UF012UF01 /* ClipboardMonitor.swift in Sources */,
+				UF013UF013UF013UF013UF01 /* ClipboardHistoryView.swift in Sources */,
+				UF014UF014UF014UF014UF01 /* QuickNoteStore.swift in Sources */,
+				UF015UF015UF015UF015UF01 /* QuickNoteView.swift in Sources */,
+				UF016UF016UF016UF016UF01 /* PopoverTab.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -540,6 +580,10 @@
 				SP001SP001SP001SP001SP01 /* SystemPetNodeTests.swift in Sources */,
 				SC001SC001SC001SC001SC01 /* SystemPetSceneTests.swift in Sources */,
 			PD001PD001PD001PD001PD01 /* PhaseD_WindowControllerTests.swift in Sources */,
+				UF001UF001UF001UF001UF01 /* KeepAwakeManagerTests.swift in Sources */,
+				UF002UF002UF002UF002UF01 /* ClipboardMonitorTests.swift in Sources */,
+				UF003UF003UF003UF003UF01 /* QuickNoteStoreTests.swift in Sources */,
+				UF017UF017UF017UF017UF01 /* TestConformances.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -99,15 +99,22 @@ final class HostSystemMetricsProvider: SystemMetricsProvider {
 
         guard result == KERN_SUCCESS else { return 0.0 }
 
-        let pageSize = Double(vm_page_size)
-        let active   = Double(vmStats.active_count)   * pageSize
-        let inactive = Double(vmStats.inactive_count) * pageSize
-        let wired    = Double(vmStats.wire_count)      * pageSize
-        let free     = Double(vmStats.free_count)      * pageSize
-        let speculative = Double(vmStats.speculative_count) * pageSize
+        // 물리적 메모리 총량 (hw.memsize)
+        var physicalRAM: UInt64 = 0
+        var ramSize = MemoryLayout<UInt64>.size
+        sysctlbyname("hw.memsize", &physicalRAM, &ramSize, nil, 0)
+        guard physicalRAM > 0 else { return 0.0 }
 
-        let used  = active + wired
-        let total = used + inactive + free + speculative
+        // 활성상태보기 "사용된 메모리" = App Memory + Wired + Compressed
+        // App Memory = internal_page_count (앱이 사용하는 익명 메모리, file-backed 제외)
+        // external_page_count = Cached Files → 사용된 메모리에 미포함
+        let pageSize   = Double(vm_page_size)
+        let appMemory  = Double(vmStats.internal_page_count)   * pageSize
+        let wired      = Double(vmStats.wire_count)            * pageSize
+        let compressed = Double(vmStats.compressor_page_count) * pageSize
+
+        let used  = appMemory + wired + compressed
+        let total = Double(physicalRAM)
         guard total > 0 else { return 0.0 }
 
         return Self.clampPercent((used / total) * 100.0)

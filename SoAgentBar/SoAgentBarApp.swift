@@ -40,8 +40,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         _ update: SUAppcastItem,
         andInImmediateFocus immediateFocus: Bool
     ) -> Bool {
-        // 즉시 포커스일 때만 Sparkle 기본 모달 표시, 아니면 gentle reminder로 처리
-        return immediateFocus
+        // 메뉴바 앱은 포커스가 없으므로 immediateFocus가 항상 false —
+        // 항상 Sparkle 기본 모달을 표시해야 업데이트 알림이 사용자에게 전달됨
+        return true
     }
 
     nonisolated func standardUserDriverWillHandleShowingUpdate(
@@ -430,5 +431,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         unregisterHotkey()
         unregisterPixelHotkey()
         if let ref = eventHandlerRef { RemoveEventHandler(ref) }
+
+        // Utility cleanup
+        store.keepAwakeManager.releaseAll()
+        store.clipboardMonitor.stop()
+        store.quickNoteStore.flush()
     }
 }

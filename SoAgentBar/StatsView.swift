@@ -12,6 +12,8 @@ struct StatsView: View {
                 Button(action: { isPresented = false }) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .medium))
+                        .padding(8)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(.secondary)

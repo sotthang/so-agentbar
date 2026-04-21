@@ -15,6 +15,8 @@ struct SettingsView: View {
                 Button(action: { isPresented = false }) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .medium))
+                        .padding(8)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(.secondary)
@@ -318,7 +320,7 @@ struct SettingsView: View {
                                 Text(store.t("단축키", "Shortcut"))
                                     .font(.system(size: 13))
                                 Spacer()
-                                HotkeyRecorderButton(store: store)
+                                PopoverHotkeyRecorderButton(store: store)
                             }
                         }
                     }
@@ -439,6 +441,26 @@ struct SettingsView: View {
                         }
                     }
 
+                    // 클립보드 섹션
+                    sectionHeader(store.t("클립보드", "Clipboard"))
+
+                    settingRow {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(store.t("클립보드 히스토리", "Clipboard History"))
+                                        .font(.system(size: 13))
+                                    Text(store.t("복사한 텍스트를 평문으로 저장합니다. 비밀번호 등 민감한 정보 주의", "Copied text is stored as plain text. Avoid copying passwords or sensitive data"))
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Toggle("", isOn: $store.clipboardMonitor.isEnabled)
+                                    .labelsHidden()
+                            }
+                        }
+                    }
+
                     // 앱 섹션
                     sectionHeader(store.t("앱", "App"))
 
@@ -552,20 +574,22 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - 로그인 시 자동 시작
-
 // MARK: - 핫키 레코더
 
-struct HotkeyRecorderButton: View {
+/// Generic hotkey recorder that writes keyCode and modifiers back via closures.
+private struct HotkeyRecorderButton: View {
     @ObservedObject var store: AgentStore
+    let displayString: String
+    let onRecord: (Int, Int) -> Void
+
     @State private var isRecording = false
-    @State private var monitor: Any?
+    @State private var eventMonitor: Any?
 
     var body: some View {
-        Button(action: { toggleRecording() }) {
+        Button(action: toggleRecording) {
             Text(isRecording
                  ? store.t("키를 누르세요…", "Press shortcut…")
-                 : store.hotkeyDisplayString)
+                 : displayString)
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundColor(isRecording ? .accentColor : .primary)
                 .padding(.horizontal, 10)
@@ -586,31 +610,23 @@ struct HotkeyRecorderButton: View {
     }
 
     private func toggleRecording() {
-        if isRecording {
-            stopRecording()
-        } else {
-            startRecording()
-        }
+        isRecording ? stopRecording() : startRecording()
     }
 
     private func startRecording() {
         isRecording = true
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
             // Escape = 취소
-            if event.keyCode == 53 {
-                stopRecording()
-                return nil
-            }
+            if event.keyCode == 53 { stopRecording(); return nil }
 
             // 최소 1개 modifier 필요 (Cmd, Opt, Ctrl 중 하나)
             guard flags.contains(.command) || flags.contains(.option) || flags.contains(.control) else {
                 return nil
             }
 
-            store.hotkeyKeyCode = Int(event.keyCode)
-            store.hotkeyModifiers = AgentStore.nsModifiersToCarbonModifiers(flags)
+            onRecord(Int(event.keyCode), AgentStore.nsModifiersToCarbonModifiers(flags))
             stopRecording()
             return nil
         }
@@ -618,69 +634,31 @@ struct HotkeyRecorderButton: View {
 
     private func stopRecording() {
         isRecording = false
-        if let m = monitor {
-            NSEvent.removeMonitor(m)
-            monitor = nil
+        if let m = eventMonitor { NSEvent.removeMonitor(m); eventMonitor = nil }
+    }
+}
+
+// MARK: - 핫키 레코더 래퍼 (팝오버 핫키 / 픽셀 창 핫키)
+
+struct PopoverHotkeyRecorderButton: View {
+    @ObservedObject var store: AgentStore
+
+    var body: some View {
+        HotkeyRecorderButton(store: store, displayString: store.hotkeyDisplayString) { keyCode, modifiers in
+            store.hotkeyKeyCode = keyCode
+            store.hotkeyModifiers = modifiers
         }
     }
 }
 
-// MARK: - 픽셀 핫키 레코더
-
 struct PixelHotkeyRecorderButton: View {
     @ObservedObject var store: AgentStore
-    @State private var isRecording = false
-    @State private var monitor: Any?
 
     var body: some View {
-        Button(action: { toggleRecording() }) {
-            Text(isRecording
-                 ? store.t("키를 누르세요…", "Press shortcut…")
-                 : store.pixelHotkeyDisplayString)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(isRecording ? .accentColor : .primary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(isRecording
-                              ? Color.accentColor.opacity(0.15)
-                              : Color(NSColor.controlBackgroundColor))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(isRecording ? Color.accentColor : Color(NSColor.separatorColor), lineWidth: 1)
-                )
+        HotkeyRecorderButton(store: store, displayString: store.pixelHotkeyDisplayString) { keyCode, modifiers in
+            store.pixelHotkeyKeyCode = keyCode
+            store.pixelHotkeyModifiers = modifiers
         }
-        .buttonStyle(.plain)
-        .onDisappear { stopRecording() }
-    }
-
-    private func toggleRecording() {
-        if isRecording { stopRecording() } else { startRecording() }
-    }
-
-    private func startRecording() {
-        isRecording = true
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-
-            if event.keyCode == 53 { stopRecording(); return nil }
-
-            guard flags.contains(.command) || flags.contains(.option) || flags.contains(.control) else {
-                return nil
-            }
-
-            store.pixelHotkeyKeyCode = Int(event.keyCode)
-            store.pixelHotkeyModifiers = AgentStore.nsModifiersToCarbonModifiers(flags)
-            stopRecording()
-            return nil
-        }
-    }
-
-    private func stopRecording() {
-        isRecording = false
-        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
     }
 }
 

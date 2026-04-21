@@ -305,6 +305,21 @@ class AgentStore: ObservableObject {
         didSet { UserDefaults.standard.set(notifyOnApprovalRequired, forKey: "notifyOnApprovalRequired") }
     }
 
+    // 팝오버 탭 (persistence 없음)
+    @Published var selectedTab: PopoverTab = .agents
+
+    // Keep Awake
+    let keepAwakeManager: KeepAwakeManager
+    @Published var autoKeepAwakeOnSession: Bool {
+        didSet { UserDefaults.standard.set(autoKeepAwakeOnSession, forKey: "autoKeepAwakeOnSession") }
+    }
+
+    // Clipboard
+    let clipboardMonitor: ClipboardMonitor
+
+    // Quick Note
+    let quickNoteStore: QuickNoteStore
+
     // 알림 사운드
     @Published var completionSound: String {
         didSet { UserDefaults.standard.set(completionSound, forKey: "completionSound") }
@@ -428,8 +443,18 @@ class AgentStore: ObservableObject {
     private var recordedSessionIDs: Set<String> = [] // 이미 통계에 기록된 세션
     private var lastNotificationTime: [String: Date] = [:]  // 알림 중복 방지용
     private let notificationCooldown: TimeInterval = 60     // 같은 이벤트 재알림 최소 간격
+    private var cancellables = Set<AnyCancellable>()
 
     init() {
+        // Initialize utility managers first (before @Published properties that may trigger didSet)
+        let savedModeRaw = UserDefaults.standard.string(forKey: "keepAwakeMode") ?? "off"
+        let savedMode = KeepAwakeMode(rawValue: savedModeRaw) ?? .off
+        self.keepAwakeManager = KeepAwakeManager(initialMode: savedMode)
+        self.clipboardMonitor = ClipboardMonitor()
+        self.quickNoteStore = QuickNoteStore()
+        self.autoKeepAwakeOnSession =
+            UserDefaults.standard.object(forKey: "autoKeepAwakeOnSession") as? Bool ?? false
+
         self.isPixelWindowVisible = UserDefaults.standard.object(forKey: "isPixelWindowVisible") as? Bool ?? true
         self.pixelWindowOpacity   = UserDefaults.standard.object(forKey: "pixelWindowOpacity") as? Double ?? 0.8
         self.showIdleSessions   = UserDefaults.standard.object(forKey: "showIdleSessions") as? Bool ?? true
@@ -497,6 +522,25 @@ class AgentStore: ObservableObject {
                 }
             }
         }
+
+        // Wire active-session count to KeepAwakeManager
+        $agents
+            .map { agents in
+                agents.filter { $0.status == .working || $0.status == .waitingApproval }.count
+            }
+            .removeDuplicates()
+            .sink { [weak self] count in
+                self?.keepAwakeManager.updateActiveSessionCount(count)
+            }
+            .store(in: &cancellables)
+
+        // 중첩 ObservableObject 변경을 상위로 전파 — SwiftUI가 즉시 재렌더링하도록
+        keepAwakeManager.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        clipboardMonitor.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     // MARK: - 번역 헬퍼

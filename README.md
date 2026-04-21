@@ -53,6 +53,9 @@
 - **Global Hotkey** — Toggle the session panel from anywhere (default: ⌥⇧S)
 - **Pixel Agents Window** — Visualize active Claude Code sessions as animated pixel art characters in a floating macOS window. Toggle the window from the session panel header, customize opacity in settings, and watch characters animate based on session status (working, waiting for approval, etc.) Always display resident system monitor pets (CPU and Memory) that react to live system metrics in real-time
 - **System Resource Monitor** — Real-time CPU, Memory, and Disk usage display in the menu bar popover. System pets in the pixel window dynamically adjust their movement speed and activity based on current CPU and Memory metrics, replacing the need for separate system monitoring tools
+- **Keep Awake** — Toggle keep-awake mode in 3 steps: Off / Always / Auto. Always prevents the Mac from sleeping regardless of session status. Auto activates sleep prevention only when one or more Claude sessions are actively running. The mode button in the session panel header shows the current state with visual feedback
+- **Clipboard History** — Track your recent clipboard copies in a dedicated tab. View the 20 most recent text items, search through your clipboard history, and click any entry to restore it to your clipboard. History persists across app restarts
+- **Quick Note** — Jot down quick thoughts or reminders in a persistent text editor tab. Your notes auto-save as you type and are restored when you reopen the app
 - **Custom Emoji** — Assign unique emoji icons to each project for quick identification
 - **Editor Integration** — Open projects directly in VSCode, Cursor, Antigravity, Terminal, or Finder
 - **Auto Update** — Built-in updater via Sparkle keeps the app up to date automatically
@@ -104,6 +107,9 @@ Session status is determined by parsing JSONL log events. Quota usage is fetched
 | Poll Interval | 10s / 30s / 60s fallback polling |
 | Pixel Agents | Opacity slider for the floating pixel character window |
 | Idle Sessions | Show or hide idle sessions |
+| Keep Awake Mode | Toggle between Off, Always, and Auto (session-dependent) |
+| Auto Keep Awake on Session | Automatically prevent sleep when Claude sessions are active |
+| Clipboard History | Enable or disable clipboard history tracking and display |
 | Launch at Login | Auto-start with macOS |
 | Auto Update | Check for updates automatically via Sparkle |
 

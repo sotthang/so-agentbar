@@ -31,6 +31,7 @@ struct AgentListView: View {
             showSettings = false
             showStats = false
             emojiPickerAgent = nil
+            store.selectedTab = .agents
         }
     }
 
@@ -38,11 +39,28 @@ struct AgentListView: View {
         VStack(spacing: 0) {
             header
             Divider()
+            PopoverTabSwitcher(store: store)
+            Divider()
+
+            switch store.selectedTab {
+            case .agents:
+                agentsTab
+            case .clipboard:
+                ClipboardHistoryView(store: store, monitor: store.clipboardMonitor)
+            case .note:
+                QuickNoteView(store: store, noteStore: store.quickNoteStore)
+            }
+
+            Divider()
+            footer
+        }
+    }
+
+    private var agentsTab: some View {
+        VStack(spacing: 0) {
             agentList
             UsageView(monitor: store.usageMonitor, store: store)
             SystemMetricsView(monitor: store.systemMetricsMonitor, store: store)
-            Divider()
-            footer
         }
     }
 
@@ -62,6 +80,13 @@ struct AgentListView: View {
             Text("\(activeCount) \(store.t("활성", "active"))")
                 .font(.caption)
                 .foregroundColor(.secondary)
+            Button(action: { store.keepAwakeManager.mode = store.keepAwakeManager.mode.next }) {
+                Image(systemName: keepAwakeSymbol)
+                    .font(.system(size: 13))
+                    .foregroundColor(keepAwakeColor)
+            }
+            .buttonStyle(.plain)
+            .help(keepAwakeTooltip)
             Button(action: { store.isPixelWindowVisible.toggle() }) {
                 Image(systemName: store.isPixelWindowVisible ? "person.3.fill" : "person.3")
                     .font(.system(size: 13))
@@ -92,6 +117,30 @@ struct AgentListView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    private var keepAwakeSymbol: String {
+        switch store.keepAwakeManager.mode {
+        case .off:    return "cup.and.saucer"
+        case .always: return "cup.and.saucer.fill"
+        case .auto:   return "moon.zzz.fill"
+        }
+    }
+
+    private var keepAwakeColor: Color {
+        switch store.keepAwakeManager.mode {
+        case .off:    return .secondary
+        case .always: return .accentColor
+        case .auto:   return .orange
+        }
+    }
+
+    private var keepAwakeTooltip: String {
+        switch store.keepAwakeManager.mode {
+        case .off:    return store.t("잠자기 방지: 꺼짐", "Keep Awake: Off")
+        case .always: return store.t("잠자기 방지: 항상 켜짐", "Keep Awake: Always On")
+        case .auto:   return store.t("잠자기 방지: 세션 실행 중에만 켜짐", "Keep Awake: During Sessions Only")
+        }
     }
 
     private var agentList: some View {

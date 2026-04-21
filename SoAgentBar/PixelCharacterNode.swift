@@ -20,6 +20,15 @@ final class PixelCharacterNode: SKNode {
     private var speechBubbleNode: SKNode?
     private var currentSize: Int
 
+    /// Current session badge color, or nil if no badge is shown. Exposed for tests.
+    var sessionBadgeColor: NSColor? { nameBadgeNode?.fillColor }
+
+    /// Name badge frame in this node's coordinate space. Nil when no badge.
+    var nameBadgeFrame: CGRect? { nameBadgeNode?.calculateAccumulatedFrame() }
+
+    /// Speech bubble frame (including tail) in this node's coordinate space. Nil when hidden.
+    var speechBubbleFrame: CGRect? { speechBubbleNode?.calculateAccumulatedFrame() }
+
     /// Sprite render size: 1.5× the logical character size (keeps pixel art crisp at integer-ish scale).
     private var renderSize: Int { currentSize * 3 / 2 }
     private var spriteHalfHeight: CGFloat { CGFloat(renderSize) / 2 }
@@ -266,6 +275,9 @@ final class PixelCharacterNode: SKNode {
         }
     }
 
+    private static let nameBadgeHeight: CGFloat = 14
+    private var nameBadgeCenterY: CGFloat { spriteHalfHeight + 2 + Self.nameBadgeHeight / 2 }
+
     private func setupNameLabel(name: String, sessionColor: NSColor?) {
         let text = name.count > 15 ? String(name.prefix(15)) + "…" : name
 
@@ -276,30 +288,39 @@ final class PixelCharacterNode: SKNode {
         label.horizontalAlignmentMode = .center
         label.verticalAlignmentMode = .center
         label.zPosition = 4
-
-        // 배지와 라벨을 같은 중심에 두고 서로 정렬.
-        let bgH: CGFloat = 14
-        let centerY = spriteHalfHeight + 2 + bgH / 2
-
-        if let sessionColor {
-            let textWidth = label.calculateAccumulatedFrame().width
-            let padX: CGFloat = 5
-            let bgW = max(textWidth + padX * 2, 24)
-            let rect = CGRect(x: -bgW / 2, y: -bgH / 2, width: bgW, height: bgH)
-            let path = CGPath(roundedRect: rect, cornerWidth: 3, cornerHeight: 3, transform: nil)
-            let badge = SKShapeNode(path: path)
-            badge.fillColor = sessionColor
-            badge.strokeColor = .clear
-            badge.alpha = 0.85
-            badge.zPosition = 3
-            badge.position = CGPoint(x: 0, y: centerY)
-            addChild(badge)
-            nameBadgeNode = badge
-        }
-
-        label.position = CGPoint(x: 0, y: centerY)
+        label.position = CGPoint(x: 0, y: nameBadgeCenterY)
         addChild(label)
         nameLabel = label
+
+        updateSessionColor(sessionColor)
+    }
+
+    /// Adds, updates, or removes the name-background badge to match the current session color.
+    /// Call on every sync so a node can gain/lose its badge when its parent's team changes.
+    func updateSessionColor(_ sessionColor: NSColor?) {
+        guard let sessionColor else {
+            nameBadgeNode?.removeFromParent()
+            nameBadgeNode = nil
+            return
+        }
+        if let badge = nameBadgeNode {
+            badge.fillColor = sessionColor
+            return
+        }
+        let textWidth = nameLabel?.calculateAccumulatedFrame().width ?? 0
+        let padX: CGFloat = 5
+        let bgW = max(textWidth + padX * 2, 24)
+        let bgH = Self.nameBadgeHeight
+        let rect = CGRect(x: -bgW / 2, y: -bgH / 2, width: bgW, height: bgH)
+        let path = CGPath(roundedRect: rect, cornerWidth: 3, cornerHeight: 3, transform: nil)
+        let badge = SKShapeNode(path: path)
+        badge.fillColor = sessionColor
+        badge.strokeColor = .clear
+        badge.alpha = 0.85
+        badge.zPosition = 3
+        badge.position = CGPoint(x: 0, y: nameBadgeCenterY)
+        addChild(badge)
+        nameBadgeNode = badge
     }
 
     // MARK: - Speech bubble

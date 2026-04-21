@@ -370,8 +370,13 @@ final class PixelCharacterNode: SKNode {
         tail.strokeColor = NSColor(white: 0.35, alpha: 1)
         tail.lineWidth = 0.8
 
-        // 배치: 이름 라벨 위쪽
-        container.position = CGPoint(x: 0, y: spriteHalfHeight + 20)
+        // 배치: 이름 배지 위쪽 (꼬리 끝이 배지 상단을 덮지 않도록 간격 확보)
+        // nameBadge top = spriteHalfHeight + 2 + nameBadgeHeight = spriteHalfHeight + 16
+        // tail tip Y in container = -bubbleH/2 - 5 = -12, 4px gap → container.y = spriteHalfHeight + 32
+        let nameBadgeTop = spriteHalfHeight + 2 + Self.nameBadgeHeight
+        let gap: CGFloat = 4
+        let tailDepth: CGFloat = bubbleH / 2 + 5
+        container.position = CGPoint(x: 0, y: nameBadgeTop + gap + tailDepth)
 
         container.addChild(bg)
         container.addChild(tail)

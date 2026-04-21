@@ -378,6 +378,55 @@ final class PixelAgentsSceneSessionBadgeTests: XCTestCase {
     }
 }
 
+// MARK: - PixelCharacterNode speech bubble layout (no overlap with name badge)
+
+final class PixelCharacterNodeSpeechBubbleLayoutTests: XCTestCase {
+
+    private func makeWorkingNode(withBadge: Bool) -> PixelCharacterNode {
+        let node = PixelCharacterNode(
+            agentID: "a1",
+            name: "Agent",
+            status: .working,
+            task: "doing something",
+            provider: ProgrammaticPixelProvider(),
+            characterSize: 32,
+            sessionColor: withBadge ? .red : nil
+        )
+        return node
+    }
+
+    // Happy path: speech bubble (body + tail) must not overlap the name badge
+    func test_speechBubble_doesNotOverlap_nameBadge() {
+        let node = makeWorkingNode(withBadge: true)
+        guard let bubble = node.speechBubbleFrame else {
+            XCTFail("working node should show a speech bubble")
+            return
+        }
+        guard let badge = node.nameBadgeFrame else {
+            XCTFail("node with sessionColor should have a badge")
+            return
+        }
+        XCTAssertFalse(
+            bubble.intersects(badge),
+            "speech bubble (\(bubble)) must not overlap name badge (\(badge))"
+        )
+    }
+
+    // Edge case: even without a badge, speech bubble must sit above the name label
+    func test_speechBubble_doesNotOverlap_nameLabelArea() {
+        let node = makeWorkingNode(withBadge: false)
+        guard let bubble = node.speechBubbleFrame else {
+            XCTFail("working node should show a speech bubble")
+            return
+        }
+        // 이름 라벨은 spriteHalfHeight+2 이상에서 시작 — 말풍선 바닥이 그 위에 있어야 함
+        // 32pt character → spriteHalfHeight = 24, 이름 영역 상단 = 24 + 2 + 14 = 40 이상으로 보이도록 여유
+        XCTAssertGreaterThan(
+            bubble.minY, 40,
+            "speech bubble bottom (minY=\(bubble.minY)) must clear the name area (>=40)"
+        )
+    }
+}
 
 // MARK: - PixelCharacterProvider protocol conformance (R10, AC12)
 

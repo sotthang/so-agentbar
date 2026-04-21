@@ -97,10 +97,12 @@ final class PixelAgentsScene: SKScene {
     private static let restWanderBounds = CGRect(
         x: 40, y: splitY + 20, width: sceneW - 80, height: 120
     )
-    // 관심 지점: 냉장고 앞, 자판기 앞, 소파 앞 — 캐릭터가 자주 방문
+    // 관심 지점: 냉장고 앞, 자판기 앞, 커피머신 앞, 머그 앞, 소파 앞 — 캐릭터가 자주 방문
     private static let restInterestPoints: [CGPoint] = [
         CGPoint(x: sceneW - 24 - 40, y: splitY + 40),  // 냉장고 앞
         CGPoint(x: sceneW - 24,      y: splitY + 40),  // 자판기 앞
+        CGPoint(x: 28,               y: splitY + 40),  // 커피머신 앞 (coffeeBaseX-20)
+        CGPoint(x: 66,               y: splitY + 40),  // 머그 앞     (coffeeBaseX+18)
         CGPoint(x: restCenterX - 80, y: splitY + 100), // 소파1 앞
         CGPoint(x: restCenterX + 80, y: splitY + 100), // 소파2 앞
         CGPoint(x: restCenterX,      y: splitY + 80)   // 벤치 앞
@@ -812,6 +814,41 @@ final class PixelAgentsScene: SKScene {
         vending.zPosition = 1
         addChild(vending)
         restZoneNodes.append(vending)
+
+        // 커피 스테이션: 휴게실 왼쪽 (냉장고/자판기 대칭 위치)
+        // 책상 원본 40×16 → 2배 80×32 (상판 26px + 다리 6px)
+        let coffeeBaseX: CGFloat = 48
+        let coffeeBaseY: CGFloat = Self.splitY + 80
+        let deskTopY = coffeeBaseY + 18   // 상판 위 물건 바닥 Y (상판 안쪽에 박히도록)
+
+        let coffeeDeskTex = SKTexture(imageNamed: "COFFEE_DESK")
+        coffeeDeskTex.filteringMode = .nearest
+        let coffeeDesk = SKSpriteNode(texture: coffeeDeskTex, size: CGSize(width: 80, height: 32))
+        coffeeDesk.anchorPoint = CGPoint(x: 0.5, y: 0)
+        coffeeDesk.position = CGPoint(x: coffeeBaseX, y: coffeeBaseY)
+        coffeeDesk.zPosition = 1
+        addChild(coffeeDesk)
+        restZoneNodes.append(coffeeDesk)
+
+        // 커피머신: 책상 상판 위 왼쪽 (원본 7×11 → 2배 14×22)
+        let machineTex = SKTexture(imageNamed: "COFFEE_MACHINE")
+        machineTex.filteringMode = .nearest
+        let machine = SKSpriteNode(texture: machineTex, size: CGSize(width: 14, height: 22))
+        machine.anchorPoint = CGPoint(x: 0.5, y: 0)
+        machine.position = CGPoint(x: coffeeBaseX - 20, y: deskTopY)
+        machine.zPosition = 2
+        addChild(machine)
+        restZoneNodes.append(machine)
+
+        // 머그: 책상 상판 위 오른쪽 (원본 8×7 → 2배 16×14)
+        let mugTex = SKTexture(imageNamed: "MUG")
+        mugTex.filteringMode = .nearest
+        let mug = SKSpriteNode(texture: mugTex, size: CGSize(width: 16, height: 14))
+        mug.anchorPoint = CGPoint(x: 0.5, y: 0)
+        mug.position = CGPoint(x: coffeeBaseX + 18, y: deskTopY)
+        mug.zPosition = 2
+        addChild(mug)
+        restZoneNodes.append(mug)
     }
 
     // MARK: - Meeting zone setup (우하단)

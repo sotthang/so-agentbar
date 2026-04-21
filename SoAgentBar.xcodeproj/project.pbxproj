@@ -86,6 +86,9 @@
 		PA1050PA1050PA1050PA1001 /* FRAME_SMALL.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1050PA1050PA1050PA1002 /* FRAME_SMALL.png */; };
 		PA1051PA1051PA1051PA1001 /* FRAME_LARGE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1051PA1051PA1051PA1002 /* FRAME_LARGE.png */; };
 		PA1052PA1052PA1052PA1001 /* BOOKSHELF.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1052PA1052PA1052PA1002 /* BOOKSHELF.png */; };
+		PA1053PA1053PA1053PA1001 /* COFFEE_DESK.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1053PA1053PA1053PA1002 /* COFFEE_DESK.png */; };
+		PA1054PA1054PA1054PA1001 /* COFFEE_MACHINE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1054PA1054PA1054PA1002 /* COFFEE_MACHINE.png */; };
+		PA1055PA1055PA1055PA1001 /* MUG.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1055PA1055PA1055PA1002 /* MUG.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -170,6 +173,9 @@
 		PA1050PA1050PA1050PA1002 /* FRAME_SMALL.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = FRAME_SMALL.png; path = "Assets/pixel-agents/furniture/FRAME_SMALL.png"; sourceTree = "<group>"; };
 		PA1051PA1051PA1051PA1002 /* FRAME_LARGE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = FRAME_LARGE.png; path = "Assets/pixel-agents/furniture/FRAME_LARGE.png"; sourceTree = "<group>"; };
 		PA1052PA1052PA1052PA1002 /* BOOKSHELF.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = BOOKSHELF.png; path = "Assets/pixel-agents/furniture/BOOKSHELF.png"; sourceTree = "<group>"; };
+		PA1053PA1053PA1053PA1002 /* COFFEE_DESK.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = COFFEE_DESK.png; path = "Assets/pixel-agents/furniture/COFFEE_DESK.png"; sourceTree = "<group>"; };
+		PA1054PA1054PA1054PA1002 /* COFFEE_MACHINE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = COFFEE_MACHINE.png; path = "Assets/pixel-agents/furniture/COFFEE_MACHINE.png"; sourceTree = "<group>"; };
+		PA1055PA1055PA1055PA1002 /* MUG.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = MUG.png; path = "Assets/pixel-agents/furniture/MUG.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -270,6 +276,9 @@
 				PA1050PA1050PA1050PA1002 /* FRAME_SMALL.png */,
 				PA1051PA1051PA1051PA1002 /* FRAME_LARGE.png */,
 			PA1052PA1052PA1052PA1002 /* BOOKSHELF.png */,
+				PA1053PA1053PA1053PA1002 /* COFFEE_DESK.png */,
+				PA1054PA1054PA1054PA1002 /* COFFEE_MACHINE.png */,
+				PA1055PA1055PA1055PA1002 /* MUG.png */,
 			);
 			path = SoAgentBar;
 			sourceTree = "<group>";
@@ -441,6 +450,9 @@
 				PA1050PA1050PA1050PA1001 /* FRAME_SMALL.png in Resources */,
 				PA1051PA1051PA1051PA1001 /* FRAME_LARGE.png in Resources */,
 			PA1052PA1052PA1052PA1001 /* BOOKSHELF.png in Resources */,
+				PA1053PA1053PA1053PA1001 /* COFFEE_DESK.png in Resources */,
+				PA1054PA1054PA1054PA1001 /* COFFEE_MACHINE.png in Resources */,
+				PA1055PA1055PA1055PA1001 /* MUG.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

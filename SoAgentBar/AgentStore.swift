@@ -315,7 +315,7 @@ class AgentStore: ObservableObject {
     }
 
     // Clipboard
-    let clipboardMonitor: ClipboardMonitor
+    var clipboardMonitor: ClipboardMonitor
 
     // Quick Note
     let quickNoteStore: QuickNoteStore

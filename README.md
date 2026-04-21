@@ -51,7 +51,8 @@
 - **Human-in-the-loop Detection** — Automatically detects when an agent is waiting for your approval and sends an alert
 - **Statistics Dashboard** — Daily summary, 7-day chart, and top project rankings
 - **Global Hotkey** — Toggle the session panel from anywhere (default: ⌥⇧S)
-- **Pixel Agents Window** — Visualize active Claude Code sessions as animated pixel art characters in a floating macOS window. Toggle the window from the session panel header, customize opacity in settings, and watch characters animate based on session status (working, waiting for approval, etc.)
+- **Pixel Agents Window** — Visualize active Claude Code sessions as animated pixel art characters in a floating macOS window. Toggle the window from the session panel header, customize opacity in settings, and watch characters animate based on session status (working, waiting for approval, etc.) Always display resident system monitor pets (CPU and Memory) that react to live system metrics in real-time
+- **System Resource Monitor** — Real-time CPU, Memory, and Disk usage display in the menu bar popover. System pets in the pixel window dynamically adjust their movement speed and activity based on current CPU and Memory metrics, replacing the need for separate system monitoring tools
 - **Custom Emoji** — Assign unique emoji icons to each project for quick identification
 - **Editor Integration** — Open projects directly in VSCode, Cursor, Antigravity, Terminal, or Finder
 - **Auto Update** — Built-in updater via Sparkle keeps the app up to date automatically

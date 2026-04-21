@@ -195,17 +195,15 @@ final class PixelAgentsScene: SKScene {
         var sessionColors: [String: NSColor] = [:]  // agentID → team color (부모+서브 동일)
         for agent in agents {
             flatAgents.append(agent)
-            if agent.status != .idle {
-                let activeSubs = agent.subagents.filter { $0.status != .idle }
-                if !activeSubs.isEmpty {
-                    let color = Self.sessionColor(forParentID: agent.id)
-                    sessionColors[agent.id] = color
-                    for sub in activeSubs {
-                        flatAgents.append(sub)
-                        sessionColors[sub.id] = color
-                    }
-                } else {
-                    flatAgents += activeSubs
+            guard agent.status != .idle else { continue }
+            let activeSubs = agent.subagents.filter { $0.status != .idle }
+            let needsBadge = !activeSubs.isEmpty || agent.status == .waitingApproval
+            if needsBadge {
+                let color = Self.sessionColor(forParentID: agent.id)
+                sessionColors[agent.id] = color
+                for sub in activeSubs {
+                    flatAgents.append(sub)
+                    sessionColors[sub.id] = color
                 }
             }
         }
@@ -272,6 +270,7 @@ final class PixelAgentsScene: SKScene {
             if let existing = characterNodes[agent.id] {
                 let previousZone = currentZones[agent.id]
                 existing.update(status: agent.status, task: agent.currentTask)
+                existing.updateSessionColor(sessionColors[agent.id])
 
                 if previousZone != targetZone {
                     // 존 이동: wander 정지 후 새 목적지로 걸어감

@@ -294,6 +294,91 @@ final class PixelAgentsSceneSessionSyncTests: XCTestCase {
     }
 }
 
+// MARK: - PixelAgentsScene session badge (meeting room name background)
+
+final class PixelAgentsSceneSessionBadgeTests: XCTestCase {
+
+    private func makeAgent(
+        id: String,
+        status: AgentStatus = .idle,
+        isSubagent: Bool = false,
+        subagents: [Agent] = []
+    ) -> Agent {
+        var agent = Agent(
+            id: id,
+            name: "Test",
+            status: status,
+            currentTask: "",
+            elapsedSeconds: 0,
+            tokensByModel: [:],
+            currentModel: "claude-sonnet-4-6",
+            sessionID: id,
+            projectDir: "/tmp",
+            workingPath: "/tmp",
+            lastActivity: Date(),
+            source: .cli,
+            lastResponse: "",
+            permissionMode: "default",
+            isSubagent: isSubagent
+        )
+        agent.subagents = subagents
+        return agent
+    }
+
+    private func makeScene() -> PixelAgentsScene {
+        PixelAgentsScene(
+            size: CGSize(width: 480, height: 560),
+            provider: ProgrammaticPixelProvider()
+        )
+    }
+
+    // Happy path: parent that starts idle (no badge) then gains an active subagent
+    // must have its badge appear on the existing node (not only on newly-created nodes)
+    func test_sessionBadge_appearsOnExistingNode_whenSubagentJoins() {
+        let scene = makeScene()
+        let parentIdle = makeAgent(id: "p1", status: .idle)
+        scene.synchronize(agents: [parentIdle])
+        XCTAssertNil(scene.characterNode(forID: "p1")?.sessionBadgeColor,
+                     "idle parent without subs should have no badge")
+
+        let sub = makeAgent(id: "s1", status: .working, isSubagent: true)
+        let parentActive = makeAgent(id: "p1", status: .working, subagents: [sub])
+        scene.synchronize(agents: [parentActive])
+
+        XCTAssertNotNil(scene.characterNode(forID: "p1")?.sessionBadgeColor,
+                        "once subagent joins, parent node must show a session badge")
+        XCTAssertNotNil(scene.characterNode(forID: "s1")?.sessionBadgeColor,
+                        "subagent must share the session badge")
+    }
+
+    // Happy path: when all subagents leave, parent's badge must be removed
+    func test_sessionBadge_disappearsOnExistingNode_whenSubagentsLeave() {
+        let scene = makeScene()
+        let sub = makeAgent(id: "s1", status: .working, isSubagent: true)
+        let parentActive = makeAgent(id: "p1", status: .working, subagents: [sub])
+        scene.synchronize(agents: [parentActive])
+        XCTAssertNotNil(scene.characterNode(forID: "p1")?.sessionBadgeColor)
+
+        let parentAlone = makeAgent(id: "p1", status: .working)
+        scene.synchronize(agents: [parentAlone])
+
+        XCTAssertNil(scene.characterNode(forID: "p1")?.sessionBadgeColor,
+                     "badge must be cleared once the parent has no active subagents")
+    }
+
+    // Happy path: a solo parent sitting in the meeting room for approval
+    // must also show a session badge for visual consistency with team-meeting parents
+    func test_sessionBadge_soloWaitingApprovalParent_hasBadge() {
+        let scene = makeScene()
+        let solo = makeAgent(id: "p1", status: .waitingApproval)
+        scene.synchronize(agents: [solo])
+
+        XCTAssertNotNil(scene.characterNode(forID: "p1")?.sessionBadgeColor,
+                        "waitingApproval parent in meeting room must have a badge")
+    }
+}
+
+
 // MARK: - PixelCharacterProvider protocol conformance (R10, AC12)
 
 final class PixelCharacterProviderTests: XCTestCase {

@@ -379,14 +379,6 @@ final class PixelAgentsScene: SKScene {
         }
     }
 
-    private func zone(for status: AgentStatus, workSlot: Int) -> Zone {
-        switch status {
-        case .idle: return .rest
-        case .waitingApproval: return .wait
-        case .working, .thinking, .error: return .work(slot: workSlot)
-        }
-    }
-
     /// 두 존 사이 이동 경유지(문 통과 지점) 반환
     private func doorWaypoints(from: Zone, to: Zone) -> [CGPoint] {
         let sY = Self.splitY
@@ -901,6 +893,11 @@ final class PixelAgentsScene: SKScene {
             addChild(table)
             meetingTableNodes.append(table)
         }
+
+        // D3: 미팅 테이블 동적 재생성 후 forbidden rects 재계산
+        if !systemPets.isEmpty {
+            memoryPetForbiddenRects = computeMemoryPetForbiddenRects()
+        }
     }
 
     // MARK: - Work zone setup (permanent desks)
@@ -965,12 +962,6 @@ final class PixelAgentsScene: SKScene {
         }
     }
 
-    private func updateFurnitureForZone(
-        agentID: String, zone: Zone, x: CGFloat, status: AgentStatus
-    ) {
-        // Desks are permanent — nothing to create or remove
-    }
-
     private func repositionWorkFurniture(allAgents: [Agent]) {
         // Desks are fixed at init — no repositioning needed
         _ = allAgents
@@ -989,6 +980,153 @@ final class PixelAgentsScene: SKScene {
         let sceneWidth = CGFloat(size.width)
         let proposed = Int(sceneWidth / CGFloat(count) * 0.65)
         return max(min(proposed, defaultSize - 1), minSize)
+    }
+
+    // MARK: - System Pets (Phase C)
+
+    /// kind → node 매핑 (AC10: characterNodeCount 에는 포함되지 않음)
+    private(set) var systemPets: [SystemPetKind: SystemPetNode] = [:]
+
+    /// Memory pet 의 이동 제한 영역 (가구 AABB). AC14 검증용.
+    private(set) var memoryPetForbiddenRects: [CGRect] = []
+
+    /// Memory pet 존별 wander bounds (D4 기준)
+    private static var memoryWanderBoundsMap: [SystemPetZone: CGRect] {
+        let workBounds = CGRect(x: 10, y: 20, width: splitX - 20, height: splitY - 50)
+        let meetingBounds = CGRect(x: splitX + 10, y: 20, width: sceneW - splitX - 20, height: splitY - 50)
+        return [
+            .rest: restWanderBounds,
+            .work: workBounds,
+            .meeting: meetingBounds
+        ]
+    }
+
+    /// 멱등: 두 번 이상 호출해도 no-op
+    func spawnSystemPetsIfNeeded() {
+        guard systemPets.isEmpty else { return }
+
+        // 가구 AABB 먼저 계산
+        memoryPetForbiddenRects = computeMemoryPetForbiddenRects()
+
+        // CPU pet (spriteIndex = 0)
+        let cpuNode = SystemPetNode(
+            kind: .cpu,
+            provider: provider,
+            spriteIndex: SystemPet.cpuSpriteIndex
+        )
+        let cpuCenter = CGPoint(
+            x: Self.restWanderBounds.midX,
+            y: Self.restWanderBounds.midY
+        )
+        cpuNode.position = cpuCenter
+        cpuNode.zPosition = 3
+        addChild(cpuNode)
+        systemPets[.cpu] = cpuNode
+
+        // Memory pet (spriteIndex = 1)
+        let memNode = SystemPetNode(
+            kind: .memory,
+            provider: provider,
+            spriteIndex: SystemPet.memorySpriteIndex
+        )
+        // Memory pet 초기 위치: restWanderBounds 중앙 (forbidden rects 밖이어야 함 AC14)
+        let memCenter = safeInitialPosition(
+            preferred: CGPoint(x: Self.restWanderBounds.midX, y: Self.restWanderBounds.midY),
+            forbiddenRects: memoryPetForbiddenRects,
+            bounds: Self.restWanderBounds
+        )
+        memNode.position = memCenter
+        memNode.zPosition = 3
+        addChild(memNode)
+        systemPets[.memory] = memNode
+
+        cpuNode.startCPUWandering(
+            bounds: Self.restWanderBounds,
+            interestPoints: Self.restInterestPoints
+        )
+        memNode.startMemoryWandering(
+            zoneBounds: Self.memoryWanderBoundsMap,
+            forbiddenRects: memoryPetForbiddenRects,
+            doorWaypointsBetween: { [weak self] from, to in
+                self?.systemPetDoorWaypoints(from: from, to: to) ?? []
+            }
+        )
+    }
+
+    /// 최신 시스템 지표 반영. CPU/Memory 펫에만 전달, Disk 무시 (AC3).
+    func applyMetrics(_ metrics: SystemMetrics) {
+        systemPets[.cpu]?.updateMetric(metrics.cpuPercent)
+        systemPets[.memory]?.updateMetric(metrics.memoryPercent)
+    }
+
+    /// Memory pet 이 존 간 이동 시 거쳐야 하는 문(doorway) 경유지 반환.
+    /// 같은 존으로의 이동이거나 대응 문이 없으면 빈 배열.
+    func systemPetDoorWaypoints(from: SystemPetZone, to: SystemPetZone) -> [CGPoint] {
+        doorWaypoints(from: zoneFor(from), to: zoneFor(to))
+    }
+
+    private func zoneFor(_ sys: SystemPetZone) -> Zone {
+        switch sys {
+        case .rest:    return .rest
+        case .work:    return .work(slot: 0)
+        case .meeting: return .wait
+        }
+    }
+
+    /// 모든 pet 노드의 액션 정지
+    func pauseSystemPets() {
+        for node in systemPets.values {
+            node.stopAllMovement()
+        }
+    }
+
+    /// 씬이 다시 활성화되면 호출.
+    func resumeSystemPets() {
+        for node in systemPets.values {
+            node.resumeMovement()
+        }
+    }
+
+    // MARK: - Private helpers (System Pets)
+
+    /// 가구 AABB 수집: restZoneNodes + workDeskNodes + meetingZoneNodes + meetingTableNodes
+    private func computeMemoryPetForbiddenRects() -> [CGRect] {
+        var rects: [CGRect] = []
+        for node in restZoneNodes + workDeskNodes + meetingZoneNodes + meetingTableNodes {
+            let frame = node.calculateAccumulatedFrame()
+            if frame.width > 0 && frame.height > 0 {
+                rects.append(frame)
+            }
+        }
+        return rects
+    }
+
+    /// forbidden rects 와 겹치지 않는 초기 위치 반환.
+    /// preferred 가 안전하면 그대로 사용, 겹치면 bounds 내에서 대안 탐색.
+    private func safeInitialPosition(
+        preferred: CGPoint,
+        forbiddenRects: [CGRect],
+        bounds: CGRect
+    ) -> CGPoint {
+        let inForbidden = forbiddenRects.contains { $0.contains(preferred) }
+        guard inForbidden else { return preferred }
+
+        // 격자 탐색으로 안전한 위치 찾기
+        let step: CGFloat = 20
+        var x = bounds.minX + step
+        while x <= bounds.maxX - step {
+            var y = bounds.minY + step
+            while y <= bounds.maxY - step {
+                let candidate = CGPoint(x: x, y: y)
+                if !forbiddenRects.contains(where: { $0.contains(candidate) }) {
+                    return candidate
+                }
+                y += step
+            }
+            x += step
+        }
+        // 최후 fallback: preferred 그대로
+        return preferred
     }
 
     // MARK: - Energy saving

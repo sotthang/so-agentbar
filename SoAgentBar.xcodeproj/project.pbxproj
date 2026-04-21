@@ -7,10 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		PD001PD001PD001PD001PD01 /* PhaseD_WindowControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PD001PD001PD001PD001PD02 /* PhaseD_WindowControllerTests.swift */; };
 		SM001SM001SM001SM001SM01 /* SystemMetricsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM001SM001SM001SM001SM02 /* SystemMetricsTests.swift */; };
 		SM002SM002SM002SM002SM01 /* SystemMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM002SM002SM002SM002SM02 /* SystemMetrics.swift */; };
 		SM003SM003SM003SM003SM01 /* SystemMetricsMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM003SM003SM003SM003SM02 /* SystemMetricsMonitor.swift */; };
 		SM005SM005SM005SM005SM01 /* SystemMetricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM005SM005SM005SM005SM02 /* SystemMetricsView.swift */; };
+		SP001SP001SP001SP001SP01 /* SystemPetNodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SP001SP001SP001SP001SP02 /* SystemPetNodeTests.swift */; };
+		SC001SC001SC001SC001SC01 /* SystemPetSceneTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC001SC001SC001SC001SC02 /* SystemPetSceneTests.swift */; };
+		SP002SP002SP002SP002SP01 /* SystemPet.swift in Sources */ = {isa = PBXBuildFile; fileRef = SP002SP002SP002SP002SP02 /* SystemPet.swift */; };
+		SP003SP003SP003SP003SP01 /* SystemPetNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = SP003SP003SP003SP003SP02 /* SystemPetNode.swift */; };
 		15B59B5D2F7973AA00170E5B /* logo.png in Resources */ = {isa = PBXBuildFile; fileRef = 15B59B5C2F7973AA00170E5B /* logo.png */; };
 		15B59B5F2F797D2700170E5B /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 15B59B5E2F797D2700170E5B /* AppIcon.icns */; };
 		3E1ED4571EA5484EA2B785AA /* SoAgentBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785AB /* SoAgentBarApp.swift */; };
@@ -94,6 +99,8 @@
 		PA1053PA1053PA1053PA1001 /* COFFEE_DESK.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1053PA1053PA1053PA1002 /* COFFEE_DESK.png */; };
 		PA1054PA1054PA1054PA1001 /* COFFEE_MACHINE.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1054PA1054PA1054PA1002 /* COFFEE_MACHINE.png */; };
 		PA1055PA1055PA1055PA1001 /* MUG.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1055PA1055PA1055PA1002 /* MUG.png */; };
+		PA1056PA1056PA1056PA1001 /* cat_01.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1056PA1056PA1056PA1002 /* cat_01.png */; };
+		PA1057PA1057PA1057PA1001 /* dog_01.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1057PA1057PA1057PA1002 /* dog_01.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -128,6 +135,11 @@
 		SM002SM002SM002SM002SM02 /* SystemMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemMetrics.swift; sourceTree = "<group>"; };
 		SM003SM003SM003SM003SM02 /* SystemMetricsMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemMetricsMonitor.swift; sourceTree = "<group>"; };
 		SM005SM005SM005SM005SM02 /* SystemMetricsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemMetricsView.swift; sourceTree = "<group>"; };
+		SP001SP001SP001SP001SP02 /* SystemPetNodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPetNodeTests.swift; sourceTree = "<group>"; };
+		SC001SC001SC001SC001SC02 /* SystemPetSceneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPetSceneTests.swift; sourceTree = "<group>"; };
+		PD001PD001PD001PD001PD02 /* PhaseD_WindowControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseD_WindowControllerTests.swift; sourceTree = "<group>"; };
+		SP002SP002SP002SP002SP02 /* SystemPet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPet.swift; sourceTree = "<group>"; };
+		SP003SP003SP003SP003SP02 /* SystemPetNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPetNode.swift; sourceTree = "<group>"; };
 		SM004SM004SM004SM004SM02 /* XCTAssertEqualOptional.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XCTAssertEqualOptional.swift; sourceTree = "<group>"; };
 		PA1000PA1000PA1000PA1002 /* char_0.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_0.png; path = "Assets/pixel-agents/characters/char_0.png"; sourceTree = "<group>"; };
 		PA1001PA1001PA1001PA1002 /* char_1.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_1.png; path = "Assets/pixel-agents/characters/char_1.png"; sourceTree = "<group>"; };
@@ -186,6 +198,8 @@
 		PA1053PA1053PA1053PA1002 /* COFFEE_DESK.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = COFFEE_DESK.png; path = "Assets/pixel-agents/furniture/COFFEE_DESK.png"; sourceTree = "<group>"; };
 		PA1054PA1054PA1054PA1002 /* COFFEE_MACHINE.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = COFFEE_MACHINE.png; path = "Assets/pixel-agents/furniture/COFFEE_MACHINE.png"; sourceTree = "<group>"; };
 		PA1055PA1055PA1055PA1002 /* MUG.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = MUG.png; path = "Assets/pixel-agents/furniture/MUG.png"; sourceTree = "<group>"; };
+		PA1056PA1056PA1056PA1002 /* cat_01.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = cat_01.png; path = "Assets/pixel-agents/animals/cat_01.png"; sourceTree = "<group>"; };
+		PA1057PA1057PA1057PA1002 /* dog_01.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = dog_01.png; path = "Assets/pixel-agents/animals/dog_01.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -235,6 +249,8 @@
 				SM002SM002SM002SM002SM02 /* SystemMetrics.swift */,
 				SM003SM003SM003SM003SM02 /* SystemMetricsMonitor.swift */,
 				SM005SM005SM005SM005SM02 /* SystemMetricsView.swift */,
+				SP002SP002SP002SP002SP02 /* SystemPet.swift */,
+				SP003SP003SP003SP003SP02 /* SystemPetNode.swift */,
 				PA1000PA1000PA1000PA1002 /* char_0.png */,
 				PA1001PA1001PA1001PA1002 /* char_1.png */,
 				PA1002PA1002PA1002PA1002 /* char_2.png */,
@@ -292,6 +308,8 @@
 				PA1053PA1053PA1053PA1002 /* COFFEE_DESK.png */,
 				PA1054PA1054PA1054PA1002 /* COFFEE_MACHINE.png */,
 				PA1055PA1055PA1055PA1002 /* MUG.png */,
+				PA1056PA1056PA1056PA1002 /* cat_01.png */,
+				PA1057PA1057PA1057PA1002 /* dog_01.png */,
 			);
 			path = SoAgentBar;
 			sourceTree = "<group>";
@@ -313,6 +331,9 @@
 				PA0006PA0006PA0006PA0002 /* PixelAgentsTests.swift */,
 				SM001SM001SM001SM001SM02 /* SystemMetricsTests.swift */,
 				SM004SM004SM004SM004SM02 /* XCTAssertEqualOptional.swift */,
+				SP001SP001SP001SP001SP02 /* SystemPetNodeTests.swift */,
+				SC001SC001SC001SC001SC02 /* SystemPetSceneTests.swift */,
+			PD001PD001PD001PD001PD02 /* PhaseD_WindowControllerTests.swift */,
 			);
 			path = SoAgentBarTests;
 			sourceTree = "<group>";
@@ -468,6 +489,8 @@
 				PA1053PA1053PA1053PA1001 /* COFFEE_DESK.png in Resources */,
 				PA1054PA1054PA1054PA1001 /* COFFEE_MACHINE.png in Resources */,
 				PA1055PA1055PA1055PA1001 /* MUG.png in Resources */,
+				PA1056PA1056PA1056PA1001 /* cat_01.png in Resources */,
+				PA1057PA1057PA1057PA1001 /* dog_01.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -500,6 +523,8 @@
 				SM002SM002SM002SM002SM01 /* SystemMetrics.swift in Sources */,
 				SM003SM003SM003SM003SM01 /* SystemMetricsMonitor.swift in Sources */,
 				SM005SM005SM005SM005SM01 /* SystemMetricsView.swift in Sources */,
+				SP002SP002SP002SP002SP01 /* SystemPet.swift in Sources */,
+				SP003SP003SP003SP003SP01 /* SystemPetNode.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -512,6 +537,9 @@
 				PA0006PA0006PA0006PA0001 /* PixelAgentsTests.swift in Sources */,
 				SM001SM001SM001SM001SM01 /* SystemMetricsTests.swift in Sources */,
 				SM004SM004SM004SM004SM01 /* XCTAssertEqualOptional.swift in Sources */,
+				SP001SP001SP001SP001SP01 /* SystemPetNodeTests.swift in Sources */,
+				SC001SC001SC001SC001SC01 /* SystemPetSceneTests.swift in Sources */,
+			PD001PD001PD001PD001PD01 /* PhaseD_WindowControllerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

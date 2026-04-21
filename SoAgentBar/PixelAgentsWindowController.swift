@@ -13,6 +13,9 @@ final class PixelAgentsWindowController: NSWindowController {
     private let provider = SpriteSheetPixelProvider()
     private var cancellables = Set<AnyCancellable>()
 
+    /// 테스트 전용 scene 접근자.
+    var pixelScene: PixelAgentsScene { scene }
+
     private static let windowFrameKey = "pixelWindowFrame"
 
     // MARK: - Init
@@ -25,6 +28,7 @@ final class PixelAgentsWindowController: NSWindowController {
         )
         super.init(window: nil)
         configureWindow()
+        scene.spawnSystemPetsIfNeeded()
         bindToStore()
         // 픽셀 창: idle 상태로 10분 초과한 에이전트는 표시 제외
         let pixelAgents = store.$agents
@@ -36,6 +40,15 @@ final class PixelAgentsWindowController: NSWindowController {
             }
             .eraseToAnyPublisher()
         scene.bind(to: pixelAgents)
+
+        // SystemMetrics 구독 → scene에 전달
+        store.systemMetricsMonitor.$metrics
+            .compactMap { $0 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] m in
+                self?.scene.applyMetrics(m)
+            }
+            .store(in: &cancellables)
     }
 
     required init?(coder: NSCoder) {
@@ -68,13 +81,13 @@ final class PixelAgentsWindowController: NSWindowController {
     // MARK: - Store binding
 
     private func bindToStore() {
-        // Show/hide based on visibility flag and agent count
+        // Show/hide based on visibility flag (AC8: agents.isEmpty 조건 제거)
         store.$isPixelWindowVisible
             .combineLatest(store.$agents)
             .receive(on: RunLoop.main)
-            .sink { [weak self] visible, agents in
+            .sink { [weak self] visible, _ in
                 guard let self else { return }
-                if visible && !agents.isEmpty {
+                if visible {
                     self.showWindow()
                 } else {
                     self.hideWindow()
@@ -132,10 +145,12 @@ final class PixelAgentsWindowController: NSWindowController {
 
     func showWindow() {
         window?.orderFront(nil)
+        scene.resumeSystemPets()
     }
 
     func hideWindow() {
         window?.orderOut(nil)
+        scene.pauseSystemPets()
     }
 
     // MARK: - Frame persistence

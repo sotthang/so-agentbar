@@ -420,6 +420,7 @@ class AgentStore: ObservableObject {
 
     private let monitor = SessionMonitor()
     let usageMonitor = UsageMonitor()
+    let systemMetricsMonitor = SystemMetricsMonitor()
     let statsStore = StatsStore()
     private var elapsedTimer: Timer?
     private var previousStatuses: [String: AgentStatus] = [:]
@@ -486,6 +487,7 @@ class AgentStore: ObservableObject {
             self?.sendNotification(title: title, body: body)
         }
         usageMonitor.start()
+        systemMetricsMonitor.start()
 
         elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             DispatchQueue.main.async { [weak self] in

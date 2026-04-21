@@ -40,6 +40,7 @@ struct AgentListView: View {
             Divider()
             agentList
             UsageView(monitor: store.usageMonitor, store: store)
+            SystemMetricsView(monitor: store.systemMetricsMonitor, store: store)
             Divider()
             footer
         }

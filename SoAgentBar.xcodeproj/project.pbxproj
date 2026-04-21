@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		SM001SM001SM001SM001SM01 /* SystemMetricsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM001SM001SM001SM001SM02 /* SystemMetricsTests.swift */; };
+		SM002SM002SM002SM002SM01 /* SystemMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM002SM002SM002SM002SM02 /* SystemMetrics.swift */; };
+		SM003SM003SM003SM003SM01 /* SystemMetricsMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM003SM003SM003SM003SM02 /* SystemMetricsMonitor.swift */; };
+		SM005SM005SM005SM005SM01 /* SystemMetricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM005SM005SM005SM005SM02 /* SystemMetricsView.swift */; };
 		15B59B5D2F7973AA00170E5B /* logo.png in Resources */ = {isa = PBXBuildFile; fileRef = 15B59B5C2F7973AA00170E5B /* logo.png */; };
 		15B59B5F2F797D2700170E5B /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 15B59B5E2F797D2700170E5B /* AppIcon.icns */; };
 		3E1ED4571EA5484EA2B785AA /* SoAgentBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785AB /* SoAgentBarApp.swift */; };
@@ -32,6 +36,7 @@
 		PA0004PA0004PA0004PA0001 /* SKViewRepresentable.swift in Sources */ = {isa = PBXBuildFile; fileRef = PA0004PA0004PA0004PA0002 /* SKViewRepresentable.swift */; };
 		PA0005PA0005PA0005PA0001 /* PixelAgentsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = PA0005PA0005PA0005PA0002 /* PixelAgentsWindowController.swift */; };
 		PA0006PA0006PA0006PA0001 /* PixelAgentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PA0006PA0006PA0006PA0002 /* PixelAgentsTests.swift */; };
+		SM004SM004SM004SM004SM01 /* XCTAssertEqualOptional.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM004SM004SM004SM004SM02 /* XCTAssertEqualOptional.swift */; };
 		PA1000PA1000PA1000PA1001 /* char_0.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1000PA1000PA1000PA1002 /* char_0.png */; };
 		PA1001PA1001PA1001PA1001 /* char_1.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1001PA1001PA1001PA1002 /* char_1.png */; };
 		PA1002PA1002PA1002PA1001 /* char_2.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1002PA1002PA1002PA1002 /* char_2.png */; };
@@ -119,6 +124,11 @@
 		PA0004PA0004PA0004PA0002 /* SKViewRepresentable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SKViewRepresentable.swift; sourceTree = "<group>"; };
 		PA0005PA0005PA0005PA0002 /* PixelAgentsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelAgentsWindowController.swift; sourceTree = "<group>"; };
 		PA0006PA0006PA0006PA0002 /* PixelAgentsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelAgentsTests.swift; sourceTree = "<group>"; };
+		SM001SM001SM001SM001SM02 /* SystemMetricsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemMetricsTests.swift; sourceTree = "<group>"; };
+		SM002SM002SM002SM002SM02 /* SystemMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemMetrics.swift; sourceTree = "<group>"; };
+		SM003SM003SM003SM003SM02 /* SystemMetricsMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemMetricsMonitor.swift; sourceTree = "<group>"; };
+		SM005SM005SM005SM005SM02 /* SystemMetricsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemMetricsView.swift; sourceTree = "<group>"; };
+		SM004SM004SM004SM004SM02 /* XCTAssertEqualOptional.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XCTAssertEqualOptional.swift; sourceTree = "<group>"; };
 		PA1000PA1000PA1000PA1002 /* char_0.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_0.png; path = "Assets/pixel-agents/characters/char_0.png"; sourceTree = "<group>"; };
 		PA1001PA1001PA1001PA1002 /* char_1.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_1.png; path = "Assets/pixel-agents/characters/char_1.png"; sourceTree = "<group>"; };
 		PA1002PA1002PA1002PA1002 /* char_2.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_2.png; path = "Assets/pixel-agents/characters/char_2.png"; sourceTree = "<group>"; };
@@ -222,6 +232,9 @@
 				PA0003PA0003PA0003PA0002 /* PixelAgentsScene.swift */,
 				PA0004PA0004PA0004PA0002 /* SKViewRepresentable.swift */,
 				PA0005PA0005PA0005PA0002 /* PixelAgentsWindowController.swift */,
+				SM002SM002SM002SM002SM02 /* SystemMetrics.swift */,
+				SM003SM003SM003SM003SM02 /* SystemMetricsMonitor.swift */,
+				SM005SM005SM005SM005SM02 /* SystemMetricsView.swift */,
 				PA1000PA1000PA1000PA1002 /* char_0.png */,
 				PA1001PA1001PA1001PA1002 /* char_1.png */,
 				PA1002PA1002PA1002PA1002 /* char_2.png */,
@@ -298,6 +311,8 @@
 				CC001CC001CC001CC001CC04 /* CostCalculatorTests.swift */,
 				CC001CC001CC001CC001CC06 /* QuietHoursTests.swift */,
 				PA0006PA0006PA0006PA0002 /* PixelAgentsTests.swift */,
+				SM001SM001SM001SM001SM02 /* SystemMetricsTests.swift */,
+				SM004SM004SM004SM004SM02 /* XCTAssertEqualOptional.swift */,
 			);
 			path = SoAgentBarTests;
 			sourceTree = "<group>";
@@ -482,6 +497,9 @@
 				PA0003PA0003PA0003PA0001 /* PixelAgentsScene.swift in Sources */,
 				PA0004PA0004PA0004PA0001 /* SKViewRepresentable.swift in Sources */,
 				PA0005PA0005PA0005PA0001 /* PixelAgentsWindowController.swift in Sources */,
+				SM002SM002SM002SM002SM01 /* SystemMetrics.swift in Sources */,
+				SM003SM003SM003SM003SM01 /* SystemMetricsMonitor.swift in Sources */,
+				SM005SM005SM005SM005SM01 /* SystemMetricsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -492,6 +510,8 @@
 				CC001CC001CC001CC001CC03 /* CostCalculatorTests.swift in Sources */,
 				CC001CC001CC001CC001CC05 /* QuietHoursTests.swift in Sources */,
 				PA0006PA0006PA0006PA0001 /* PixelAgentsTests.swift in Sources */,
+				SM001SM001SM001SM001SM01 /* SystemMetricsTests.swift in Sources */,
+				SM004SM004SM004SM004SM01 /* XCTAssertEqualOptional.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

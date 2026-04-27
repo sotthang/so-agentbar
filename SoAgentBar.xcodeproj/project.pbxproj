@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CX001CX001CX001CX001CX01 /* CodexSessionMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CX001CX001CX001CX001CX02 /* CodexSessionMonitorTests.swift */; };
+		CX002CX002CX002CX002CX01 /* SessionCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CX002CX002CX002CX002CX02 /* SessionCoordinatorTests.swift */; };
+		CX003CX003CX003CX003CX01 /* CodexDisplayStatusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CX003CX003CX003CX003CX02 /* CodexDisplayStatusTests.swift */; };
+		CX004CX004CX004CX004CX01 /* CostCalculatorOpenAITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CX004CX004CX004CX004CX02 /* CostCalculatorOpenAITests.swift */; };
+		CX005CX005CX005CX005CX01 /* ProjectGroupKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CX005CX005CX005CX005CX02 /* ProjectGroupKeyTests.swift */; };
+		CX006CX006CX006CX006CX01 /* AgentModeDisplayNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CX006CX006CX006CX006CX02 /* AgentModeDisplayNameTests.swift */; };
 		PD001PD001PD001PD001PD01 /* PhaseD_WindowControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PD001PD001PD001PD001PD02 /* PhaseD_WindowControllerTests.swift */; };
 		SM001SM001SM001SM001SM01 /* SystemMetricsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM001SM001SM001SM001SM02 /* SystemMetricsTests.swift */; };
 		SM002SM002SM002SM002SM01 /* SystemMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM002SM002SM002SM002SM02 /* SystemMetrics.swift */; };
@@ -112,6 +118,9 @@
 		PA1055PA1055PA1055PA1001 /* MUG.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1055PA1055PA1055PA1002 /* MUG.png */; };
 		PA1056PA1056PA1056PA1001 /* cat_01.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1056PA1056PA1056PA1002 /* cat_01.png */; };
 		PA1057PA1057PA1057PA1001 /* dog_01.png in Resources */ = {isa = PBXBuildFile; fileRef = PA1057PA1057PA1057PA1002 /* dog_01.png */; };
+		NF001NF001NF001NF001NF01 /* SessionMonitoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = NF001NF001NF001NF001NF02 /* SessionMonitoring.swift */; };
+		NF002NF002NF002NF002NF01 /* CodexSessionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = NF002NF002NF002NF002NF02 /* CodexSessionMonitor.swift */; };
+		NF003NF003NF003NF003NF01 /* SessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = NF003NF003NF003NF003NF02 /* SessionCoordinator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -156,6 +165,12 @@
 		UF002UF002UF002UF002UF02 /* ClipboardMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardMonitorTests.swift; sourceTree = "<group>"; };
 		UF003UF003UF003UF003UF02 /* QuickNoteStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickNoteStoreTests.swift; sourceTree = "<group>"; };
 		UF017UF017UF017UF017UF02 /* TestConformances.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestConformances.swift; sourceTree = "<group>"; };
+		CX001CX001CX001CX001CX02 /* CodexSessionMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexSessionMonitorTests.swift; sourceTree = "<group>"; };
+		CX002CX002CX002CX002CX02 /* SessionCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCoordinatorTests.swift; sourceTree = "<group>"; };
+		CX003CX003CX003CX003CX02 /* CodexDisplayStatusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexDisplayStatusTests.swift; sourceTree = "<group>"; };
+		CX004CX004CX004CX004CX02 /* CostCalculatorOpenAITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostCalculatorOpenAITests.swift; sourceTree = "<group>"; };
+		CX005CX005CX005CX005CX02 /* ProjectGroupKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectGroupKeyTests.swift; sourceTree = "<group>"; };
+		CX006CX006CX006CX006CX02 /* AgentModeDisplayNameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentModeDisplayNameTests.swift; sourceTree = "<group>"; };
 		UF010UF010UF010UF010UF02 /* KeepAwakeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeepAwakeManager.swift; sourceTree = "<group>"; };
 		UF011UF011UF011UF011UF02 /* ClipboardEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardEntry.swift; sourceTree = "<group>"; };
 		UF012UF012UF012UF012UF02 /* ClipboardMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardMonitor.swift; sourceTree = "<group>"; };
@@ -222,6 +237,9 @@
 		PA1055PA1055PA1055PA1002 /* MUG.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = MUG.png; path = "Assets/pixel-agents/furniture/MUG.png"; sourceTree = "<group>"; };
 		PA1056PA1056PA1056PA1002 /* cat_01.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = cat_01.png; path = "Assets/pixel-agents/animals/cat_01.png"; sourceTree = "<group>"; };
 		PA1057PA1057PA1057PA1002 /* dog_01.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = dog_01.png; path = "Assets/pixel-agents/animals/dog_01.png"; sourceTree = "<group>"; };
+		NF001NF001NF001NF001NF02 /* SessionMonitoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitoring.swift; sourceTree = "<group>"; };
+		NF002NF002NF002NF002NF02 /* CodexSessionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexSessionMonitor.swift; sourceTree = "<group>"; };
+		NF003NF003NF003NF003NF02 /* SessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCoordinator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -253,6 +271,9 @@
 				3E1ED4571EA5484EA2B785AB /* SoAgentBarApp.swift */,
 				3E1ED4571EA5484EA2B785AD /* AgentStore.swift */,
 				3E1ED4571EA5484EA2B785B6 /* SessionMonitor.swift */,
+				NF001NF001NF001NF001NF02 /* SessionMonitoring.swift */,
+				NF002NF002NF002NF002NF02 /* CodexSessionMonitor.swift */,
+				NF003NF003NF003NF003NF02 /* SessionCoordinator.swift */,
 				3E1ED4571EA5484EA2B785B1 /* MenuBarIconView.swift */,
 				3E1ED4571EA5484EA2B785B3 /* AgentListView.swift */,
 				D0A7CBDB2F7556860052C5A3 /* SettingsView.swift */,
@@ -357,6 +378,12 @@
 			children = (
 				CC001CC001CC001CC001CC04 /* CostCalculatorTests.swift */,
 				CC001CC001CC001CC001CC06 /* QuietHoursTests.swift */,
+				CX001CX001CX001CX001CX02 /* CodexSessionMonitorTests.swift */,
+				CX002CX002CX002CX002CX02 /* SessionCoordinatorTests.swift */,
+				CX003CX003CX003CX003CX02 /* CodexDisplayStatusTests.swift */,
+				CX004CX004CX004CX004CX02 /* CostCalculatorOpenAITests.swift */,
+				CX005CX005CX005CX005CX02 /* ProjectGroupKeyTests.swift */,
+				CX006CX006CX006CX006CX02 /* AgentModeDisplayNameTests.swift */,
 				PA0006PA0006PA0006PA0002 /* PixelAgentsTests.swift */,
 				SM001SM001SM001SM001SM02 /* SystemMetricsTests.swift */,
 				SM004SM004SM004SM004SM02 /* XCTAssertEqualOptional.swift */,
@@ -547,6 +574,9 @@
 				3E1ED4571EA5484EA2B785B0 /* MenuBarIconView.swift in Sources */,
 				3E1ED4571EA5484EA2B785B2 /* AgentListView.swift in Sources */,
 				CC001CC001CC001CC001CC01 /* CostCalculator.swift in Sources */,
+				NF001NF001NF001NF001NF01 /* SessionMonitoring.swift in Sources */,
+				NF002NF002NF002NF002NF01 /* CodexSessionMonitor.swift in Sources */,
+				NF003NF003NF003NF003NF01 /* SessionCoordinator.swift in Sources */,
 				D0MAIN00012F8000000000000 /* main.swift in Sources */,
 				PA0001PA0001PA0001PA0001 /* PixelCharacterProvider.swift in Sources */,
 				PA0002PA0002PA0002PA0001 /* PixelCharacterNode.swift in Sources */,
@@ -584,6 +614,12 @@
 				UF002UF002UF002UF002UF01 /* ClipboardMonitorTests.swift in Sources */,
 				UF003UF003UF003UF003UF01 /* QuickNoteStoreTests.swift in Sources */,
 				UF017UF017UF017UF017UF01 /* TestConformances.swift in Sources */,
+				CX001CX001CX001CX001CX01 /* CodexSessionMonitorTests.swift in Sources */,
+				CX002CX002CX002CX002CX01 /* SessionCoordinatorTests.swift in Sources */,
+				CX003CX003CX003CX003CX01 /* CodexDisplayStatusTests.swift in Sources */,
+				CX004CX004CX004CX004CX01 /* CostCalculatorOpenAITests.swift in Sources */,
+				CX005CX005CX005CX005CX01 /* ProjectGroupKeyTests.swift in Sources */,
+				CX006CX006CX006CX006CX01 /* AgentModeDisplayNameTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -181,7 +181,8 @@ struct AgentListView: View {
     }
 
     private var groupedList: some View {
-        let grouped = Dictionary(grouping: store.agents, by: \.projectDir)
+        // 같은 cwd의 Claude/Codex 세션을 한 그룹으로 묶기 위해 절대 cwd 기반 groupKey 사용
+        let grouped = Dictionary(grouping: store.agents, by: \.groupKey)
         // 그룹 내 active 세션 우선, 그 다음 최신 lastActivity 기준으로 프로젝트 정렬
         let sortedKeys = grouped.keys.sorted { a, b in
             let aActive = grouped[a]?.contains(where: { $0.status == .working || $0.status == .waitingApproval }) ?? false
@@ -404,6 +405,8 @@ struct AgentRowView: View {
         case .xcode:         return .blue
         case .desktopCode:   return .purple
         case .desktopCowork: return .orange
+        case .codexCLI:      return .green
+        case .codexVSCode:   return .teal
         }
     }
 }
@@ -581,6 +584,16 @@ struct ProjectGroupView: View {
                 .font(.system(size: 9))
                 .foregroundColor(.orange)
                 .help("Claude Cowork")
+        case .codexCLI:
+            Image(systemName: "apple.terminal")
+                .font(.system(size: 9))
+                .foregroundColor(.green)
+                .help("Codex CLI")
+        case .codexVSCode:
+            Image(systemName: "chevron.left.forwardslash.chevron.right")
+                .font(.system(size: 9))
+                .foregroundColor(.teal)
+                .help("Codex VSCode")
         }
     }
 }

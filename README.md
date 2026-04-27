@@ -5,7 +5,7 @@
 <h1 align="center">so-agentbar</h1>
 
 <p align="center">
-  macOS menu bar app that monitors your active Claude Code agent sessions in real-time
+  macOS menu bar app that monitors your active Claude Code and Codex CLI agent sessions in real-time
 </p>
 
 <p align="center">
@@ -40,7 +40,7 @@
 
 ## Features
 
-- **Real-time Session Monitoring** — Automatically detects and tracks all running Claude sessions: CLI, Xcode, Claude Desktop Code, and Claude Desktop Cowork
+- **Real-time Session Monitoring** — Automatically detects and tracks all running Claude and Codex CLI sessions: Claude (CLI, Xcode, Desktop Code, Cowork) and Codex (CLI, VSCode)
 - **Subagent Grouping** — Sessions spawned via the `Agent` tool (e.g. SO-ADK pipelines) are folded under their parent session with a `🤖×N` badge. Click to expand the dropdown and see each subagent's type, current task, and last response on hover. While the parent waits, the parent row mirrors the most active subagent's status, and the parent's token/cost totals include every subagent's usage so you see the full pipeline cost in one place
 - **Source Badges** — Each session is labeled by origin (Code, Cowork, Xcode) so you always know where it's running. Click a Desktop session to open Claude Desktop directly
 - **Session Titles** — AI-generated session titles from Claude Desktop are shown automatically, replacing cryptic path names
@@ -85,14 +85,18 @@ Build and run with Xcode (⌘R).
 
 ## How It Works
 
-so-agentbar monitors Claude Code session logs via FSEvents:
+so-agentbar monitors Claude and Codex agent session logs via FSEvents:
 
+**Claude sessions**:
 - **CLI sessions** — `~/.claude/projects/`
 - **Xcode sessions** — `~/Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig/projects/`
 - **Desktop Code sessions** — detected via Claude Desktop metadata (`claude-code-sessions/*.json`)
 - **Desktop Cowork sessions** — `~/Library/Application Support/Claude/local-agent-mode-sessions/`
 
-Session status is determined by parsing JSONL log events. Quota usage is fetched from Anthropic's OAuth API using the token stored in Keychain.
+**Codex sessions**:
+- **CLI & VSCode sessions** — `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
+
+Session status is determined by parsing JSONL log events. Claude quota usage is fetched from Anthropic's OAuth API using the token stored in Keychain. Token and cost data are restored after app restart via incremental log parsing.
 
 ## Settings
 
@@ -110,6 +114,7 @@ Session status is determined by parsing JSONL log events. Quota usage is fetched
 | Keep Awake Mode | Toggle between Off, Always, and Auto (session-dependent) |
 | Auto Keep Awake on Session | Automatically prevent sleep when Claude sessions are active |
 | Clipboard History | Enable or disable clipboard history tracking and display |
+| Codex CLI Monitoring | Enable or disable OpenAI Codex CLI/VSCode session tracking |
 | Launch at Login | Auto-start with macOS |
 | Auto Update | Check for updates automatically via Sparkle |
 

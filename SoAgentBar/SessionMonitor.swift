@@ -19,6 +19,16 @@ enum SessionSource: Hashable {
     case xcode         // Xcode Coding Assistant에서 실행
     case desktopCode   // Claude Desktop의 Code 탭
     case desktopCowork // Claude Desktop의 Cowork 탭 (VM)
+    case codexCLI      // [NEW] OpenAI Codex CLI
+    case codexVSCode   // [NEW] OpenAI Codex VSCode 확장
+
+    /// Codex 계열 여부
+    var isCodexFamily: Bool {
+        switch self {
+        case .codexCLI, .codexVSCode: return true
+        default: return false
+        }
+    }
 }
 
 // MARK: - Claude 세션 모델
@@ -38,7 +48,14 @@ struct ClaudeSession: Identifiable {
     var lastEventType: String = ""         // "user", "assistant", "tool_result", "result"
     var lastAssistantHasToolUse: Bool = false
     var lastToolUseTime: Date? = nil       // tool_use 감지 시각 (승인 대기 판단용)
-    var tokensByModel: [String: (input: Int, output: Int)] = [:]  // 모델별 누적 토큰
+    // 모델별 누적 토큰 — TokenUsage struct (cachedInput, reasoningOutput 포함)
+    struct TokenUsage {
+        var input: Int = 0
+        var cachedInput: Int = 0
+        var output: Int = 0
+        var reasoningOutput: Int = 0
+    }
+    var tokensByModel: [String: TokenUsage] = [:]  // 모델별 누적 토큰
     var lastToolName: String = "running"
     var lastAssistantText: String = ""      // 마지막 Claude 응답 미리보기
     var currentModel: String = ""           // 마지막 assistant 이벤트의 모델명
@@ -59,10 +76,57 @@ struct ClaudeSession: Identifiable {
 
     var estimatedCost: Double? {
         let costs = tokensByModel.compactMap { (model, tokens) in
-            CostCalculator.estimate(model: model, inputTokens: tokens.input, outputTokens: tokens.output)
+            CostCalculator.estimate(
+                model: model,
+                inputTokens: tokens.input,
+                cachedInputTokens: tokens.cachedInput,
+                outputTokens: tokens.output
+            )
         }
         guard !costs.isEmpty else { return nil }
         return costs.reduce(0, +)
+    }
+
+    // Codex 전용 필드 (Claude 세션에서는 항상 기본값 유지)
+    var codexApprovalPolicy: String? = nil
+    var codexErrorInfo: String? = nil
+    var codexLastTurnDurationMs: Int? = nil
+    var codexSawResultEvent: Bool = false
+    var codexSawErrorEvent: Bool = false
+
+    // Source-aware status dispatcher
+    var displayStatus: SessionStatus {
+        switch source {
+        case .codexCLI, .codexVSCode:
+            return codexSessionStatus
+        default:
+            return sessionStatus
+        }
+    }
+
+    private var codexSessionStatus: SessionStatus {
+        if codexSawErrorEvent {
+            return .error
+        }
+        if codexSawResultEvent {
+            return .completed
+        }
+        let age = Date().timeIntervalSince(lastContentChange)
+        if age > 300 { return .idle }
+        if codexApprovalPolicy == "on-request",
+           let toolTime = lastToolUseTime,
+           Date().timeIntervalSince(toolTime) > 5 {
+            return .waitingForApproval
+        }
+        if (lastEventType == "assistant" || lastEventType == "task_complete"),
+           age >= 5 {
+            return .responded
+        }
+        if (lastEventType == "task_started" || lastEventType == "user"),
+           age < 5 {
+            return .running
+        }
+        return .running
     }
 
     // 현재 permissionMode에서 해당 도구가 자동 승인되는지 판단
@@ -160,9 +224,9 @@ struct ClaudeSession: Identifiable {
     }
 }
 
-// MARK: - SessionMonitor
+// MARK: - ClaudeSessionMonitor
 
-class SessionMonitor {
+class ClaudeSessionMonitor: SessionMonitorProtocol {
     private let projectsDirs: [URL]                            // 직접 스캔하는 정적 프로젝트 디렉토리
     private let watchedExtraDirs: [URL]                        // FSEvents 감시 추가 경로
     private let dispatchQueue = DispatchQueue(label: "com.sotthang.so-agentbar.sessionmonitor", qos: .utility)
@@ -245,7 +309,7 @@ class SessionMonitor {
 
         let callback: FSEventStreamCallback = { _, clientInfo, _, _, _, _ in
             guard let clientInfo else { return }
-            let monitor = Unmanaged<SessionMonitor>.fromOpaque(clientInfo).takeUnretainedValue()
+            let monitor = Unmanaged<ClaudeSessionMonitor>.fromOpaque(clientInfo).takeUnretainedValue()
             monitor.scheduleDebouncedPoll()
         }
 
@@ -476,7 +540,7 @@ class SessionMonitor {
 
         // 타임스탬프 업데이트
         if let tsStr = json["timestamp"] as? String,
-           let ts = parseISO8601(tsStr), ts > session.lastActivity {
+           let ts = SessionDateUtil.parseISO8601(tsStr), ts > session.lastActivity {
             session.lastActivity = ts
         }
 
@@ -544,8 +608,13 @@ class SessionMonitor {
                           + (usage["cache_creation_input_tokens"] as? Int ?? 0)
                           + (usage["cache_read_input_tokens"] as? Int ?? 0)
                 let output = usage["output_tokens"] as? Int ?? 0
-                let existing = session.tokensByModel[model] ?? (0, 0)
-                session.tokensByModel[model] = (existing.0 + input, existing.1 + output)
+                let existing = session.tokensByModel[model] ?? ClaudeSession.TokenUsage()
+                session.tokensByModel[model] = ClaudeSession.TokenUsage(
+                    input: existing.input + input,
+                    cachedInput: existing.cachedInput,
+                    output: existing.output + output,
+                    reasoningOutput: existing.reasoningOutput
+                )
             }
 
             // 응답 텍스트 추출
@@ -564,7 +633,7 @@ class SessionMonitor {
                    let lastTool = content.last(where: { $0["type"] as? String == "tool_use" }),
                    let name = lastTool["name"] as? String {
                     session.lastToolName = name.lowercased()
-                    if let tsStr = json["timestamp"] as? String, let ts = parseISO8601(tsStr) {
+                    if let tsStr = json["timestamp"] as? String, let ts = SessionDateUtil.parseISO8601(tsStr) {
                         session.lastToolUseTime = ts
                     } else {
                         session.lastToolUseTime = Date()
@@ -842,13 +911,4 @@ class SessionMonitor {
         }
     }
 
-    private static let iso8601Formatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    private func parseISO8601(_ str: String) -> Date? {
-        Self.iso8601Formatter.date(from: str)
-    }
 }

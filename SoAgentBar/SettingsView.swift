@@ -346,6 +346,22 @@ struct SettingsView: View {
                     Divider().padding(.leading, 16)
 
                     settingRow {
+                        Toggle(isOn: $store.monitorCodexSessions) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(store.t("Codex CLI 세션 모니터링", "Monitor Codex CLI sessions"))
+                                    .font(.system(size: 13))
+                                Text(store.t("~/.codex/sessions의 Codex CLI / VSCode 세션을 함께 표시합니다",
+                                             "Also show Codex CLI / VSCode sessions from ~/.codex/sessions"))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                    }
+
+                    Divider().padding(.leading, 16)
+
+                    settingRow {
                         Toggle(isOn: $store.showIdleSessions) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(store.t("비활성 세션 표시", "Show idle sessions"))

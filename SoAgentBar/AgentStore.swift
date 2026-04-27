@@ -86,6 +86,15 @@ enum OpenWith: String, CaseIterable {
             task.launchPath = "/usr/bin/open"
             task.arguments = ["-a", "Claude"]
             try? task.run()
+        case .codexCLI:
+            // Codex CLI → 사용자가 설정한 cliEditor로 열기
+            cliEditor.openInEditor(path: path)
+        case .codexVSCode:
+            // Codex VSCode → VSCode로 열기
+            let task = Process()
+            task.launchPath = "/usr/bin/open"
+            task.arguments = ["-a", "Visual Studio Code", path]
+            try? task.run()
         }
     }
 
@@ -153,7 +162,7 @@ struct Agent: Identifiable {
     var status: AgentStatus
     var currentTask: String
     var elapsedSeconds: Int
-    var tokensByModel: [String: (input: Int, output: Int)]
+    var tokensByModel: [String: ClaudeSession.TokenUsage]
     var currentModel: String
     var sessionID: String
     var projectDir: String
@@ -166,6 +175,8 @@ struct Agent: Identifiable {
     var subagentCount: Int = 0  // 이 부모에 속한 활성 서브에이전트 수
     var subagents: [Agent] = [] // 펼쳐 보기용 자식 에이전트 목록
     var pid: Int?
+    var codexApprovalPolicy: String? = nil  // [NEW] Codex approval policy
+    var groupKey: String = ""               // [NEW] 프로젝트 그룹화 키
 
     // 기존 호환성 유지: computed properties
     var inputTokens: Int { tokensByModel.values.reduce(0) { $0 + $1.input } }
@@ -174,7 +185,12 @@ struct Agent: Identifiable {
 
     var estimatedCost: Double? {
         let costs = tokensByModel.compactMap { (model, tokens) in
-            CostCalculator.estimate(model: model, inputTokens: tokens.input, outputTokens: tokens.output)
+            CostCalculator.estimate(
+                model: model,
+                inputTokens: tokens.input,
+                cachedInputTokens: tokens.cachedInput,
+                outputTokens: tokens.output
+            )
         }
         guard !costs.isEmpty else { return nil }
         return costs.reduce(0, +)
@@ -203,17 +219,39 @@ struct Agent: Identifiable {
         case .xcode:         return "Xcode"
         case .desktopCode:   return "Code"
         case .desktopCowork: return "Cowork"
+        case .codexCLI:      return "Codex"          // [NEW]
+        case .codexVSCode:   return "Codex VSCode"   // [NEW]
         }
     }
 
     /// "default" → "Ask", "acceptEdits" → "Auto", "plan" → "Plan"
+    /// Codex: codexApprovalPolicy 기반 source-aware 라벨
     var modeDisplayName: String {
-        switch permissionMode {
-        case "acceptEdits": return "Auto"
-        case "plan":        return "Plan"
-        case "auto":        return "Auto+"
+        switch source {
+        case .codexCLI, .codexVSCode:
+            return Self.codexApprovalLabel(codexApprovalPolicy)
+        default:
+            return Self.claudePermissionLabel(permissionMode)
+        }
+    }
+
+    private static func claudePermissionLabel(_ mode: String) -> String {
+        switch mode {
+        case "acceptEdits":       return "Auto"
+        case "plan":              return "Plan"
+        case "auto":              return "Auto+"
         case "bypassPermissions": return "Bypass"
-        default:            return "Ask"
+        default:                  return "Ask"
+        }
+    }
+
+    private static func codexApprovalLabel(_ policy: String?) -> String {
+        switch policy {
+        case "untrusted":   return "신뢰되지 않음"
+        case "on-request":  return "요청 시 승인"
+        case "on-failure":  return "실패 시 승인"
+        case "never":       return "항상 허용"
+        default:            return "Codex 기본"
         }
     }
 }
@@ -243,7 +281,15 @@ class AgentStore: ObservableObject {
     @Published var pollInterval: Double {
         didSet {
             UserDefaults.standard.set(pollInterval, forKey: "pollInterval")
-            monitor.updatePollInterval(pollInterval)
+            coordinator.updatePollInterval(pollInterval)
+        }
+    }
+
+    /// Codex CLI 세션 모니터링 토글 (Settings에서 노출)
+    @Published var monitorCodexSessions: Bool {
+        didSet {
+            UserDefaults.standard.set(monitorCodexSessions, forKey: "monitorCodexSessions")
+            coordinator.setCodexEnabled(monitorCodexSessions)
         }
     }
 
@@ -433,7 +479,7 @@ class AgentStore: ObservableObject {
         }
     }
 
-    private let monitor = SessionMonitor()
+    private let coordinator = SessionCoordinator()
     let usageMonitor = UsageMonitor()
     let systemMetricsMonitor = SystemMetricsMonitor()
     let statsStore = StatsStore()
@@ -459,6 +505,7 @@ class AgentStore: ObservableObject {
         self.pixelWindowOpacity   = UserDefaults.standard.object(forKey: "pixelWindowOpacity") as? Double ?? 0.8
         self.showIdleSessions   = UserDefaults.standard.object(forKey: "showIdleSessions") as? Bool ?? true
         self.pollInterval       = UserDefaults.standard.object(forKey: "pollInterval") as? Double ?? 10.0
+        self.monitorCodexSessions = UserDefaults.standard.object(forKey: "monitorCodexSessions") as? Bool ?? true
         self.language           = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "language") ?? "en") ?? .english
         self.menubarStyle       = MenubarStyle(rawValue: UserDefaults.standard.string(forKey: "menubarStyle") ?? "emoji") ?? .emoji
         self.listStyle          = ListStyle(rawValue: UserDefaults.standard.string(forKey: "listStyle") ?? "grouped") ?? .grouped
@@ -498,7 +545,11 @@ class AgentStore: ObservableObject {
         requestNotificationPermission()
         setupDNDObserver()
 
-        monitor.onSessionsChanged = { [weak self] sessions in
+        // init 시점의 토글 OFF 상태를 coordinator에 반영 (didSet은 초기화 시점에 발동 안 함)
+        if !monitorCodexSessions {
+            coordinator.setCodexEnabled(false)
+        }
+        coordinator.onSessionsChanged = { [weak self] sessions in
             // 현재 렌더 사이클이 끝난 뒤 실행되도록 한 번 더 async로 미룸
             DispatchQueue.main.async { [weak self] in
                 MainActor.assumeIsolated {
@@ -506,7 +557,7 @@ class AgentStore: ObservableObject {
                 }
             }
         }
-        monitor.start()
+        coordinator.start()
         syncUsageMonitorSettings()
         usageMonitor.sendNotificationHandler = { [weak self] title, body in
             self?.sendNotification(title: title, body: body)
@@ -703,6 +754,8 @@ class AgentStore: ObservableObject {
             case .xcode:         srcStr = "xcode"
             case .desktopCode:   srcStr = "desktopCode"
             case .desktopCowork: srcStr = "desktopCowork"
+            case .codexCLI:      srcStr = "codex"
+            case .codexVSCode:   srcStr = "codexVSCode"
             }
             content.userInfo = ["workingPath": path, "source": srcStr]
         }
@@ -720,7 +773,7 @@ class AgentStore: ObservableObject {
     private func updateAgents(from sessions: [ClaudeSession]) {
         let preFiltered = showIdleSessions
             ? sessions
-            : sessions.filter { $0.sessionStatus == .running || $0.sessionStatus == .responded }
+            : sessions.filter { $0.displayStatus == .running || $0.displayStatus == .responded }
 
         // 서브에이전트를 부모별로 그룹화
         // - 부모 세션은 그대로 표시 + subagentCount 누적
@@ -741,7 +794,7 @@ class AgentStore: ObservableObject {
         // 부모 → 활성 서브 우선순위(running > waitingForApproval > responded > 그 외) + 최신
         func pickActiveSubagent(_ subs: [ClaudeSession]) -> ClaudeSession? {
             func rank(_ s: ClaudeSession) -> Int {
-                switch s.sessionStatus {
+                switch s.displayStatus {
                 case .running: return 0
                 case .waitingForApproval: return 1
                 case .responded: return 2
@@ -775,7 +828,7 @@ class AgentStore: ObservableObject {
             let display = displayOverride ?? session
             let status: AgentStatus
             let task: String
-            switch display.sessionStatus {
+            switch display.displayStatus {
             case .running:
                 status = .working
                 task = translateToolName(display.lastToolName)
@@ -798,7 +851,7 @@ class AgentStore: ObservableObject {
             let existing = agents.first(where: { $0.id == session.id })
                 ?? agents.flatMap { [$0] + $0.subagents }.first(where: { $0.id == session.id })
             let elapsed = display.sessionStatus == .running ? (existing?.elapsedSeconds ?? 0) : 0
-            return Agent(
+            var agent = Agent(
                 id: session.id,
                 name: nameOverride ?? session.displayName,
                 status: status,
@@ -818,14 +871,17 @@ class AgentStore: ObservableObject {
                 subagents: [],
                 pid: nil
             )
+            agent.codexApprovalPolicy = session.codexApprovalPolicy
+            agent.groupKey = ProjectGroupKey.key(for: session)
+            return agent
         }
 
         let newAgents = filtered.map { parentSession -> Agent in
             // 활성 서브가 있고 부모가 일하고 있지 않으면, 부모 표시를 서브 정보로 오버라이드
             let subs = subagentsByParent[parentSession.id] ?? []
             let activeSub = pickActiveSubagent(subs)
-            let parentIsActive = parentSession.sessionStatus == .running
-                || parentSession.sessionStatus == .waitingForApproval
+            let parentIsActive = parentSession.displayStatus == .running
+                || parentSession.displayStatus == .waitingForApproval
             let displayOverride: ClaudeSession? = (!parentIsActive && activeSub != nil) ? activeSub : nil
 
             // 같은 프로젝트에 세션이 2개 이상이면 "#1", "#2" 붙이기
@@ -838,8 +894,8 @@ class AgentStore: ObservableObject {
 
             // 서브에이전트들도 Agent로 변환 (활성 우선 → 최신순)
             let sortedSubs = subs.sorted {
-                let r1: Int = ($0.sessionStatus == .running) ? 0 : ($0.sessionStatus == .waitingForApproval ? 1 : 2)
-                let r2: Int = ($1.sessionStatus == .running) ? 0 : ($1.sessionStatus == .waitingForApproval ? 1 : 2)
+                let r1: Int = ($0.displayStatus == .running) ? 0 : ($0.displayStatus == .waitingForApproval ? 1 : 2)
+                let r2: Int = ($1.displayStatus == .running) ? 0 : ($1.displayStatus == .waitingForApproval ? 1 : 2)
                 if r1 != r2 { return r1 < r2 }
                 return $0.lastModified > $1.lastModified
             }
@@ -869,8 +925,13 @@ class AgentStore: ObservableObject {
             var combined = parentAgent.tokensByModel
             for sub in subAgents {
                 for (model, tokens) in sub.tokensByModel {
-                    let existing = combined[model] ?? (0, 0)
-                    combined[model] = (existing.input + tokens.input, existing.output + tokens.output)
+                    let existing = combined[model] ?? ClaudeSession.TokenUsage()
+                    combined[model] = ClaudeSession.TokenUsage(
+                        input: existing.input + tokens.input,
+                        cachedInput: existing.cachedInput + tokens.cachedInput,
+                        output: existing.output + tokens.output,
+                        reasoningOutput: existing.reasoningOutput + tokens.reasoningOutput
+                    )
                 }
             }
             parentAgent.tokensByModel = combined
@@ -925,7 +986,7 @@ class AgentStore: ObservableObject {
             }
 
             // 통계 기록: 토큰이 있는 세션이 idle/completed로 전환될 때 1회 기록
-            if (agent.status == .idle || agent.status == .thinking),
+            if (agent.status == .idle || agent.status == .thinking || agent.status == .error),
                prev == .working,
                agent.totalTokens > 0,
                !recordedSessionIDs.contains(agent.id) {

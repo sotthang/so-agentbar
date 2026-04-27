@@ -76,9 +76,10 @@ class StatsStore: ObservableObject {
 
         // 소스별
         switch agent.source {
-        case .cli, .desktopCode: day.cliSessions += 1
-        case .xcode:             day.xcodeSessions += 1
-        case .desktopCowork:     day.cliSessions += 1
+        case .cli, .desktopCode:           day.cliSessions += 1
+        case .xcode:                       day.xcodeSessions += 1
+        case .desktopCowork:               day.cliSessions += 1
+        case .codexCLI, .codexVSCode:      day.cliSessions += 1
         }
 
         // 시간대별 활동 기록

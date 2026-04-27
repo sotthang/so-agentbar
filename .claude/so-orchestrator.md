@@ -44,7 +44,8 @@ If the user confirms, resume from the next step after the current status (see Pi
 | SPEC Status | Resume from |
 | ----------- | ----------- |
 | `Draft` | Step 2 — `so-reviewer` |
-| `Approved` | Step 3 — `so-architect` |
+| `Approved` | Step 3 — `so-architect` (or `so-designer` if UI SPEC) |
+| `Designed` | Step 3 — `so-architect` |
 | `Architected` | Step 4 — `so-tester` (RED) |
 | `Testing` | Step 5 — `so-developer` |
 | `In Progress` | Step 5 — `so-developer` (continue) |
@@ -88,6 +89,8 @@ Read every user message and classify it:
 | "상태 / 진행 상황 / 어디까지 / status / progress / what's next" | Show pipeline status inline |
 | "so-adk 업데이트 / adk 업데이트 / update adk" | Self-update via install.sh |
 | "도움말 / help / 뭐할수있어 / 사용법" | Show help guide inline |
+| "감사해줘 / 점검해줘 / audit / drift 체크 / drift check" | Invoke `so-auditor` only |
+| "UI 디자인 / 화면 설계 / 컴포넌트 계약 / design / designer" | Invoke `so-designer` only |
 
 When intent is ambiguous, ask **one** clarifying question: "전체 파이프라인으로 진행할까요, 아니면 특정 단계만 실행할까요?"
 
@@ -142,6 +145,27 @@ Before calling each agent, announce the phase:
 
 Then **use the Agent tool** to invoke the sub-agent. Pass the user's original request and any relevant context as the prompt.
 
+### Step 3.5 — Complexity gate (Parallel review)
+
+**트리거 조건** (하나라도 해당하면 활성화):
+
+- SPEC 파일의 Requirements 섹션에 `#### R` 헤더가 **5개 이상** 존재
+- 사용자 발화에 "병렬 검토", "parallel review", "복잡해" 포함
+
+**Complexity gate가 활성화되면**:
+
+1. `so-reviewer`와 `so-architect`를 두 개의 Agent 도구 호출로 **병렬 실행** (같은 `<function_calls>` 블록)
+   - `so-architect`는 Preview mode로 실행 — `.arch.md` 첫 줄에 `<!-- preview: discard-on-spec-change -->` 마커 포함
+2. 두 결과를 병합하여 단일 보고:
+   - "Reviewer 평가"
+   - "Architect 실현성 평가 (preview)"
+   - "충돌 항목"
+3. 충돌이 있으면 충돌 목록만 따로 제시하고 사용자 선택 요청
+4. SPEC 수정 요청 시 → preview `.arch.md`를 **폐기**하고 `so-planner` 재호출 → 수정 SPEC Approved 후 `so-architect` 정식 호출
+5. 충돌 없고 SPEC 수정 없으면 → preview `.arch.md`에서 마커 제거 + Status → `Architected`로 승격
+
+Complexity gate가 **비활성**이면 기존 Step 3 → Step 4 순서대로 진행.
+
 ### Step 4 — Handle checkpoints
 
 After `so-reviewer` completes, **always stop and ask the user**:
@@ -164,6 +188,21 @@ Invoke `so-planner` again with:
 3. The reviewer's concerns and the user's change request
 
 After `so-planner` updates the SPEC, invoke `so-reviewer` again automatically. Repeat this loop until the user confirms (max 3 revision cycles — if still unresolved, ask the user if they want to start fresh).
+
+**Designer 조건 분기** (Reviewer Approved 직후, Architect 호출 전):
+
+Orchestrator가 SPEC 본문을 grep하여 다음 키워드 중 하나 이상 발견 시 사용자에게 **1회** 질문:
+
+- 키워드: `UI`, `컴포넌트`, `화면`, `프론트엔드`, `frontend`, `component`, `screen`, `page`
+
+```text
+이 SPEC에 UI/프론트엔드 요소가 포함되어 있습니다.
+so-designer 단계를 포함할까요? (y/n)
+```
+
+- 사용자가 **yes** → `so-designer` 호출 → `.design.md` 생성 → Status: `Designed` → `so-architect` 호출
+- 사용자가 **no** → `so-architect` 바로 호출 (Status: `Approved` → `Architected`)
+- 키워드 미발견 → 질문 없이 `so-architect` 바로 호출
 
 ### Step 5 — Handle loops
 
@@ -215,16 +254,18 @@ SPEC: specs/archive/SPEC-{NNN}-{slug}.md (Done)
 
 ```text
 [Greenfield — New Feature]
-[1] so-planner    → requirements → SPEC file (specs/)
-[2] so-reviewer   → SPEC review → ✋ user checkpoint
-     ↑ loop with so-planner if user requests SPEC changes
-[3] so-architect  → file structure + interfaces → saves .arch.md
-[3.5] so-scaffold → create stub files (only if target files don't exist)
-[4] so-tester     → write failing tests (TDD RED)
-[5] so-developer  → implement until tests pass (TDD GREEN)
-     ↑ loop with so-tester on failure (max 5 loops)
-[6] so-quality    → refactor without changing behavior (TDD REFACTOR)
-[7] so-docs       → update docs + SPEC status → Done
+[1]   so-planner    → requirements → SPEC file (specs/)
+[2]   so-reviewer   → SPEC review → ✋ user checkpoint
+       ↑ loop with so-planner if user requests SPEC changes
+[2.5] so-designer   → UI contract .design.md (optional — UI SPEC only)
+[3]   so-architect  → file structure + interfaces → saves .arch.md
+       ↑ reads .design.md if exists
+[3.5] so-scaffold   → create stub files (only if target files don't exist)
+[4]   so-tester     → write failing tests (TDD RED)
+[5]   so-developer  → implement until tests pass (TDD GREEN)
+       ↑ loop with so-tester on failure (max 5 loops)
+[6]   so-quality    → refactor without changing behavior (TDD REFACTOR)
+[7]   so-docs       → update docs + SPEC status → Done
 
 [Brownfield — Existing Code Change]
 [1] so-debugger (if bug) or so-developer (if change)
@@ -271,6 +312,7 @@ specs/
 | ------ | ------ | ------- |
 | `Draft` | `so-planner` | SPEC written, not yet reviewed |
 | `Approved` | `so-reviewer` | User confirmed, ready for architecture |
+| `Designed` | `so-designer` | UI contract written (optional step) |
 | `Architected` | `so-architect` | File structure designed, ready for tests |
 | `Testing` | `so-tester` | RED tests written, ready for implementation |
 | `In Progress` | `so-developer` | Implementation underway |
@@ -294,7 +336,8 @@ Pass context explicitly when invoking each agent:
 ```text
 so-planner   → saves  specs/SPEC-{NNN}.md
 so-reviewer  → reads  specs/SPEC-{NNN}.md  + updates status → Approved
-so-architect → reads  specs/SPEC-{NNN}.md  + saves specs/SPEC-{NNN}.arch.md  + updates status → Architected
+so-designer  → reads  specs/SPEC-{NNN}.md  + saves specs/SPEC-{NNN}.design.md  + updates status → Designed (optional)
+so-architect → reads  specs/SPEC-{NNN}.md  + optional specs/SPEC-{NNN}.design.md  + saves specs/SPEC-{NNN}.arch.md  + updates status → Architected
 so-scaffold  → reads  specs/SPEC-{NNN}.arch.md  + creates stub files (no SPEC status update)
 so-tester    → reads  specs/SPEC-{NNN}.md  + specs/SPEC-{NNN}.arch.md  + updates status → Testing
 so-developer → reads  test files + specs/SPEC-{NNN}.md  + updates status → In Progress
@@ -304,6 +347,7 @@ so-security  → reads  git diff + changed files (no SPEC required)
 so-preflight → reads  git diff + runs tests/lint (no SPEC required)
 so-debugger  → reads  error/stack trace + relevant files (no SPEC required)
 so-explainer → reads  target files (no SPEC required)
+so-auditor   → reads  project files (no SPEC required) — stateless drift sensor
 ```
 
 When invoking an agent via the Agent tool, include the SPEC file path and any previous agent's output in the prompt.

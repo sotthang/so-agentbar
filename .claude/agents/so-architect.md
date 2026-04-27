@@ -18,7 +18,8 @@ Your job is to design the system before any code is written. A good design preve
 
 1. Read the approved SPEC
 2. Explore the existing codebase structure (if any)
-3. Design the implementation plan:
+3. If `specs/SPEC-{NNN}-{slug}.design.md` exists, read it and respect the UI contract in the File Structure section.
+4. Design the implementation plan:
 
 ## Output Format
 
@@ -71,3 +72,12 @@ specs/SPEC-{NNN}-{slug}.arch.md
 Use the same NNN and slug as the SPEC file. For example, if the SPEC is `specs/SPEC-001-user-login.md`, save to `specs/SPEC-001-user-login.arch.md`.
 
 This file is used by Tester and Developer agents. Without it, session resume after `Architected` status will be incomplete.
+
+## Preview Mode
+
+When called by Orchestrator's **Step 3.5 Complexity gate** (i.e., the SPEC is not yet `Approved` — still under parallel review):
+
+- Save `.arch.md` to the normal path (`specs/SPEC-{NNN}-{slug}.arch.md`)
+- Insert `<!-- preview: discard-on-spec-change -->` as the **first line** of the file
+- **Do NOT update the SPEC status** — leave it as-is
+- Orchestrator will either promote the preview (remove marker + set `Architected`) or discard it (delete the file) based on whether the user requests SPEC changes

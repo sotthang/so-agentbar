@@ -65,7 +65,7 @@
 ## Requirements
 
 - macOS 14.0 (Sonoma) or later
-- Active [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions
+- Active [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [OpenAI Codex CLI](https://developers.openai.com/codex/cli) sessions
 
 ## Install
 
@@ -95,6 +95,7 @@ so-agentbar monitors Claude and Codex agent session logs via FSEvents:
 
 **Codex sessions**:
 - **CLI & VSCode sessions** — `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
+- Codex flushes its rollout JSONL in a batch at turn completion (not as a streaming write), so a Codex session's status updates **after each turn completes** rather than mid-response. Click a Codex session to open the Codex.app.
 
 Session status is determined by parsing JSONL log events. Claude quota usage is fetched from Anthropic's OAuth API using the token stored in Keychain. Token and cost data are restored after app restart via incremental log parsing.
 

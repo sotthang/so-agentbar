@@ -86,14 +86,11 @@ enum OpenWith: String, CaseIterable {
             task.launchPath = "/usr/bin/open"
             task.arguments = ["-a", "Claude"]
             try? task.run()
-        case .codexCLI:
-            // Codex CLI → 사용자가 설정한 cliEditor로 열기
-            cliEditor.openInEditor(path: path)
-        case .codexVSCode:
-            // Codex VSCode → VSCode로 열기
+        case .codexCLI, .codexVSCode:
+            // Codex 세션은 항상 Codex.app으로 열기
             let task = Process()
             task.launchPath = "/usr/bin/open"
-            task.arguments = ["-a", "Visual Studio Code", path]
+            task.arguments = ["-a", "Codex"]
             try? task.run()
         }
     }

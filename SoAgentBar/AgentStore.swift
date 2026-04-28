@@ -767,13 +767,27 @@ class AgentStore: ObservableObject {
 
     // MARK: - 세션 업데이트
 
+    /// 에러 세션이 픽셀 창에 머무는 최대 시간.
+    /// Why: 사용자가 에러 발생을 인지할 시간을 주되, 화면이 영구적으로 어지러워지지 않도록 자동 정리.
+    static let errorSessionRetention: TimeInterval = 300
+
     /// 픽셀 창/메뉴 표시 대상 세션을 결정하는 순수 함수.
+    /// - showIdleSessions=true: 모든 세션 (단, 5분 이상 지난 에러는 제외)
+    /// - showIdleSessions=false: running/responded만 + 사용자 인지를 위해 5분 이내 에러도 노출
     static func filterSessionsForDisplay(
         _ sessions: [ClaudeSession],
-        showIdleSessions: Bool
+        showIdleSessions: Bool,
+        errorRetention: TimeInterval = errorSessionRetention,
+        now: Date = Date()
     ) -> [ClaudeSession] {
-        if showIdleSessions { return sessions }
-        return sessions.filter { $0.displayStatus == .running || $0.displayStatus == .responded }
+        sessions.filter { session in
+            let status = session.displayStatus
+            if status == .error {
+                return now.timeIntervalSince(session.lastActivity) <= errorRetention
+            }
+            if showIdleSessions { return true }
+            return status == .running || status == .responded
+        }
     }
 
     private func updateAgents(from sessions: [ClaudeSession]) {

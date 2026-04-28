@@ -4,13 +4,16 @@ import AppKit
 struct ClipboardHistoryView: View {
     @ObservedObject var store: AgentStore
     @ObservedObject var monitor: ClipboardMonitor
+    var onOpenSettings: () -> Void = {}
     @State private var showClearConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
             historyHeader
             Divider()
-            if monitor.history.isEmpty {
+            if !monitor.isEnabled {
+                disabledState
+            } else if monitor.history.isEmpty {
                 emptyState
             } else {
                 historyList
@@ -55,6 +58,41 @@ struct ClipboardHistoryView: View {
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 32)
+    }
+
+    private var disabledState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "doc.on.clipboard")
+                .font(.system(size: 28))
+                .foregroundColor(.secondary)
+            VStack(spacing: 4) {
+                Text(store.t("클립보드 히스토리가 꺼져 있습니다", "Clipboard history is off"))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.primary)
+                Text(store.t("기능을 켜야 복사한 텍스트가 여기에 저장됩니다", "Turn it on to save copied text here"))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            HStack(spacing: 8) {
+                Button(action: { monitor.isEnabled = true }) {
+                    Text(store.t("켜기", "Enable"))
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
+                Button(action: onOpenSettings) {
+                    Text(store.t("설정 열기", "Open Settings"))
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 24)
         .padding(.vertical, 32)
     }
 

@@ -699,23 +699,23 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
 
         // Cowork 세션: queue-operation enqueue의 content를 title 폴백으로 사용
         // (ai-title 이벤트가 없거나 오래된 세션의 경우 사용자의 첫 요청으로 제목 표시)
+        // <scheduled-task> 래퍼는 boilerplate를 제거하고 실제 프롬프트만 사용
+        // 시각적 truncation은 뷰에서 처리 — 전체 텍스트는 hover 툴팁에서 보여주기 위해 보존
         case "queue-operation":
             if session.source == .desktopCowork,
                (json["operation"] as? String) == "enqueue",
                session.title == nil,
                let content = json["content"] as? String,
                !content.isEmpty {
-                // 단어 경계에서 자르기 (60자 초과 시 마지막 공백 위치에서 truncation)
-                if content.count <= 60 {
-                    session.title = content
+                let raw: String
+                if let parsed = ScheduledTaskParser.parse(content) {
+                    raw = parsed.displayTitle
                 } else {
-                    let prefix = String(content.prefix(57))
-                    if let lastSpace = prefix.lastIndex(of: " ") {
-                        session.title = String(prefix[..<lastSpace]) + "…"
-                    } else {
-                        session.title = prefix + "…"
-                    }
+                    raw = content
                 }
+                // 메모리 보호용 hard cap (악의적 JSONL이 거대한 content를 쓰는 경우 방어)
+                // 시각적 truncation은 SwiftUI가, 전체 텍스트는 .help() 툴팁이 처리
+                session.title = String(raw.prefix(500))
             }
 
         // 메타데이터 이벤트: 대화 상태와 무관 → lastEventType 덮어쓰지 않음

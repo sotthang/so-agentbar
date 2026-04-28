@@ -46,7 +46,11 @@ struct AgentListView: View {
             case .agents:
                 agentsTab
             case .clipboard:
-                ClipboardHistoryView(store: store, monitor: store.clipboardMonitor)
+                ClipboardHistoryView(
+                    store: store,
+                    monitor: store.clipboardMonitor,
+                    onOpenSettings: { showSettings = true }
+                )
             case .note:
                 QuickNoteView(store: store, noteStore: store.quickNoteStore)
             }
@@ -256,6 +260,7 @@ struct AgentRowView: View {
                             .foregroundColor(.primary)
                             .lineLimit(1)
                             .truncationMode(.tail)
+                            .help(agent.name)
                         Text(agent.modeDisplayName)
                             .font(.system(size: 9, weight: .medium))
                             .foregroundColor(agent.permissionMode == "acceptEdits" || agent.permissionMode == "auto" ? .green : .orange)
@@ -315,6 +320,7 @@ struct AgentRowView: View {
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
+                        .help(agent.currentTask)
 
                     if agent.status == .idle, agent.lastActivity > Date(timeIntervalSince1970: 0) {
                         Text(store.relativeTime(agent.lastActivity))
@@ -426,6 +432,7 @@ struct SubagentRowView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
+                    .help(agent.name)
                 if !agent.modelDisplayName.isEmpty {
                     Text(agent.modelDisplayName)
                         .font(.system(size: 9))
@@ -441,6 +448,7 @@ struct SubagentRowView: View {
                     .foregroundColor(Color(NSColor.tertiaryLabelColor))
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .help(agent.currentTask)
                 if agent.status == .working || agent.status == .waitingApproval {
                     Text(agent.elapsedDisplay)
                         .font(.system(size: 9, design: .monospaced))
@@ -527,6 +535,7 @@ struct ProjectGroupView: View {
                         .foregroundColor(.primary)
                         .lineLimit(1)
                         .truncationMode(.tail)
+                        .help(projectName)
 
                     Text("(\(sessions.count))")
                         .font(.system(size: 11))

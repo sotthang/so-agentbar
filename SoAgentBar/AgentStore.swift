@@ -767,10 +767,17 @@ class AgentStore: ObservableObject {
 
     // MARK: - 세션 업데이트
 
+    /// 픽셀 창/메뉴 표시 대상 세션을 결정하는 순수 함수.
+    static func filterSessionsForDisplay(
+        _ sessions: [ClaudeSession],
+        showIdleSessions: Bool
+    ) -> [ClaudeSession] {
+        if showIdleSessions { return sessions }
+        return sessions.filter { $0.displayStatus == .running || $0.displayStatus == .responded }
+    }
+
     private func updateAgents(from sessions: [ClaudeSession]) {
-        let preFiltered = showIdleSessions
-            ? sessions
-            : sessions.filter { $0.displayStatus == .running || $0.displayStatus == .responded }
+        let preFiltered = Self.filterSessionsForDisplay(sessions, showIdleSessions: showIdleSessions)
 
         // 서브에이전트를 부모별로 그룹화
         // - 부모 세션은 그대로 표시 + subagentCount 누적

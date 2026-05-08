@@ -59,8 +59,10 @@ struct SettingsView: View {
                                 .font(.system(size: 13))
                             HStack(spacing: 8) {
                                 ForEach([
-                                    (MenubarStyle.emoji,      "🤖🤔😴"),
-                                    (MenubarStyle.emojiCount, "🤖 3"),
+                                    (MenubarStyle.emoji,                "🤖🤔😴"),
+                                    (MenubarStyle.emojiCount,           "🤖 3"),
+                                    (MenubarStyle.quotaSession,         "S45%"),
+                                    (MenubarStyle.quotaSessionAndWeekly,"S45%/W72%"),
                                 ], id: \.0.rawValue) { style, label in
                                     Button(action: { store.menubarStyle = style }) {
                                         Text(label)

@@ -21,9 +21,11 @@ enum AppLanguage: String, CaseIterable {
 // MARK: - 메뉴바 스타일
 
 enum MenubarStyle: String, CaseIterable {
-    case emoji        // 🤖🤔😴
-    case emojiCount   // 🤖 3
-    case countOnly    // 3
+    case emoji                 // 🤖🤔😴
+    case emojiCount            // 🤖 3
+    case countOnly             // 3 (UI 미노출, 호환성 유지)
+    case quotaSession          = "quotaSession"          // S45%
+    case quotaSessionAndWeekly = "quotaSessionAndWeekly" // S45%/W72%
 
     var displayName: String { "" } // SettingsView에서 직접 표시
 }
@@ -505,6 +507,8 @@ class AgentStore: ObservableObject {
         self.monitorCodexSessions = UserDefaults.standard.object(forKey: "monitorCodexSessions") as? Bool ?? true
         self.language           = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "language") ?? "en") ?? .english
         self.menubarStyle       = MenubarStyle(rawValue: UserDefaults.standard.string(forKey: "menubarStyle") ?? "emoji") ?? .emoji
+        // 이전 quotaDisplayMode 키 정리 (무해)
+        UserDefaults.standard.removeObject(forKey: "quotaDisplayMode")
         self.listStyle          = ListStyle(rawValue: UserDefaults.standard.string(forKey: "listStyle") ?? "grouped") ?? .grouped
         self.openWith           = OpenWith(rawValue: UserDefaults.standard.string(forKey: "openWith") ?? "vscode") ?? .vscode
         self.isPinned                  = UserDefaults.standard.object(forKey: "isPinned") as? Bool ?? false

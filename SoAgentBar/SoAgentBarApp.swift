@@ -218,6 +218,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateIcon() }
             .store(in: &cancellables)
+
+        store.usageMonitor.$usage
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateIcon() }
+            .store(in: &cancellables)
+
+        store.usageMonitor.$errorMessage
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateIcon() }
+            .store(in: &cancellables)
+
+        store.$sessionAlertThreshold
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateIcon() }
+            .store(in: &cancellables)
     }
 
     private func adjustTimerForActivity(hasWorking: Bool) {
@@ -234,6 +249,72 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
     }
 
+    // MARK: - 쿼터 suffix 빌더 (순수 함수 — 단위 테스트 가능)
+
+    nonisolated static func buildQuotaSuffix(
+        util: (session: Double, weekly: Double)?,
+        mode: MenubarStyle
+    ) -> String {
+        guard let util else { return "" }
+        let s = Int(util.session)
+        let w = Int(util.weekly)
+        switch mode {
+        case .quotaSession:          return "S\(s)%"
+        case .quotaSessionAndWeekly: return "S\(s)%/W\(w)%"
+        default:                     return ""
+        }
+    }
+
+    // MARK: - 메뉴바 attributed string 빌더 (순수 함수 — 단위 테스트 가능)
+
+    nonisolated static func buildMenubarAttributedTitle(
+        body: String,
+        suffix: String,
+        sessionUtil: Int?,
+        weeklyUtil: Int?,
+        threshold: Double
+    ) -> NSAttributedString {
+        let full = body + suffix
+        let mutable = NSMutableAttributedString(string: full)
+        let fullRange = NSRange(full.startIndex..., in: full)
+
+        mutable.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
+
+        guard !suffix.isEmpty else { return mutable }
+
+        let bodyLen = (body as NSString).length
+        let suffixNS = suffix as NSString
+        let thresholdInt = Int(threshold)
+
+        // suffix 내에서 "X{n}%" 형태의 토큰을 찾아 NSRange(전체 문자열 기준)로 반환
+        func tokenRange(prefix: String, searchFrom: Int) -> (range: NSRange, nextSearchFrom: Int)? {
+            let prefixRange = suffixNS.range(of: prefix, range: NSRange(location: searchFrom, length: suffixNS.length - searchFrom))
+            guard prefixRange.location != NSNotFound else { return nil }
+            let afterPrefix = prefixRange.location + prefixRange.length
+            let percentRange = suffixNS.range(of: "%", range: NSRange(location: afterPrefix, length: suffixNS.length - afterPrefix))
+            guard percentRange.location != NSNotFound else { return nil }
+            let range = NSRange(location: bodyLen + prefixRange.location, length: percentRange.location + 1 - prefixRange.location)
+            return (range, percentRange.location + 1)
+        }
+
+        var searchFrom = 0
+
+        if let (range, next) = tokenRange(prefix: "S", searchFrom: searchFrom) {
+            if let sUtil = sessionUtil, sUtil >= thresholdInt {
+                mutable.addAttribute(.foregroundColor, value: NSColor.systemRed, range: range)
+            }
+            searchFrom = next
+        }
+
+        if let wUtil = weeklyUtil, let (range, _) = tokenRange(prefix: "W", searchFrom: searchFrom) {
+            if wUtil >= thresholdInt {
+                mutable.addAttribute(.foregroundColor, value: NSColor.systemRed, range: range)
+            }
+        }
+
+        return mutable
+    }
+
     private func updateIcon() {
         guard let button = statusItem?.button else { return }
 
@@ -242,41 +323,77 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         let agents = store.agents
         let activeCount = agents.filter { $0.status == .working }.count
         let approvalCount = agents.filter { $0.status == .waitingApproval }.count
+
+        let style = store.menubarStyle
+        let isQuotaMode = (style == .quotaSession || style == .quotaSessionAndWeekly)
+
+        // 1) 본문 빌드
+        let body: String
         if agents.isEmpty {
             if let img = NSImage(named: "logo") {
                 img.size = NSSize(width: 18, height: 18)
                 img.isTemplate = false
                 button.image = img
-                button.title = ""
+                body = ""
             } else {
-                button.title = "🤖"
+                body = "🤖"
             }
             button.toolTip = "so-agentbar — \(store.t("실행 중인 세션 없음", "No running sessions"))"
-            return
-        }
-
-        // 승인 대기 중인 세션이 있으면 느낌표 뱃지 추가
-        // .emoji 모드: 각 에이전트 이모지에 이미 상태가 표현됨(⏳ 또는 커스텀+❗) → 글로벌 뱃지 불필요
-        // .emojiCount: 첫 에이전트만 보여지므로, 그 외 승인 대기가 있으면 글로벌 뱃지 필요
-        // .countOnly: 이모지 없음 → 항상 글로벌 뱃지 필요
-        switch store.menubarStyle {
-        case .emoji:
-            button.title = agents.prefix(4).map { store.menuBarEmoji(for: $0) }.joined()
-        case .emojiCount:
-            let emoji = agents.first.map { store.menuBarEmoji(for: $0) } ?? "🤖"
-            let firstIsWaiting = agents.first?.status == .waitingApproval
-            // 첫 에이전트에 이미 대기 표시가 있으면 중복 방지
-            let needsBadge = approvalCount > 0 && !firstIsWaiting
-            button.title = "\(emoji) \(agents.count)" + (needsBadge ? "❗" : "")
-        case .countOnly:
-            button.title = "\(agents.count)" + (approvalCount > 0 ? "❗" : "")
-        }
-
-        if approvalCount > 0 {
-            button.toolTip = "so-agentbar — \(approvalCount) \(store.t("개 승인 대기", "awaiting approval"))"
         } else {
-            button.toolTip = "so-agentbar — \(activeCount) \(store.t("개 에이전트 실행 중", "agents running"))"
+            // 승인 대기 중인 세션이 있으면 느낌표 뱃지 추가
+            // .emoji 모드: 각 에이전트 이모지에 이미 상태가 표현됨(⏳ 또는 커스텀+❗) → 글로벌 뱃지 불필요
+            // .emojiCount: 첫 에이전트만 보여지므로, 그 외 승인 대기가 있으면 글로벌 뱃지 필요
+            // .countOnly: 이모지 없음 → 항상 글로벌 뱃지 필요
+            // 쿼터 모드: suffix에 쿼터만 표시, body는 빈 문자열
+            switch style {
+            case .emoji:
+                body = agents.prefix(4).map { store.menuBarEmoji(for: $0) }.joined()
+            case .emojiCount:
+                let emoji = agents.first.map { store.menuBarEmoji(for: $0) } ?? "🤖"
+                let firstIsWaiting = agents.first?.status == .waitingApproval
+                // 첫 에이전트에 이미 대기 표시가 있으면 중복 방지
+                let needsBadge = approvalCount > 0 && !firstIsWaiting
+                body = "\(emoji) \(agents.count)" + (needsBadge ? "❗" : "")
+            case .countOnly:
+                body = "\(agents.count)" + (approvalCount > 0 ? "❗" : "")
+            case .quotaSession, .quotaSessionAndWeekly:
+                if let img = NSImage(named: "logo") {
+                    img.size = NSSize(width: 18, height: 18)
+                    img.isTemplate = false
+                    button.image = img
+                    body = ""
+                } else {
+                    body = "🤖"
+                }
+            }
+
+            if approvalCount > 0 {
+                button.toolTip = "so-agentbar — \(approvalCount) \(store.t("개 승인 대기", "awaiting approval"))"
+            } else {
+                button.toolTip = "so-agentbar — \(activeCount) \(store.t("개 에이전트 실행 중", "agents running"))"
+            }
         }
+
+        // 2) suffix 결정 — usage 없거나 에러 상태면 suffix 미표시
+        // 쿼터 모드가 아닌 경우 suffix는 항상 빈 문자열
+        let util: (session: Double, weekly: Double)?
+        if isQuotaMode, let u = store.usageMonitor.usage, store.usageMonitor.errorMessage == nil {
+            util = (u.sessionUtilization, u.weeklyUtilization)
+        } else {
+            util = nil
+        }
+        let suffix = Self.buildQuotaSuffix(util: util, mode: style)
+
+        // 3) attributedTitle 일원화
+        let sessionUtil = isQuotaMode ? util.map { Int($0.session) } : nil
+        let weeklyUtil  = (style == .quotaSessionAndWeekly) ? util.map { Int($0.weekly) } : nil
+        button.attributedTitle = Self.buildMenubarAttributedTitle(
+            body: body,
+            suffix: suffix,
+            sessionUtil: sessionUtil,
+            weeklyUtil: weeklyUtil,
+            threshold: store.sessionAlertThreshold
+        )
     }
 
     @objc func togglePopover(_ sender: NSStatusBarButton) {

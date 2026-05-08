@@ -44,7 +44,7 @@
 - **Subagent Grouping** — Sessions spawned via the `Agent` tool (e.g. SO-ADK pipelines) are folded under their parent session with a `🤖×N` badge. Click to expand the dropdown and see each subagent's type, current task, and last response on hover. While the parent waits, the parent row mirrors the most active subagent's status, and the parent's token/cost totals include every subagent's usage so you see the full pipeline cost in one place
 - **Source Badges** — Each session is labeled by origin (Code, Cowork, Xcode) so you always know where it's running. Click a Desktop session to open Claude Desktop directly
 - **Session Titles** — AI-generated session titles from Claude Desktop are shown automatically, replacing cryptic path names
-- **Token & Quota Tracking** — Monitor input/output tokens and API quota usage with 5-hour/weekly utilization
+- **Token & Quota Tracking** — Monitor input/output tokens and API quota usage with 5-hour/weekly utilization. Display the live session/weekly quota % directly in the menu bar, with threshold-based color highlight (red when above your alert threshold)
 - **Cost Estimation** — View estimated API costs per session based on model-specific token pricing. Costs and token counts are restored after app restart by re-parsing recent session logs
 - **Quiet Hours** — Suppress notifications during designated time windows (e.g., 22:00~09:00)
 - **Smart Notifications** — Get notified on task completion, errors, approval requests, quota threshold, and quota refill. Tap a notification to open the project directly in your editor
@@ -104,7 +104,7 @@ Session status is determined by parsing JSONL log events. Claude quota usage is 
 | Setting | Description |
 |---|---|
 | Language | Korean / English |
-| Menu Bar Style | Emoji, Emoji + Count, Count Only |
+| Menu Bar Style | Emoji, Emoji + Count, Quota Session %, Quota Session + Weekly % |
 | Editor | VSCode, Cursor, Antigravity, Terminal, Finder |
 | Notifications | Completion, Approval Required, Error, Quota Threshold (50-95%), Refill |
 | Quiet Hours | Suppress all notifications during a set time window (e.g. 23:00–09:00) |

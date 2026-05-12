@@ -483,8 +483,8 @@ class AgentStore: ObservableObject {
     let systemMetricsMonitor = SystemMetricsMonitor()
     let statsStore = StatsStore()
     private var elapsedTimer: Timer?
-    private var previousStatuses: [String: AgentStatus] = [:]
-    private var workingSince: [String: Date] = [:]  // working 시작 시각 추적
+    internal var previousStatuses: [String: AgentStatus] = [:]
+    internal var workingSince: [String: Date] = [:]  // working 시작 시각 추적
     private var recordedSessionIDs: Set<String> = [] // 이미 통계에 기록된 세션
     private var lastNotificationTime: [String: Date] = [:]  // 알림 중복 방지용
     private let notificationCooldown: TimeInterval = 60     // 같은 이벤트 재알림 최소 간격
@@ -794,7 +794,7 @@ class AgentStore: ObservableObject {
         }
     }
 
-    private func updateAgents(from sessions: [ClaudeSession]) {
+    internal func updateAgents(from sessions: [ClaudeSession]) {
         let preFiltered = Self.filterSessionsForDisplay(sessions, showIdleSessions: showIdleSessions)
 
         // 서브에이전트를 부모별로 그룹화

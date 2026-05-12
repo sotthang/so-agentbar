@@ -535,7 +535,7 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         }
     }
 
-    private func processEvent(_ json: [String: Any], session: inout ClaudeSession) {
+    internal func processEvent(_ json: [String: Any], session: inout ClaudeSession) {
         guard let type = json["type"] as? String else { return }
 
         // 타임스탬프 업데이트

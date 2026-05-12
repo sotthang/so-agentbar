@@ -598,6 +598,18 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
             // API 에러(stop_sequence 등)는 응답 완료가 아님 → 무시
             guard stopReason == "end_turn" || stopReason == "tool_use" else { return }
 
+            // extended thinking이 켜진 턴은 thinking 블록만 가진 end_turn 이벤트가
+            // 먼저 도착하고, 실제 텍스트 응답은 다음 end_turn 이벤트로 따라온다.
+            // 첫 이벤트를 응답 완료로 처리하면 알람이 일찍 울리고 본문이 이전 턴 텍스트가 된다.
+            if stopReason == "end_turn",
+               let content = message["content"] as? [[String: Any]] {
+                let types = Set(content.compactMap { $0["type"] as? String })
+                if !types.isEmpty && types.subtracting(["thinking"]).isEmpty {
+                    session.currentTurnHadThinking = true
+                    return
+                }
+            }
+
             session.lastEventType = type
             session.lastAssistantHasToolUse = stopReason == "tool_use"
 

@@ -485,6 +485,8 @@ class AgentStore: ObservableObject {
     private var elapsedTimer: Timer?
     internal var previousStatuses: [String: AgentStatus] = [:]
     internal var workingSince: [String: Date] = [:]  // working 시작 시각 추적
+    internal var thinkingSince: [String: Date] = [:] // thinking 진입 시각 — 지연 알람용
+    internal var completionAlarmDelay: TimeInterval = 60 // 지연 알람 임계값(초) — 중간 응답 자동 제외
     private var recordedSessionIDs: Set<String> = [] // 이미 통계에 기록된 세션
     private var lastNotificationTime: [String: Date] = [:]  // 알림 중복 방지용
     private let notificationCooldown: TimeInterval = 60     // 같은 이벤트 재알림 최소 간격
@@ -969,14 +971,31 @@ class AgentStore: ObservableObject {
                 workingSince[agent.id] = Date()
             }
 
-            // working → thinking = JSONL에서 "assistant" (tool 없음) 이벤트 감지
-            // = Claude가 실제로 응답 완료한 순간
+            // working → thinking 전이 = end_turn 도착. 즉시 알람 X.
+            // extended thinking + 파이프라인 단계에서 모델이 text end_turn 후 곧바로 다음 작업을 재개하는
+            // 패턴이 흔하므로, 일정 시간(completionAlarmDelay) 정지 후에만 알람을 발사한다.
+            // 그 안에 working으로 복귀하면 아래 분기에서 thinkingSince를 클리어 = 알람 취소.
             if notifyOnComplete,
                !agent.isSubagent,
                prev == .working,
                agent.status == .thinking,
                let since = workingSince[agent.id],
                Date().timeIntervalSince(since) >= 10 {
+                thinkingSince[agent.id] = Date()
+                workingSince.removeValue(forKey: agent.id)
+            }
+
+            // thinking → 다른 상태 = 모델이 작업 재개 또는 종료 → 지연 알람 취소
+            if prev == .thinking, agent.status != .thinking {
+                thinkingSince.removeValue(forKey: agent.id)
+            }
+
+            // thinking 지속 + 지연 시간 경과 → 진짜 응답 완료로 간주, 알람 발사
+            if notifyOnComplete,
+               !agent.isSubagent,
+               agent.status == .thinking,
+               let thinkingTime = thinkingSince[agent.id],
+               Date().timeIntervalSince(thinkingTime) >= completionAlarmDelay {
                 sendNotification(
                     title: t("응답 완료", "Response ready"),
                     body: "\(agent.name) — \(t("Claude가 응답했습니다", "Claude responded"))",
@@ -984,7 +1003,7 @@ class AgentStore: ObservableObject {
                     source: agent.source,
                     dedupeKey: "\(agent.id).complete"
                 )
-                workingSince.removeValue(forKey: agent.id)
+                thinkingSince.removeValue(forKey: agent.id)
             }
 
             if notifyOnApprovalRequired, !agent.isSubagent, agent.status == .waitingApproval, prev != .waitingApproval {

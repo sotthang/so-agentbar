@@ -18,6 +18,20 @@ struct ClaudeUsage {
     var extraLimitDollars: Double { extraLimitCents / 100 }
 }
 
+/// 키체인 `Claude Code-credentials`에서 읽어온 OAuth 자격증명.
+struct OAuthCredentials: Equatable {
+    var accessToken: String
+    var refreshToken: String?
+    var expiresAt: Date?
+}
+
+/// OAuth 토큰 갱신 응답.
+struct RefreshedToken: Equatable {
+    var accessToken: String
+    var refreshToken: String?
+    var expiresIn: TimeInterval?   // 초 단위
+}
+
 enum UsageError: LocalizedError {
     case noToken, httpError(Int), parseError
 
@@ -36,6 +50,7 @@ enum UsageError: LocalizedError {
 class UsageMonitor: ObservableObject {
     @Published var usage: ClaudeUsage?
     @Published var errorMessage: String?
+    @Published var needsLogin: Bool = false    // 키체인에 자격증명 없음 → claude login 필요
 
     // isLoading은 computed property로 - @Published 변경 없이 뷰가 usage/errorMessage로 상태 파악
     var isLoading: Bool { usage == nil && errorMessage == nil }
@@ -67,7 +82,8 @@ class UsageMonitor: ObservableObject {
 
     func fetch() async {
         do {
-            let token = try loadOAuthToken()
+            let token = try await validAccessToken()
+            needsLogin = false
             // 플랜 정보는 한 번만 조회
             if cachedPlanName == nil {
                 cachedPlanName = await fetchPlanName(token: token)
@@ -77,6 +93,10 @@ class UsageMonitor: ObservableObject {
             checkThresholdAndNotify(prev: usage, new: newUsage)
             usage = newUsage
             errorMessage = nil
+        } catch UsageError.noToken {
+            needsLogin = true
+            errorMessage = localizer("Claude Code 로그인이 필요합니다 (claude login)",
+                                     "Claude Code login required (claude login)")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -122,7 +142,8 @@ class UsageMonitor: ObservableObject {
     // Claude Code가 만든 Keychain 항목의 ACL에는 security 도구가 신뢰된 앱으로 등록되어 있어
     // 직접 API 접근 시 매번 암호 승인 팝업이 뜨는 문제를 방지
 
-    private func loadOAuthToken() throws -> String {
+    /// 키체인에서 원본 자격증명 JSON 데이터를 읽는다.
+    private func loadCredentialsData() throws -> Data {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         proc.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
@@ -134,12 +155,124 @@ class UsageMonitor: ObservableObject {
 
         let raw = outPipe.fileHandleForReading.readDataToEndOfFile()
         let trimmed = raw.filter { $0 != UInt8(ascii: "\n") && $0 != UInt8(ascii: "\r") }
-        guard let json = try? JSONSerialization.jsonObject(with: trimmed) as? [String: Any],
-              let oauth = json["claudeAiOauth"] as? [String: Any],
-              let token = oauth["accessToken"] as? String else {
+        guard !trimmed.isEmpty else { throw UsageError.noToken }
+        return trimmed
+    }
+
+    /// 키체인 자격증명을 파싱해 반환. 없거나 형식이 틀리면 noToken.
+    private func loadCredentials() throws -> OAuthCredentials {
+        let data = try loadCredentialsData()
+        guard let creds = Self.parseCredentials(from: data) else {
             throw UsageError.noToken
         }
-        return token
+        return creds
+    }
+
+    /// 유효한 access token을 돌려준다. 만료(임박)됐고 refresh token이 있으면 갱신을 시도한다.
+    private func validAccessToken() async throws -> String {
+        let creds = try loadCredentials()
+        guard Self.isTokenExpired(expiresAt: creds.expiresAt, now: Date()),
+              let refresh = creds.refreshToken else {
+            return creds.accessToken
+        }
+
+        let req = Self.buildRefreshRequest(refreshToken: refresh)
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              let http = resp as? HTTPURLResponse, http.statusCode == 200,
+              let refreshed = Self.parseRefreshResponse(from: data) else {
+            // 갱신 실패 → 기존(만료) 토큰을 그대로 반환해 하위 호출의 오류로 표면화
+            return creds.accessToken
+        }
+
+        // best-effort 영속화: 재시작 후에도 살아남도록 키체인 갱신
+        if let original = try? loadCredentialsData(),
+           let merged = Self.mergedCredentialsJSON(original: original, refreshed: refreshed, now: Date()) {
+            saveCredentials(json: merged)
+        }
+        return refreshed.accessToken
+    }
+
+    /// 갱신된 자격증명 JSON을 키체인에 in-place 업데이트(-U)한다. 실패해도 무시(best-effort).
+    private func saveCredentials(json: Data) {
+        guard let str = String(data: json, encoding: .utf8) else { return }
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        proc.arguments = ["add-generic-password", "-U",
+                          "-a", NSUserName(),
+                          "-s", "Claude Code-credentials",
+                          "-w", str]
+        proc.standardOutput = Pipe()
+        proc.standardError = Pipe()
+        try? proc.run()
+        proc.waitUntilExit()
+    }
+
+    // MARK: - 토큰 파싱/갱신 순수 함수 (단위 테스트 가능)
+
+    nonisolated static let oauthClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+    nonisolated static let tokenRefreshURL = URL(string: "https://console.anthropic.com/v1/oauth/token")!
+
+    /// 키체인 JSON → OAuthCredentials. accessToken 없으면 nil.
+    nonisolated static func parseCredentials(from data: Data) -> OAuthCredentials? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let oauth = json["claudeAiOauth"] as? [String: Any],
+              let access = oauth["accessToken"] as? String else {
+            return nil
+        }
+        let expMs = oauth["expiresAt"] as? Double
+        return OAuthCredentials(
+            accessToken: access,
+            refreshToken: oauth["refreshToken"] as? String,
+            expiresAt: expMs.map { Date(timeIntervalSince1970: $0 / 1000) }
+        )
+    }
+
+    /// 만료 시각이 now + skew 안쪽이면 만료로 본다. 만료 시각을 모르면(nil) 갱신하지 않는다.
+    nonisolated static func isTokenExpired(expiresAt: Date?, now: Date, skew: TimeInterval = 300) -> Bool {
+        guard let expiresAt else { return false }
+        return now.addingTimeInterval(skew) >= expiresAt
+    }
+
+    /// refresh_token 그랜트 요청 생성.
+    nonisolated static func buildRefreshRequest(refreshToken: String) -> URLRequest {
+        var req = URLRequest(url: tokenRefreshURL)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: String] = [
+            "grant_type": "refresh_token",
+            "refresh_token": refreshToken,
+            "client_id": oauthClientID
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        return req
+    }
+
+    /// 토큰 갱신 응답 파싱. access_token 없으면 nil.
+    nonisolated static func parseRefreshResponse(from data: Data) -> RefreshedToken? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let access = json["access_token"] as? String else {
+            return nil
+        }
+        return RefreshedToken(
+            accessToken: access,
+            refreshToken: json["refresh_token"] as? String,
+            expiresIn: json["expires_in"] as? Double
+        )
+    }
+
+    /// 갱신된 토큰을 원본 자격증명 JSON에 병합(organizationUuid·scopes 등 보존). 키체인 저장용.
+    nonisolated static func mergedCredentialsJSON(original: Data, refreshed: RefreshedToken, now: Date) -> Data? {
+        guard var json = (try? JSONSerialization.jsonObject(with: original)) as? [String: Any],
+              var oauth = json["claudeAiOauth"] as? [String: Any] else {
+            return nil
+        }
+        oauth["accessToken"] = refreshed.accessToken
+        if let rt = refreshed.refreshToken { oauth["refreshToken"] = rt }
+        if let exp = refreshed.expiresIn {
+            oauth["expiresAt"] = (now.timeIntervalSince1970 + exp) * 1000
+        }
+        json["claudeAiOauth"] = oauth
+        return try? JSONSerialization.data(withJSONObject: json)
     }
 
     // MARK: - API 호출

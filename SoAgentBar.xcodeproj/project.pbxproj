@@ -17,6 +17,7 @@
 		CX006CX006CX006CX006CX01 /* AgentModeDisplayNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CX006CX006CX006CX006CX02 /* AgentModeDisplayNameTests.swift */; };
 		ER001ER001ER001ER001ER01 /* AgentStoreErrorRetentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ER001ER001ER001ER001ER02 /* AgentStoreErrorRetentionTests.swift */; };
 		MQ001MQ001MQ001MQ001MQ01 /* MenubarQuotaSuffixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MQ001MQ001MQ001MQ001MQ02 /* MenubarQuotaSuffixTests.swift */; };
+		UT001UT001UT001UT001UT01 /* UsageMonitorTokenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UT001UT001UT001UT001UT02 /* UsageMonitorTokenTests.swift */; };
 		PD001PD001PD001PD001PD01 /* PhaseD_WindowControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PD001PD001PD001PD001PD02 /* PhaseD_WindowControllerTests.swift */; };
 		SM001SM001SM001SM001SM01 /* SystemMetricsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM001SM001SM001SM001SM02 /* SystemMetricsTests.swift */; };
 		SM002SM002SM002SM002SM01 /* SystemMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = SM002SM002SM002SM002SM02 /* SystemMetrics.swift */; };
@@ -151,6 +152,7 @@
 		CC001CC001CC001CC001CC04 /* CostCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostCalculatorTests.swift; sourceTree = "<group>"; };
 		CC001CC001CC001CC001CC06 /* QuietHoursTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuietHoursTests.swift; sourceTree = "<group>"; };
 		MQ001MQ001MQ001MQ001MQ02 /* MenubarQuotaSuffixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarQuotaSuffixTests.swift; sourceTree = "<group>"; };
+		UT001UT001UT001UT001UT02 /* UsageMonitorTokenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageMonitorTokenTests.swift; sourceTree = "<group>"; };
 		CC001CC001CC001CC001CC07 /* SoAgentBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SoAgentBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		PA0001PA0001PA0001PA0002 /* PixelCharacterProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelCharacterProvider.swift; sourceTree = "<group>"; };
 		PA0002PA0002PA0002PA0002 /* PixelCharacterNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelCharacterNode.swift; sourceTree = "<group>"; };
@@ -412,6 +414,7 @@
 				UF017UF017UF017UF017UF02 /* TestConformances.swift */,
 				STP002STP002STP002STP02 /* ScheduledTaskParserTests.swift */,
 				MQ001MQ001MQ001MQ001MQ02 /* MenubarQuotaSuffixTests.swift */,
+				UT001UT001UT001UT001UT02 /* UsageMonitorTokenTests.swift */,
 			);
 			path = SoAgentBarTests;
 			sourceTree = "<group>";
@@ -644,6 +647,7 @@
 				CX006CX006CX006CX006CX01 /* AgentModeDisplayNameTests.swift in Sources */,
 				ER001ER001ER001ER001ER01 /* AgentStoreErrorRetentionTests.swift in Sources */,
 				MQ001MQ001MQ001MQ001MQ01 /* MenubarQuotaSuffixTests.swift in Sources */,
+				UT001UT001UT001UT001UT01 /* UsageMonitorTokenTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

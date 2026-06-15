@@ -19,6 +19,35 @@ struct UsageView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
 
+            } else if monitor.needsLogin, monitor.usage == nil {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.crop.circle.badge.exclamationmark")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(store.t("Claude Code 로그인이 필요합니다",
+                                     "Claude Code login required"))
+                            .font(.system(size: 11, weight: .medium))
+                        Text(store.t("터미널에서 claude login 실행",
+                                     "Run claude login in a terminal"))
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button(action: {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString("claude login", forType: .string)
+                    }) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.secondary)
+                    .help(store.t("\"claude login\" 복사", "Copy \"claude login\""))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+
             } else if let err = monitor.errorMessage, monitor.usage == nil {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.circle")

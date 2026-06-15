@@ -6,6 +6,7 @@ enum ProviderID: String, CaseIterable, Codable {
     case claude
     case codex
     case gemini
+    case cursor          // [SPEC-002] cursor 추가 — 맨 끝, 기존 rawValue/순서 불변
 
     /// 로컬라이즈 불필요한 고유명 (design.md displayName 계약)
     var displayName: String {
@@ -13,6 +14,7 @@ enum ProviderID: String, CaseIterable, Codable {
         case .claude: return "Claude"
         case .codex:  return "Codex"
         case .gemini: return "Gemini"
+        case .cursor: return "Cursor"
         }
     }
 }
@@ -59,25 +61,54 @@ struct EstimateInfo: Equatable {
     var isCostUnavailable: Bool { costDollars == nil && totalTokens > 0 }
 }
 
+// MARK: - 퍼센트 쿼터 (Cursor 계열, /api/usage-summary)
+
+/// Cursor usage-summary 엔드포인트 기반 퍼센트 사용량.
+/// - totalPercentUsed: individualUsage.plan.totalPercentUsed (0–100+). 정확치(isEstimate=false).
+/// - billingCycleEnd: 청구 주기 종료일(리셋일). 옵셔널.
+/// - membershipType: "free" / "pro" 등 보조 정보. 옵셔널.
+/// 비용: Cursor가 공개 단가를 제공하지 않으므로 비용 필드 없음. UI는 "비용 정보 없음" 고정 표시.
+struct CursorPercentInfo: Equatable {
+    var totalPercentUsed: Double    // 0–100+
+    var billingCycleEnd: Date?
+    var membershipType: String?
+}
+
 // MARK: - 통합 사용량 모델 (R0.2)
 
-/// 모든 프로바이더(Claude, Codex, Gemini)의 사용량을 표현하는 통합 모델.
+/// 모든 프로바이더(Claude, Codex, Gemini, Cursor)의 사용량을 표현하는 통합 모델.
 /// - Claude: 정확한 OAuth 쿼터 (sessionUtilization, weeklyUtilization %)
 /// - Codex/Gemini: 로컬 로그 기반 추정치 (토큰/비용)
+/// - Cursor: usage-summary 엔드포인트 기반 퍼센트 쿼터 (totalPercentUsed)
 /// 각 state별로 UI가 다른 섹션을 렌더한다.
 struct ProviderUsage: Equatable {
     var id: ProviderID
     var state: ProviderState
-    var isEstimate: Bool               // Claude=false, Codex/Gemini=true (R1.3, AC-1.3)
-    var quota: QuotaInfo?              // state==.data && !isEstimate
+    var isEstimate: Bool               // Claude=false, Codex/Gemini=true, Cursor=false (R1.3)
+    var quota: QuotaInfo?              // state==.data && !isEstimate && id==.claude
     var estimate: EstimateInfo?        // state==.data && isEstimate
+    var cursorPercent: CursorPercentInfo?  // state==.data && id==.cursor 일 때만 non-nil
 
     var displayName: String { id.displayName }
+
+    init(id: ProviderID,
+         state: ProviderState,
+         isEstimate: Bool,
+         quota: QuotaInfo? = nil,
+         estimate: EstimateInfo? = nil,
+         cursorPercent: CursorPercentInfo? = nil) {
+        self.id = id
+        self.state = state
+        self.isEstimate = isEstimate
+        self.quota = quota
+        self.estimate = estimate
+        self.cursorPercent = cursorPercent
+    }
 
     /// 초기/로딩 스냅샷 팩토리
     static func loading(_ id: ProviderID, isEstimate: Bool) -> ProviderUsage {
         ProviderUsage(id: id, state: .loading, isEstimate: isEstimate,
-                      quota: nil, estimate: nil)
+                      quota: nil, estimate: nil, cursorPercent: nil)
     }
 }
 

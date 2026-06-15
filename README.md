@@ -47,7 +47,8 @@
 - **Multi-Provider Usage Monitoring** — Track usage and costs across multiple AI coding providers in one place:
   - **Claude** — Precise OAuth-based quota tracking with 5-hour and weekly utilization % from Anthropic API
   - **Codex** — Estimated usage from local `~/.codex/sessions` logs (24-hour rolling window), with token counts and estimated costs. Set via Settings
-  - Each provider displays with clear labels (Claude shows quota %, Codex shows estimated tokens and costs). Providers can be toggled on/off independently. The menu bar icon shows the selected provider's usage — default is Claude for backward compatibility
+  - **Cursor** — Exact request count tracking for Cursor free and personal plans. Reads your local Cursor session token and queries `cursor.com/api/usage` for accurate request usage and limits. Shows requests used / limit (if available) with a usage bar. Cost information is not available from Cursor's API. *Note: Uses an unofficial endpoint that may change with Cursor updates.*
+  - Each provider displays with clear labels (Claude shows quota %, Codex shows estimated tokens and costs, Cursor shows exact request counts). Providers can be toggled on/off independently. The menu bar icon shows the selected provider's usage — default is Claude for backward compatibility
 - **Token & Quota Tracking** — Monitor input/output tokens and API quota usage with 5-hour/weekly utilization. Display the live session/weekly quota % directly in the menu bar, with threshold-based color highlight (red when above your alert threshold)
 - **Cost Estimation** — View estimated API costs per session based on model-specific token pricing. Costs and token counts are restored after app restart by re-parsing recent session logs
 - **Quiet Hours** — Suppress notifications during designated time windows (e.g., 22:00~09:00)
@@ -106,9 +107,10 @@ so-agentbar monitors Claude and Codex agent session logs via FSEvents, and fetch
 
 - **Claude**: Official quota (5-hour and weekly %) fetched from Anthropic's OAuth API (`/api/oauth/usage` endpoint) using the token stored in Keychain. Accurate and real-time.
 - **Codex**: Estimated from local `~/.codex/sessions` logs over the past 24 hours. Token counts aggregated per model, costs calculated via `CostCalculator` using OpenAI pricing. Labeled as "estimated" in the UI.
+- **Cursor**: Exact request usage queried from `cursor.com/api/usage` using your local Cursor session token (stored in `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`). Shows request count and limit (if your plan has one) in real-time. Cost information unavailable — Cursor does not publish per-request pricing. *Uses an unofficial API endpoint; may be subject to change.*
 - **Gemini**: Reserved for future implementation (data source validation pending).
 
-Session status is determined by parsing JSONL log events. Token and cost data are restored after app restart via incremental log parsing.
+Session status is determined by parsing JSONL log events. Token and cost data are restored after app restart via incremental log parsing. Cursor request usage is fetched live on each poll interval.
 
 ## Settings
 
@@ -116,7 +118,7 @@ Session status is determined by parsing JSONL log events. Token and cost data ar
 |---|---|
 | Language | Korean / English |
 | Menu Bar Style | Emoji, Emoji + Count, Quota Session %, Quota Session + Weekly % |
-| Menu Bar Provider | Claude, Codex, or Gemini (selects which provider's usage is shown in the menu bar icon) |
+| Menu Bar Provider | Claude, Codex, Cursor, or Gemini (selects which provider's usage is shown in the menu bar icon) |
 | Editor | VSCode, Cursor, Antigravity, Terminal, Finder |
 | Notifications | Completion, Approval Required, Error, Quota Threshold (50-95%), Refill |
 | Quiet Hours | Suppress all notifications during a set time window (e.g. 23:00–09:00) |
@@ -128,6 +130,7 @@ Session status is determined by parsing JSONL log events. Token and cost data ar
 | Auto Keep Awake on Session | Automatically prevent sleep when Claude sessions are active |
 | Clipboard History | Enable or disable clipboard history tracking and display |
 | Codex CLI Monitoring | Enable or disable OpenAI Codex CLI/VSCode session tracking (estimated usage from local logs) |
+| Cursor Request Monitoring | Enable or disable Cursor (free/personal plan) request usage tracking. Requires Cursor app login |
 | Gemini Monitoring | Enable or disable Google Gemini usage tracking (estimated usage from local logs) |
 | Launch at Login | Auto-start with macOS |
 | Auto Update | Check for updates automatically via Sparkle |

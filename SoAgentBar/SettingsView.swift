@@ -402,12 +402,45 @@ struct SettingsView: View {
                     sectionHeader(store.t("사용량 모니터링", "Usage Monitoring"))
 
                     settingRow {
+                        Toggle(isOn: $store.usageClaudeEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(store.t("Claude 사용량 표시", "Show Claude usage"))
+                                    .font(.system(size: 13))
+                                Text(store.t("세션 및 주간 쿼터 사용량",
+                                             "Session and weekly quota usage"))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                    }
+
+                    Divider().padding(.leading, 16)
+
+                    settingRow {
                         Toggle(isOn: $store.usageCodexEnabled) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(store.t("Codex 사용량 표시", "Show Codex usage"))
                                     .font(.system(size: 13))
                                 Text(store.t("~/.codex/sessions의 최근 24시간 추정 사용량",
                                              "Estimated usage from ~/.codex/sessions (last 24h)"))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                    }
+
+                    Divider().padding(.leading, 16)
+
+                    // [SPEC-002] Cursor 사용량 토글
+                    settingRow {
+                        Toggle(isOn: $store.usageCursorEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(store.t("Cursor 사용량 표시", "Show Cursor usage"))
+                                    .font(.system(size: 13))
+                                Text(store.t("이번 달 Cursor 요청 사용량 (비공식 API)",
+                                             "Cursor request usage this month (unofficial API)"))
                                     .font(.system(size: 11))
                                     .foregroundColor(.secondary)
                             }
@@ -427,6 +460,7 @@ struct SettingsView: View {
                             Picker("", selection: $store.menubarUsageProvider) {
                                 Text("Claude").tag(ProviderID.claude)
                                 Text("Codex").tag(ProviderID.codex)
+                                Text("Cursor").tag(ProviderID.cursor)   // [SPEC-002]
                             }
                             .pickerStyle(.segmented)
                             .labelsHidden()
@@ -437,7 +471,9 @@ struct SettingsView: View {
                                     .font(.system(size: 10))
                                     .foregroundColor(.secondary)
                             }
-                            if store.menubarUsageProvider == .codex && !store.usageCodexEnabled {
+                            if (store.menubarUsageProvider == .claude && !store.usageClaudeEnabled) ||
+                               (store.menubarUsageProvider == .codex && !store.usageCodexEnabled) ||
+                               (store.menubarUsageProvider == .cursor && !store.usageCursorEnabled) {
                                 Text(store.t("비활성 프로바이더는 표시되지 않습니다",
                                              "Inactive providers won't be shown"))
                                     .font(.system(size: 10))

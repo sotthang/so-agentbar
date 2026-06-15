@@ -347,6 +347,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             } else {
                 return ""
             }
+
+        case .cursor:
+            // [SPEC-002 재설계] usage-summary 기반 퍼센트 suffix
+            // 0%도 데이터가 있으면 표시하지 않음 (의미 없으므로 > 0 조건)
+            guard let p = usage.cursorPercent, p.totalPercentUsed > 0 else { return "" }
+            return "\(Int(p.totalPercentUsed))%"  // 예: "6%"
         }
     }
 

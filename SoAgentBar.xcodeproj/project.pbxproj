@@ -136,6 +136,9 @@
 		MP006MP006MP006MP006MP01 /* MenubarUsageSuffixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MP006MP006MP006MP006MP02 /* MenubarUsageSuffixTests.swift */; };
 		MP007MP007MP007MP007MP01 /* UsageCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MP007MP007MP007MP007MP02 /* UsageCoordinatorTests.swift */; };
 		MP008MP008MP008MP008MP01 /* ProviderUsageSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = MP008MP008MP008MP008MP02 /* ProviderUsageSection.swift */; };
+		CU001CU001CU001CU001CU01 /* CursorUsageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CU001CU001CU001CU001CU02 /* CursorUsageProvider.swift */; };
+		CU002CU002CU002CU002CU01 /* CursorTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CU002CU002CU002CU002CU02 /* CursorTokenStore.swift */; };
+		CU003CU003CU003CU003CU01 /* CursorUsageProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CU003CU003CU003CU003CU02 /* CursorUsageProviderTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -208,6 +211,9 @@
 		MP006MP006MP006MP006MP02 /* MenubarUsageSuffixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarUsageSuffixTests.swift; sourceTree = "<group>"; };
 		MP007MP007MP007MP007MP02 /* UsageCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageCoordinatorTests.swift; sourceTree = "<group>"; };
 		MP008MP008MP008MP008MP02 /* ProviderUsageSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderUsageSection.swift; sourceTree = "<group>"; };
+		CU001CU001CU001CU001CU02 /* CursorUsageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorUsageProvider.swift; sourceTree = "<group>"; };
+		CU002CU002CU002CU002CU02 /* CursorTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorTokenStore.swift; sourceTree = "<group>"; };
+		CU003CU003CU003CU003CU02 /* CursorUsageProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorUsageProviderTests.swift; sourceTree = "<group>"; };
 		PA1000PA1000PA1000PA1002 /* char_0.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_0.png; path = "Assets/pixel-agents/characters/char_0.png"; sourceTree = "<group>"; };
 		PA1001PA1001PA1001PA1002 /* char_1.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_1.png; path = "Assets/pixel-agents/characters/char_1.png"; sourceTree = "<group>"; };
 		PA1002PA1002PA1002PA1002 /* char_2.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_2.png; path = "Assets/pixel-agents/characters/char_2.png"; sourceTree = "<group>"; };
@@ -308,6 +314,8 @@
 				MP002MP002MP002MP002MP02 /* CodexUsageProvider.swift */,
 				MP003MP003MP003MP003MP02 /* UsageCoordinator.swift */,
 				MP008MP008MP008MP008MP02 /* ProviderUsageSection.swift */,
+				CU001CU001CU001CU001CU02 /* CursorUsageProvider.swift */,
+				CU002CU002CU002CU002CU02 /* CursorTokenStore.swift */,
 				3E1ED4571EA5484EA2B785B1 /* MenuBarIconView.swift */,
 				3E1ED4571EA5484EA2B785B3 /* AgentListView.swift */,
 				D0A7CBDB2F7556860052C5A3 /* SettingsView.swift */,
@@ -439,6 +447,7 @@
 				MP005MP005MP005MP005MP02 /* CodexUsageAggregatorTests.swift */,
 				MP006MP006MP006MP006MP02 /* MenubarUsageSuffixTests.swift */,
 				MP007MP007MP007MP007MP02 /* UsageCoordinatorTests.swift */,
+				CU003CU003CU003CU003CU02 /* CursorUsageProviderTests.swift */,
 			);
 			path = SoAgentBarTests;
 			sourceTree = "<group>";
@@ -645,6 +654,8 @@
 				MP002MP002MP002MP002MP01 /* CodexUsageProvider.swift in Sources */,
 				MP003MP003MP003MP003MP01 /* UsageCoordinator.swift in Sources */,
 				MP008MP008MP008MP008MP01 /* ProviderUsageSection.swift in Sources */,
+				CU001CU001CU001CU001CU01 /* CursorUsageProvider.swift in Sources */,
+				CU002CU002CU002CU002CU01 /* CursorTokenStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -680,6 +691,7 @@
 				MP005MP005MP005MP005MP01 /* CodexUsageAggregatorTests.swift in Sources */,
 				MP006MP006MP006MP006MP01 /* MenubarUsageSuffixTests.swift in Sources */,
 				MP007MP007MP007MP007MP01 /* UsageCoordinatorTests.swift in Sources */,
+				CU003CU003CU003CU003CU01 /* CursorUsageProviderTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

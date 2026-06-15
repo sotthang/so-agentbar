@@ -7,7 +7,7 @@ import Combine
 // (R0.3, RX.4, NFR4)
 //
 // 역할:
-// - Claude 프로바이더는 항상 활성
+// - Claude 프로바이더는 기본 활성, claudeEnabled로 on/off 토글 가능
 // - Codex/Gemini는 사용자 설정(enabled)으로 on/off 토글
 // - providers: 팝오버(UsageView)가 구독, 순서 고정 Claude → Codex → Gemini
 // - menubarUsage: 메뉴바 아이콘이 구독, 선택된 프로바이더 1개만 표시
@@ -16,7 +16,7 @@ import Combine
 @MainActor
 final class UsageCoordinator: ObservableObject {
 
-    // 팝오버(UsageView)가 구독: 표시 순서 고정 Claude → Codex → Gemini
+        // 팝오버(UsageView)가 구독: 표시 순서 고정 Claude → Codex → Gemini → Cursor
     @Published private(set) var providers: [ProviderUsage] = []
 
     // 메뉴바 아이콘이 구독: 선택된 프로바이더의 스냅샷 (없으면 nil, RX.4)
@@ -25,6 +25,7 @@ final class UsageCoordinator: ObservableObject {
     private let claude: UsageProviderProtocol
     private let codex: UsageProviderProtocol?
     private let gemini: UsageProviderProtocol?
+    private let cursor: UsageProviderProtocol?    // [SPEC-002]
     private var enabled: [ProviderID: Bool]
     private var selectedProvider: ProviderID
     private var latest: [ProviderID: ProviderUsage] = [:]  // 프로바이더별 마지막 스냅샷 (장애 격리)
@@ -33,14 +34,18 @@ final class UsageCoordinator: ObservableObject {
         claude: UsageProviderProtocol? = nil,
         codex: UsageProviderProtocol? = nil,
         gemini: UsageProviderProtocol? = nil,
+        cursor: UsageProviderProtocol? = nil,         // [SPEC-002]
+        claudeEnabled: Bool = true,
         codexEnabled: Bool = false,
         geminiEnabled: Bool = false,
+        cursorEnabled: Bool = false,                  // [SPEC-002]
         selectedProvider: ProviderID = .claude
     ) {
         self.claude = claude ?? _PlaceholderProvider(id: .claude)
         self.codex = codex
         self.gemini = gemini
-        self.enabled = [.claude: true, .codex: codexEnabled, .gemini: geminiEnabled]
+        self.cursor = cursor
+        self.enabled = [.claude: claudeEnabled, .codex: codexEnabled, .gemini: geminiEnabled, .cursor: cursorEnabled]
         self.selectedProvider = selectedProvider
 
         // onUsageChanged 콜백 등록 (장애 격리: 각 프로바이더 독립)
@@ -57,6 +62,9 @@ final class UsageCoordinator: ObservableObject {
         gemini?.onUsageChanged = { [weak self] usage in
             self?.receiveUsage(usage)
         }
+        cursor?.onUsageChanged = { [weak self] usage in    // [SPEC-002]
+            self?.receiveUsage(usage)
+        }
     }
 
     private func receiveUsage(_ usage: ProviderUsage) {
@@ -67,8 +75,10 @@ final class UsageCoordinator: ObservableObject {
     // MARK: - 공개 메서드
 
     func start() {
-        // Claude는 항상 활성
-        claude.start()
+        // Claude: 활성화된 경우만 start
+        if enabled[.claude] == true {
+            claude.start()
+        }
 
         // Codex: 활성화된 경우만 start
         if enabled[.codex] == true, let c = codex {
@@ -80,6 +90,11 @@ final class UsageCoordinator: ObservableObject {
             g.start()
         }
 
+        // Cursor: 활성화된 경우만 start (SPEC-002)
+        if enabled[.cursor] == true, let cu = cursor {
+            cu.start()
+        }
+
         // 초기 스냅샷으로 providers 구성
         rebuildAll()
     }
@@ -88,25 +103,26 @@ final class UsageCoordinator: ObservableObject {
         claude.stop()
         codex?.stop()
         gemini?.stop()
+        cursor?.stop()    // [SPEC-002]
     }
 
     func updatePollInterval(_ interval: Double) {
         claude.updatePollInterval(interval)
         if enabled[.codex] == true { codex?.updatePollInterval(interval) }
         if enabled[.gemini] == true { gemini?.updatePollInterval(interval) }
+        if enabled[.cursor] == true { cursor?.updatePollInterval(interval) }    // [SPEC-002]
     }
 
     /// on/off 토글 (RX.1) — false면 stop + latest 제거 + 재발행
     func setEnabled(_ provider: ProviderID, _ isEnabled: Bool) {
-        guard provider != .claude else { return }  // Claude는 항상 활성
         enabled[provider] = isEnabled
 
-        // Claude는 위의 guard에서 already returned — .claude 케이스 불필요
         let target: UsageProviderProtocol?
         switch provider {
-        case .codex:  target = codex
-        case .gemini: target = gemini
-        default:      target = nil  // 이 분기에 도달하지 않음
+        case .claude:  target = claude
+        case .codex:   target = codex
+        case .gemini:  target = gemini
+        case .cursor:  target = cursor
         }
 
         if isEnabled {
@@ -132,6 +148,7 @@ final class UsageCoordinator: ObservableObject {
             case .claude:  await claude.fetch()
             case .codex:   await codex?.fetch()
             case .gemini:  await gemini?.fetch()
+            case .cursor:  await cursor?.fetch()    // [SPEC-002]
             }
         }
     }
@@ -144,12 +161,14 @@ final class UsageCoordinator: ObservableObject {
         rebuildMenubar()
     }
 
-    /// providers 재계산: Claude 항상 포함 + enabled된 것만, 고정 순서 Claude → Codex → Gemini
+    /// providers 재계산: enabled된 것만, 고정 순서 Claude → Codex → Gemini → Cursor
     private func rebuildProviders() {
         var result: [ProviderUsage] = []
 
-        // Claude: 항상 포함 (latest에 없으면 currentUsage 사용)
-        result.append(latest[.claude] ?? claude.currentUsage)
+        // Claude: 활성화된 경우만 포함 (latest에 없으면 currentUsage 사용)
+        if enabled[.claude] == true {
+            result.append(latest[.claude] ?? claude.currentUsage)
+        }
 
         // Codex: 활성화된 경우만
         if enabled[.codex] == true, let c = codex {
@@ -159,6 +178,11 @@ final class UsageCoordinator: ObservableObject {
         // Gemini: 활성화된 경우만
         if enabled[.gemini] == true, let g = gemini {
             result.append(latest[.gemini] ?? g.currentUsage)
+        }
+
+        // Cursor: 활성화된 경우만 (표시 순서 마지막, SPEC-002 R5.3)
+        if enabled[.cursor] == true, let cu = cursor {
+            result.append(latest[.cursor] ?? cu.currentUsage)
         }
 
         providers = result
@@ -178,6 +202,7 @@ final class UsageCoordinator: ObservableObject {
         case .claude:  usage = latest[.claude] ?? claude.currentUsage
         case .codex:   usage = latest[.codex] ?? codex?.currentUsage
         case .gemini:  usage = latest[.gemini] ?? gemini?.currentUsage
+        case .cursor:  usage = latest[.cursor] ?? cursor?.currentUsage    // [SPEC-002]
         }
 
         // state가 .data일 때만 menubarUsage 설정 (noSuffix 규칙)

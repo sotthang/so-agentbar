@@ -320,4 +320,97 @@ final class UsageCoordinatorTests: XCTestCase {
         XCTAssertNil(coordinator.menubarUsage,
                      "에러 상태 프로바이더가 선택되면 menubarUsage는 nil이어야 한다 (design.md noSuffix 규칙)")
     }
+
+    // MARK: - Claude 토글 테스트 (신규)
+
+    /// 기본값에서 Claude는 활성, providers에 claude 포함 (회귀)
+    func test_coordinator_default_claudeEnabled_providersContainClaude() {
+        let claude = MockUsageProvider(id: .claude)
+
+        let coordinator = UsageCoordinator(
+            claude: claude, codex: nil, gemini: nil,
+            claudeEnabled: true,
+            codexEnabled: false,
+            geminiEnabled: false,
+            selectedProvider: .claude
+        )
+        coordinator.start()
+
+        let ids = coordinator.providers.map(\.id)
+        XCTAssertTrue(ids.contains(.claude),
+                      "기본값(claudeEnabled=true)에서 providers에 claude가 포함돼야 한다")
+        XCTAssertTrue(claude.startCalled,
+                      "claudeEnabled=true면 claude.start()가 호출돼야 한다")
+    }
+
+    /// setEnabled(.claude, false) → providers에서 claude 제외 + stop 호출 + menubarUsage nil
+    func test_coordinator_setEnabled_claude_false_removesFromProviders() {
+        let claude = MockUsageProvider(id: .claude)
+
+        let coordinator = UsageCoordinator(
+            claude: claude, codex: nil, gemini: nil,
+            claudeEnabled: true,
+            codexEnabled: false,
+            geminiEnabled: false,
+            selectedProvider: .claude
+        )
+        coordinator.start()
+        claude.emit(makeDataUsage(id: .claude))
+
+        coordinator.setEnabled(.claude, false)
+
+        let ids = coordinator.providers.map(\.id)
+        XCTAssertFalse(ids.contains(.claude),
+                       "setEnabled(.claude, false) 후 providers에서 claude가 제외돼야 한다")
+        XCTAssertTrue(claude.stopCalled,
+                      "setEnabled(.claude, false) 후 claude.stop()이 호출돼야 한다")
+        XCTAssertNil(coordinator.menubarUsage,
+                     "Claude 비활성 후 menubarUsage(.claude 선택)는 nil이어야 한다")
+    }
+
+    /// setEnabled(.claude, true) → 다시 포함/start
+    func test_coordinator_setEnabled_claude_true_reEnables() {
+        let claude = MockUsageProvider(id: .claude)
+
+        let coordinator = UsageCoordinator(
+            claude: claude, codex: nil, gemini: nil,
+            claudeEnabled: false,
+            codexEnabled: false,
+            geminiEnabled: false,
+            selectedProvider: .claude
+        )
+        coordinator.start()
+
+        XCTAssertFalse(coordinator.providers.map(\.id).contains(.claude),
+                       "claudeEnabled=false로 시작 시 providers에 claude 없어야 한다")
+
+        coordinator.setEnabled(.claude, true)
+
+        XCTAssertTrue(coordinator.providers.map(\.id).contains(.claude),
+                      "setEnabled(.claude, true) 후 providers에 claude가 포함돼야 한다")
+        XCTAssertTrue(claude.startCalled,
+                      "setEnabled(.claude, true) 후 claude.start()가 호출돼야 한다")
+    }
+
+    /// Claude/Codex/Cursor 전부 off → providers 빈 배열, 크래시 없음
+    func test_coordinator_allDisabled_providersEmpty_noCrash() {
+        let claude = MockUsageProvider(id: .claude)
+        let codex = MockUsageProvider(id: .codex)
+        let cursor = MockUsageProvider(id: .cursor)
+
+        let coordinator = UsageCoordinator(
+            claude: claude, codex: codex, gemini: nil, cursor: cursor,
+            claudeEnabled: false,
+            codexEnabled: false,
+            geminiEnabled: false,
+            cursorEnabled: false,
+            selectedProvider: .claude
+        )
+        coordinator.start()
+
+        XCTAssertTrue(coordinator.providers.isEmpty,
+                      "전부 off이면 providers는 빈 배열이어야 한다")
+        XCTAssertNil(coordinator.menubarUsage,
+                     "전부 off이면 menubarUsage는 nil이어야 한다")
+    }
 }

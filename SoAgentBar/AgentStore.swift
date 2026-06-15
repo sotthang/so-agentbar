@@ -479,6 +479,12 @@ class AgentStore: ObservableObject {
     }
 
     // 사용량 모니터링 설정 (신규, Phase 0+1)
+    @Published var usageClaudeEnabled: Bool {    // 기본 true
+        didSet {
+            UserDefaults.standard.set(usageClaudeEnabled, forKey: "usageClaudeEnabled")
+            usageCoordinator.setEnabled(.claude, usageClaudeEnabled)
+        }
+    }
     @Published var usageCodexEnabled: Bool {
         didSet {
             UserDefaults.standard.set(usageCodexEnabled, forKey: "usageCodexEnabled")
@@ -489,6 +495,12 @@ class AgentStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(usageGeminiEnabled, forKey: "usageGeminiEnabled")
             usageCoordinator.setEnabled(.gemini, usageGeminiEnabled)
+        }
+    }
+    @Published var usageCursorEnabled: Bool {    // [SPEC-002] 기본 false (NFR3)
+        didSet {
+            UserDefaults.standard.set(usageCursorEnabled, forKey: "usageCursorEnabled")
+            usageCoordinator.setEnabled(.cursor, usageCursorEnabled)
         }
     }
     @Published var menubarUsageProvider: ProviderID {
@@ -524,24 +536,32 @@ class AgentStore: ObservableObject {
             UserDefaults.standard.object(forKey: "autoKeepAwakeOnSession") as? Bool ?? false
 
         // 사용량 설정 (신규, didSet 없이 초기화)
+        let claudeEnabled = UserDefaults.standard.object(forKey: "usageClaudeEnabled") as? Bool ?? true  // 기본 true
         let codexEnabled = UserDefaults.standard.object(forKey: "usageCodexEnabled") as? Bool ?? false
         let geminiEnabled = UserDefaults.standard.object(forKey: "usageGeminiEnabled") as? Bool ?? false
+        let cursorEnabled = UserDefaults.standard.object(forKey: "usageCursorEnabled") as? Bool ?? false   // [SPEC-002] 기본 false
         let providerRaw = UserDefaults.standard.string(forKey: "menubarUsageProvider") ?? ProviderID.claude.rawValue
         let selectedProvider = ProviderID(rawValue: providerRaw) ?? .claude
+        self.usageClaudeEnabled = claudeEnabled
         self.usageCodexEnabled = codexEnabled
         self.usageGeminiEnabled = geminiEnabled
+        self.usageCursorEnabled = cursorEnabled   // [SPEC-002]
         self.menubarUsageProvider = selectedProvider
 
         // UsageMonitor와 UsageCoordinator를 함께 초기화
         let monitor = UsageMonitor()
         let codexProvider = CodexUsageProvider()
+        let cursorProvider = CursorUsageProvider()   // [SPEC-002]
         self.usageMonitor = monitor
         self.usageCoordinator = UsageCoordinator(
             claude: monitor,
             codex: codexProvider,
             gemini: nil,
+            cursor: cursorProvider,          // [SPEC-002]
+            claudeEnabled: claudeEnabled,
             codexEnabled: codexEnabled,
             geminiEnabled: geminiEnabled,
+            cursorEnabled: cursorEnabled,    // [SPEC-002]
             selectedProvider: selectedProvider
         )
 

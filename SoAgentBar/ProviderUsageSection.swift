@@ -84,6 +84,9 @@ struct ProviderUsageSection: View {
             return store.t("Codex 사용 기록이 없습니다", "No Codex usage found")
         case .gemini:
             return store.t("Gemini 사용 기록이 없습니다", "No Gemini usage found")
+        case .cursor:
+            // [SPEC-002] Q4 확정: 단일 needsSetup 문구 (미설치/미로그인 통합, 보안상 경로 미노출)
+            return store.t("Cursor 로그인이 필요합니다", "Cursor login required")
         }
     }
 
@@ -97,6 +100,10 @@ struct ProviderUsageSection: View {
         case .gemini:
             return store.t("~/.gemini/tmp에서 최근 24시간 기록을 찾을 수 없습니다",
                            "No activity in ~/.gemini/tmp in the last 24h")
+        case .cursor:
+            // [SPEC-002] 경로 상세 미노출 (R7.2, Q4)
+            return store.t("Cursor 앱에서 로그인 후 다시 시도하세요",
+                           "Sign in to the Cursor app and try again")
         }
     }
 
@@ -128,7 +135,13 @@ struct ProviderUsageSection: View {
 
     @ViewBuilder
     private var dataBody: some View {
-        if usage.isEstimate {
+        // 분기 결정 규칙:
+        // 1. cursorPercent != nil → percentBody (Cursor, usage-summary 기반)
+        // 2. isEstimate == true → estimateBody (Codex/Gemini)
+        // 3. else → quotaBody (Claude)
+        if let cursorPercent = usage.cursorPercent {
+            percentBody(cursorPercent: cursorPercent)
+        } else if usage.isEstimate {
             if let estimate = usage.estimate {
                 estimateBody(estimate: estimate)
             }
@@ -137,6 +150,83 @@ struct ProviderUsageSection: View {
                 quotaBody(quota: quota)
             }
         }
+    }
+
+    // MARK: data — Cursor 퍼센트 쿼터 (percentBody) [SPEC-002 재설계]
+
+    @ViewBuilder
+    private func percentBody(cursorPercent: CursorPercentInfo) -> some View {
+        VStack(spacing: 8) {
+            // 헤더: "Cursor 쿼터" + 새로고침
+            HStack {
+                Text(store.t("Cursor 쿼터", "Cursor Quota"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+                if let membership = cursorPercent.membershipType {
+                    Text(membership)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Color(NSColor.secondaryLabelColor))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color(NSColor.quaternaryLabelColor))
+                        .cornerRadius(4)
+                }
+                Spacer()
+                Button(action: onRetry) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color(NSColor.tertiaryLabelColor))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(store.t("새로고침", "Refresh"))
+            }
+
+            // 퍼센트 행 (quotaRow 스타일 재사용)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 4) {
+                    Text(store.t("사용량", "Usage"))
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    let pct = min(100, cursorPercent.totalPercentUsed)
+                    Text("\(Int(pct))% \(store.t("사용", "used"))")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(barColor(pct))
+                    if let resetDate = cursorPercent.billingCycleEnd {
+                        Text("· \(resetLabel(resetDate))")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(NSColor.tertiaryLabelColor))
+                    }
+                }
+                GeometryReader { geo in
+                    let pct = min(100, cursorPercent.totalPercentUsed)
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color(NSColor.quaternaryLabelColor))
+                            .frame(height: 4)
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(barColor(pct))
+                            .frame(width: max(0, geo.size.width * pct / 100), height: 4)
+                    }
+                }
+                .frame(height: 4)
+            }
+
+            // 비용 행: 항상 "비용 정보 없음" (R4.3, AC5 — $0 절대 금지)
+            HStack {
+                Text(store.t("비용", "Cost"))
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(store.t("비용 정보 없음", "Cost N/A"))
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(NSColor.tertiaryLabelColor))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Cursor \(store.t("쿼터", "quota")) \(Int(min(100, cursorPercent.totalPercentUsed)))\(store.t("% 사용", "% used")), \(store.t("비용 정보 없음", "Cost N/A"))")
     }
 
     // MARK: data — Claude (quota)

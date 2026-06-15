@@ -502,8 +502,8 @@ class AgentStore: ObservableObject {
         self.autoKeepAwakeOnSession =
             UserDefaults.standard.object(forKey: "autoKeepAwakeOnSession") as? Bool ?? false
 
-        self.isPixelWindowVisible = UserDefaults.standard.object(forKey: "isPixelWindowVisible") as? Bool ?? true
-        self.pixelWindowOpacity   = UserDefaults.standard.object(forKey: "pixelWindowOpacity") as? Double ?? 0.8
+        self.isPixelWindowVisible = UserDefaults.standard.object(forKey: "isPixelWindowVisible") as? Bool ?? false
+        self.pixelWindowOpacity   = UserDefaults.standard.object(forKey: "pixelWindowOpacity") as? Double ?? 1.0
         self.showIdleSessions   = UserDefaults.standard.object(forKey: "showIdleSessions") as? Bool ?? true
         self.pollInterval       = UserDefaults.standard.object(forKey: "pollInterval") as? Double ?? 10.0
         self.monitorCodexSessions = UserDefaults.standard.object(forKey: "monitorCodexSessions") as? Bool ?? true

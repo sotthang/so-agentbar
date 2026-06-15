@@ -478,8 +478,29 @@ class AgentStore: ObservableObject {
         }
     }
 
+    // 사용량 모니터링 설정 (신규, Phase 0+1)
+    @Published var usageCodexEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(usageCodexEnabled, forKey: "usageCodexEnabled")
+            usageCoordinator.setEnabled(.codex, usageCodexEnabled)
+        }
+    }
+    @Published var usageGeminiEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(usageGeminiEnabled, forKey: "usageGeminiEnabled")
+            usageCoordinator.setEnabled(.gemini, usageGeminiEnabled)
+        }
+    }
+    @Published var menubarUsageProvider: ProviderID {
+        didSet {
+            UserDefaults.standard.set(menubarUsageProvider.rawValue, forKey: "menubarUsageProvider")
+            usageCoordinator.setSelectedProvider(menubarUsageProvider)
+        }
+    }
+
     private let coordinator = SessionCoordinator()
-    let usageMonitor = UsageMonitor()
+    let usageMonitor: UsageMonitor
+    let usageCoordinator: UsageCoordinator
     let systemMetricsMonitor = SystemMetricsMonitor()
     let statsStore = StatsStore()
     private var elapsedTimer: Timer?
@@ -501,6 +522,28 @@ class AgentStore: ObservableObject {
         self.quickNoteStore = QuickNoteStore()
         self.autoKeepAwakeOnSession =
             UserDefaults.standard.object(forKey: "autoKeepAwakeOnSession") as? Bool ?? false
+
+        // 사용량 설정 (신규, didSet 없이 초기화)
+        let codexEnabled = UserDefaults.standard.object(forKey: "usageCodexEnabled") as? Bool ?? false
+        let geminiEnabled = UserDefaults.standard.object(forKey: "usageGeminiEnabled") as? Bool ?? false
+        let providerRaw = UserDefaults.standard.string(forKey: "menubarUsageProvider") ?? ProviderID.claude.rawValue
+        let selectedProvider = ProviderID(rawValue: providerRaw) ?? .claude
+        self.usageCodexEnabled = codexEnabled
+        self.usageGeminiEnabled = geminiEnabled
+        self.menubarUsageProvider = selectedProvider
+
+        // UsageMonitor와 UsageCoordinator를 함께 초기화
+        let monitor = UsageMonitor()
+        let codexProvider = CodexUsageProvider()
+        self.usageMonitor = monitor
+        self.usageCoordinator = UsageCoordinator(
+            claude: monitor,
+            codex: codexProvider,
+            gemini: nil,
+            codexEnabled: codexEnabled,
+            geminiEnabled: geminiEnabled,
+            selectedProvider: selectedProvider
+        )
 
         self.isPixelWindowVisible = UserDefaults.standard.object(forKey: "isPixelWindowVisible") as? Bool ?? false
         self.pixelWindowOpacity   = UserDefaults.standard.object(forKey: "pixelWindowOpacity") as? Double ?? 1.0
@@ -565,7 +608,8 @@ class AgentStore: ObservableObject {
         usageMonitor.sendNotificationHandler = { [weak self] title, body in
             self?.sendNotification(title: title, body: body)
         }
-        usageMonitor.start()
+        // usageCoordinator.start()가 내부적으로 claude(=usageMonitor).start()를 호출함
+        usageCoordinator.start()
         systemMetricsMonitor.start()
 
         elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in

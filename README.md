@@ -44,6 +44,10 @@
 - **Subagent Grouping** — Sessions spawned via the `Agent` tool (e.g. SO-ADK pipelines) are folded under their parent session with a `🤖×N` badge. Click to expand the dropdown and see each subagent's type, current task, and last response on hover. While the parent waits, the parent row mirrors the most active subagent's status, and the parent's token/cost totals include every subagent's usage so you see the full pipeline cost in one place
 - **Source Badges** — Each session is labeled by origin (Code, Cowork, Xcode) so you always know where it's running. Click a Desktop session to open Claude Desktop directly
 - **Session Titles** — AI-generated session titles from Claude Desktop are shown automatically, replacing cryptic path names
+- **Multi-Provider Usage Monitoring** — Track usage and costs across multiple AI coding providers in one place:
+  - **Claude** — Precise OAuth-based quota tracking with 5-hour and weekly utilization % from Anthropic API
+  - **Codex** — Estimated usage from local `~/.codex/sessions` logs (24-hour rolling window), with token counts and estimated costs. Set via Settings
+  - Each provider displays with clear labels (Claude shows quota %, Codex shows estimated tokens and costs). Providers can be toggled on/off independently. The menu bar icon shows the selected provider's usage — default is Claude for backward compatibility
 - **Token & Quota Tracking** — Monitor input/output tokens and API quota usage with 5-hour/weekly utilization. Display the live session/weekly quota % directly in the menu bar, with threshold-based color highlight (red when above your alert threshold)
 - **Cost Estimation** — View estimated API costs per session based on model-specific token pricing. Costs and token counts are restored after app restart by re-parsing recent session logs
 - **Quiet Hours** — Suppress notifications during designated time windows (e.g., 22:00~09:00)
@@ -85,7 +89,7 @@ Build and run with Xcode (⌘R).
 
 ## How It Works
 
-so-agentbar monitors Claude and Codex agent session logs via FSEvents:
+so-agentbar monitors Claude and Codex agent session logs via FSEvents, and fetches quota usage from cloud APIs:
 
 **Claude sessions**:
 - **CLI sessions** — `~/.claude/projects/`
@@ -93,11 +97,18 @@ so-agentbar monitors Claude and Codex agent session logs via FSEvents:
 - **Desktop Code sessions** — detected via Claude Desktop metadata (`claude-code-sessions/*.json`)
 - **Desktop Cowork sessions** — `~/Library/Application Support/Claude/local-agent-mode-sessions/`
 
-**Codex sessions**:
+**Codex sessions** (local log-based usage):
 - **CLI & VSCode sessions** — `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
 - Codex flushes its rollout JSONL in a batch at turn completion (not as a streaming write), so a Codex session's status updates **after each turn completes** rather than mid-response. Click a Codex session to open the Codex.app.
+- Usage tracking parses local JSONL logs over a **24-hour rolling window**, extracting token counts per model and estimating costs. Since Codex has no public quota API, usage is displayed as **estimated** and includes a "Cost N/A" indicator when model unit prices are unknown (e.g., `gpt-5-codex`).
 
-Session status is determined by parsing JSONL log events. Claude quota usage is fetched from Anthropic's OAuth API using the token stored in Keychain. Token and cost data are restored after app restart via incremental log parsing.
+### Usage Monitoring
+
+- **Claude**: Official quota (5-hour and weekly %) fetched from Anthropic's OAuth API (`/api/oauth/usage` endpoint) using the token stored in Keychain. Accurate and real-time.
+- **Codex**: Estimated from local `~/.codex/sessions` logs over the past 24 hours. Token counts aggregated per model, costs calculated via `CostCalculator` using OpenAI pricing. Labeled as "estimated" in the UI.
+- **Gemini**: Reserved for future implementation (data source validation pending).
+
+Session status is determined by parsing JSONL log events. Token and cost data are restored after app restart via incremental log parsing.
 
 ## Settings
 
@@ -105,6 +116,7 @@ Session status is determined by parsing JSONL log events. Claude quota usage is 
 |---|---|
 | Language | Korean / English |
 | Menu Bar Style | Emoji, Emoji + Count, Quota Session %, Quota Session + Weekly % |
+| Menu Bar Provider | Claude, Codex, or Gemini (selects which provider's usage is shown in the menu bar icon) |
 | Editor | VSCode, Cursor, Antigravity, Terminal, Finder |
 | Notifications | Completion, Approval Required, Error, Quota Threshold (50-95%), Refill |
 | Quiet Hours | Suppress all notifications during a set time window (e.g. 23:00–09:00) |
@@ -115,7 +127,8 @@ Session status is determined by parsing JSONL log events. Claude quota usage is 
 | Keep Awake Mode | Toggle between Off, Always, and Auto (session-dependent) |
 | Auto Keep Awake on Session | Automatically prevent sleep when Claude sessions are active |
 | Clipboard History | Enable or disable clipboard history tracking and display |
-| Codex CLI Monitoring | Enable or disable OpenAI Codex CLI/VSCode session tracking |
+| Codex CLI Monitoring | Enable or disable OpenAI Codex CLI/VSCode session tracking (estimated usage from local logs) |
+| Gemini Monitoring | Enable or disable Google Gemini usage tracking (estimated usage from local logs) |
 | Launch at Login | Auto-start with macOS |
 | Auto Update | Check for updates automatically via Sparkle |
 

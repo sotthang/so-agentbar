@@ -396,6 +396,56 @@ struct SettingsView: View {
                         }
                     }
 
+                    Divider().padding(.leading, 16)
+
+                    // 사용량 모니터링 섹션
+                    sectionHeader(store.t("사용량 모니터링", "Usage Monitoring"))
+
+                    settingRow {
+                        Toggle(isOn: $store.usageCodexEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(store.t("Codex 사용량 표시", "Show Codex usage"))
+                                    .font(.system(size: 13))
+                                Text(store.t("~/.codex/sessions의 최근 24시간 추정 사용량",
+                                             "Estimated usage from ~/.codex/sessions (last 24h)"))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                    }
+
+                    Divider().padding(.leading, 16)
+
+                    settingRow {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(store.t("메뉴바 표시 프로바이더", "Menu bar provider"))
+                                .font(.system(size: 13))
+                            Text(store.t("메뉴바 아이콘에 표시할 사용량", "Which usage to show in the menu bar icon"))
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                            Picker("", selection: $store.menubarUsageProvider) {
+                                Text("Claude").tag(ProviderID.claude)
+                                Text("Codex").tag(ProviderID.codex)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .disabled(!isQuotaMode)
+                            if !isQuotaMode {
+                                Text(store.t("쿼터 표시 스타일에서만 적용됩니다",
+                                             "Applies only with a quota display style"))
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
+                            if store.menubarUsageProvider == .codex && !store.usageCodexEnabled {
+                                Text(store.t("비활성 프로바이더는 표시되지 않습니다",
+                                             "Inactive providers won't be shown"))
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                    }
+
                     // 픽셀 에이전트 섹션
                     sectionHeader(store.t("픽셀 에이전트", "Pixel Agents"))
 
@@ -567,6 +617,10 @@ struct SettingsView: View {
     }
 
     // MARK: - 헬퍼
+
+    private var isQuotaMode: Bool {
+        store.menubarStyle == .quotaSession || store.menubarStyle == .quotaSessionAndWeekly
+    }
 
     private func previewSound(_ sound: String) {
         switch sound {

@@ -63,7 +63,7 @@ struct AgentListView: View {
     private var agentsTab: some View {
         VStack(spacing: 0) {
             agentList
-            UsageView(monitor: store.usageMonitor, store: store)
+            UsageView(coordinator: store.usageCoordinator, store: store)
             SystemMetricsView(monitor: store.systemMetricsMonitor, store: store)
         }
     }

@@ -128,6 +128,14 @@
 		NF001NF001NF001NF001NF01 /* SessionMonitoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = NF001NF001NF001NF001NF02 /* SessionMonitoring.swift */; };
 		NF002NF002NF002NF002NF01 /* CodexSessionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = NF002NF002NF002NF002NF02 /* CodexSessionMonitor.swift */; };
 		NF003NF003NF003NF003NF01 /* SessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = NF003NF003NF003NF003NF02 /* SessionCoordinator.swift */; };
+		MP001MP001MP001MP001MP01 /* UsageProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = MP001MP001MP001MP001MP02 /* UsageProviding.swift */; };
+		MP002MP002MP002MP002MP01 /* CodexUsageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = MP002MP002MP002MP002MP02 /* CodexUsageProvider.swift */; };
+		MP003MP003MP003MP003MP01 /* UsageCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = MP003MP003MP003MP003MP02 /* UsageCoordinator.swift */; };
+		MP004MP004MP004MP004MP01 /* ProviderUsageModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MP004MP004MP004MP004MP02 /* ProviderUsageModelTests.swift */; };
+		MP005MP005MP005MP005MP01 /* CodexUsageAggregatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MP005MP005MP005MP005MP02 /* CodexUsageAggregatorTests.swift */; };
+		MP006MP006MP006MP006MP01 /* MenubarUsageSuffixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MP006MP006MP006MP006MP02 /* MenubarUsageSuffixTests.swift */; };
+		MP007MP007MP007MP007MP01 /* UsageCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MP007MP007MP007MP007MP02 /* UsageCoordinatorTests.swift */; };
+		MP008MP008MP008MP008MP01 /* ProviderUsageSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = MP008MP008MP008MP008MP02 /* ProviderUsageSection.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -192,6 +200,14 @@
 		UF016UF016UF016UF016UF02 /* PopoverTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverTab.swift; sourceTree = "<group>"; };
 		STP001STP001STP001STP02 /* ScheduledTaskParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledTaskParser.swift; sourceTree = "<group>"; };
 		STP002STP002STP002STP02 /* ScheduledTaskParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledTaskParserTests.swift; sourceTree = "<group>"; };
+		MP001MP001MP001MP001MP02 /* UsageProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageProviding.swift; sourceTree = "<group>"; };
+		MP002MP002MP002MP002MP02 /* CodexUsageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexUsageProvider.swift; sourceTree = "<group>"; };
+		MP003MP003MP003MP003MP02 /* UsageCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageCoordinator.swift; sourceTree = "<group>"; };
+		MP004MP004MP004MP004MP02 /* ProviderUsageModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderUsageModelTests.swift; sourceTree = "<group>"; };
+		MP005MP005MP005MP005MP02 /* CodexUsageAggregatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexUsageAggregatorTests.swift; sourceTree = "<group>"; };
+		MP006MP006MP006MP006MP02 /* MenubarUsageSuffixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarUsageSuffixTests.swift; sourceTree = "<group>"; };
+		MP007MP007MP007MP007MP02 /* UsageCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageCoordinatorTests.swift; sourceTree = "<group>"; };
+		MP008MP008MP008MP008MP02 /* ProviderUsageSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderUsageSection.swift; sourceTree = "<group>"; };
 		PA1000PA1000PA1000PA1002 /* char_0.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_0.png; path = "Assets/pixel-agents/characters/char_0.png"; sourceTree = "<group>"; };
 		PA1001PA1001PA1001PA1002 /* char_1.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_1.png; path = "Assets/pixel-agents/characters/char_1.png"; sourceTree = "<group>"; };
 		PA1002PA1002PA1002PA1002 /* char_2.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_2.png; path = "Assets/pixel-agents/characters/char_2.png"; sourceTree = "<group>"; };
@@ -288,6 +304,10 @@
 				NF001NF001NF001NF001NF02 /* SessionMonitoring.swift */,
 				NF002NF002NF002NF002NF02 /* CodexSessionMonitor.swift */,
 				NF003NF003NF003NF003NF02 /* SessionCoordinator.swift */,
+				MP001MP001MP001MP001MP02 /* UsageProviding.swift */,
+				MP002MP002MP002MP002MP02 /* CodexUsageProvider.swift */,
+				MP003MP003MP003MP003MP02 /* UsageCoordinator.swift */,
+				MP008MP008MP008MP008MP02 /* ProviderUsageSection.swift */,
 				3E1ED4571EA5484EA2B785B1 /* MenuBarIconView.swift */,
 				3E1ED4571EA5484EA2B785B3 /* AgentListView.swift */,
 				D0A7CBDB2F7556860052C5A3 /* SettingsView.swift */,
@@ -415,6 +435,10 @@
 				STP002STP002STP002STP02 /* ScheduledTaskParserTests.swift */,
 				MQ001MQ001MQ001MQ001MQ02 /* MenubarQuotaSuffixTests.swift */,
 				UT001UT001UT001UT001UT02 /* UsageMonitorTokenTests.swift */,
+				MP004MP004MP004MP004MP02 /* ProviderUsageModelTests.swift */,
+				MP005MP005MP005MP005MP02 /* CodexUsageAggregatorTests.swift */,
+				MP006MP006MP006MP006MP02 /* MenubarUsageSuffixTests.swift */,
+				MP007MP007MP007MP007MP02 /* UsageCoordinatorTests.swift */,
 			);
 			path = SoAgentBarTests;
 			sourceTree = "<group>";
@@ -617,6 +641,10 @@
 				UF015UF015UF015UF015UF01 /* QuickNoteView.swift in Sources */,
 				UF016UF016UF016UF016UF01 /* PopoverTab.swift in Sources */,
 				STP001STP001STP001STP01 /* ScheduledTaskParser.swift in Sources */,
+				MP001MP001MP001MP001MP01 /* UsageProviding.swift in Sources */,
+				MP002MP002MP002MP002MP01 /* CodexUsageProvider.swift in Sources */,
+				MP003MP003MP003MP003MP01 /* UsageCoordinator.swift in Sources */,
+				MP008MP008MP008MP008MP01 /* ProviderUsageSection.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -648,6 +676,10 @@
 				ER001ER001ER001ER001ER01 /* AgentStoreErrorRetentionTests.swift in Sources */,
 				MQ001MQ001MQ001MQ001MQ01 /* MenubarQuotaSuffixTests.swift in Sources */,
 				UT001UT001UT001UT001UT01 /* UsageMonitorTokenTests.swift in Sources */,
+				MP004MP004MP004MP004MP01 /* ProviderUsageModelTests.swift in Sources */,
+				MP005MP005MP005MP005MP01 /* CodexUsageAggregatorTests.swift in Sources */,
+				MP006MP006MP006MP006MP01 /* MenubarUsageSuffixTests.swift in Sources */,
+				MP007MP007MP007MP007MP01 /* UsageCoordinatorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

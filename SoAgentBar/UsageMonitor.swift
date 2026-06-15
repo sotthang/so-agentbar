@@ -47,13 +47,21 @@ enum UsageError: LocalizedError {
 // MARK: - UsageMonitor
 
 @MainActor
-class UsageMonitor: ObservableObject {
+class UsageMonitor: ObservableObject, UsageProviderProtocol {
     @Published var usage: ClaudeUsage?
     @Published var errorMessage: String?
     @Published var needsLogin: Bool = false    // 키체인에 자격증명 없음 → claude login 필요
 
     // isLoading은 computed property로 - @Published 변경 없이 뷰가 usage/errorMessage로 상태 파악
     var isLoading: Bool { usage == nil && errorMessage == nil }
+
+    // MARK: - UsageProviderProtocol 적합 (R0.4)
+    nonisolated var id: ProviderID { .claude }
+    var onUsageChanged: ((ProviderUsage) -> Void)?
+    var currentUsage: ProviderUsage {
+        Self.toProviderUsage(usage: usage, errorMessage: errorMessage, needsLogin: needsLogin)
+    }
+    func updatePollInterval(_ interval: Double) { /* Claude uses fixed 5min polling */ }
 
     // 알림 설정 (AgentStore가 주입)
     var alertThreshold: Double = 80
@@ -100,6 +108,8 @@ class UsageMonitor: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+        // 변경된 상태를 coordinator로 발행
+        onUsageChanged?(currentUsage)
     }
 
     // MARK: - 알림 로직
@@ -135,6 +145,39 @@ class UsageMonitor: ObservableObject {
 
     private func notifyUser(title: String, body: String) {
         sendNotificationHandler?(title, body)
+    }
+
+    // MARK: - ProviderUsage 매핑 순수 함수 (AC-0.1 TDD 대상)
+
+    /// ClaudeUsage/errorMessage/needsLogin → ProviderUsage 변환.
+    /// nonisolated static: 단위 테스트 가능.
+    nonisolated static func toProviderUsage(
+        usage: ClaudeUsage?,
+        errorMessage: String?,
+        needsLogin: Bool
+    ) -> ProviderUsage {
+        if needsLogin {
+            return ProviderUsage(id: .claude, state: .needsSetup, isEstimate: false, quota: nil, estimate: nil)
+        }
+        if let err = errorMessage, usage == nil {
+            return ProviderUsage(id: .claude, state: .error(err), isEstimate: false, quota: nil, estimate: nil)
+        }
+        guard let u = usage else {
+            return ProviderUsage.loading(.claude, isEstimate: false)
+        }
+        let quota = QuotaInfo(
+            sessionUtilization: u.sessionUtilization,
+            sessionResetsAt: u.sessionResetsAt,
+            weeklyUtilization: u.weeklyUtilization,
+            weeklyResetsAt: u.weeklyResetsAt,
+            planName: u.planName,
+            extra: u.extraEnabled ? ExtraInfo(
+                enabled: true,
+                spentDollars: u.extraSpentDollars,
+                limitDollars: u.extraLimitDollars
+            ) : nil
+        )
+        return ProviderUsage(id: .claude, state: .data, isEstimate: false, quota: quota, estimate: nil)
     }
 
     // MARK: - Keychain 토큰 로드

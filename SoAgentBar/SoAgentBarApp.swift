@@ -219,12 +219,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             .sink { [weak self] _ in self?.updateIcon() }
             .store(in: &cancellables)
 
-        store.usageMonitor.$usage
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.updateIcon() }
-            .store(in: &cancellables)
-
-        store.usageMonitor.$errorMessage
+        store.usageCoordinator.$menubarUsage
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateIcon() }
             .store(in: &cancellables)
@@ -315,6 +310,46 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         return mutable
     }
 
+    // MARK: - 멀티 프로바이더 메뉴바 suffix 빌더 (순수 함수 — AC-X.5, TDD 대상)
+
+    /// 선택 프로바이더의 ProviderUsage → 메뉴바 suffix 문자열.
+    /// - mode가 쿼터 모드 아니거나 usage==nil/state!=.data → ""
+    /// - usage.id==.claude → buildQuotaSuffix(util: (session,weekly), mode:)  [기존 경로]
+    /// - isEstimate: costDollars 있으면 "~$X.X", 없고 토큰>0이면 "~{N}k", 둘 다 없으면 ""
+    nonisolated static func buildUsageSuffix(
+        usage: ProviderUsage?,
+        mode: MenubarStyle
+    ) -> String {
+        // 쿼터 모드 아니면 항상 빈 문자열
+        guard mode == .quotaSession || mode == .quotaSessionAndWeekly else { return "" }
+        // usage nil → 빈 문자열
+        guard let usage else { return "" }
+        // state가 .data 아니면 빈 문자열
+        guard case .data = usage.state else { return "" }
+
+        switch usage.id {
+        case .claude:
+            // 기존 buildQuotaSuffix 경로 (회귀 없음)
+            guard let quota = usage.quota else { return "" }
+            let util = (session: quota.sessionUtilization, weekly: quota.weeklyUtilization)
+            return buildQuotaSuffix(util: util, mode: mode)
+
+        case .codex, .gemini:
+            // 추정 suffix
+            guard let estimate = usage.estimate else { return "" }
+            if let cost = estimate.costDollars, cost > 0 {
+                // 비용 있음 → "~$X.X" (소수점 1자리)
+                return String(format: "~$%.1f", cost)
+            } else if estimate.totalTokens > 0 {
+                // 비용 추정 불가, 토큰만 → "~{N}k"
+                let kTokens = estimate.totalTokens / 1000
+                return "~\(kTokens)k"
+            } else {
+                return ""
+            }
+        }
+    }
+
     private func updateIcon() {
         guard let button = statusItem?.button else { return }
 
@@ -374,19 +409,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             }
         }
 
-        // 2) suffix 결정 — usage 없거나 에러 상태면 suffix 미표시
-        // 쿼터 모드가 아닌 경우 suffix는 항상 빈 문자열
-        let util: (session: Double, weekly: Double)?
-        if isQuotaMode, let u = store.usageMonitor.usage, store.usageMonitor.errorMessage == nil {
-            util = (u.sessionUtilization, u.weeklyUtilization)
-        } else {
-            util = nil
-        }
-        let suffix = Self.buildQuotaSuffix(util: util, mode: style)
+        // 2) suffix 결정 — menubarUsage 기반 (선택 프로바이더, RX.4)
+        // buildUsageSuffix: 쿼터 모드 아니거나 usage nil/에러 → ""
+        let menubarUsage = store.usageCoordinator.menubarUsage
+        let suffix = Self.buildUsageSuffix(usage: menubarUsage, mode: style)
 
         // 3) attributedTitle 일원화
-        let sessionUtil = isQuotaMode ? util.map { Int($0.session) } : nil
-        let weeklyUtil  = (style == .quotaSessionAndWeekly) ? util.map { Int($0.weekly) } : nil
+        // Claude 선택 시: quota.sessionUtilization/weeklyUtilization → 임계 빨강 적용
+        // Codex/Gemini 선택 시: sessionUtil/weeklyUtil=nil → 빨강 분기 타지 않음
+        let sessionUtil: Int?
+        let weeklyUtil: Int?
+        if isQuotaMode, let mu = menubarUsage, case .data = mu.state, mu.id == .claude,
+           let quota = mu.quota {
+            sessionUtil = Int(quota.sessionUtilization)
+            weeklyUtil = (style == .quotaSessionAndWeekly) ? Int(quota.weeklyUtilization) : nil
+        } else {
+            sessionUtil = nil
+            weeklyUtil = nil
+        }
         button.attributedTitle = Self.buildMenubarAttributedTitle(
             body: body,
             suffix: suffix,

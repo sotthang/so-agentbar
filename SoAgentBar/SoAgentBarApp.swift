@@ -107,11 +107,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         // 런루프가 완전히 준비된 후 상태바 아이템 생성 — 첫 실행 시 메뉴바 미표시 방지
         DispatchQueue.main.async { [self] in
             pixelWindowController = PixelAgentsWindowController(store: store)
+            installMainMenu()
             setupStatusItem()
             setupPopover()
             startIconUpdateTimer()
             setupHotkey()
             observePinState()
+            presentAutomaticUpdatesPromptIfNeeded()
         }
     }
 
@@ -354,6 +356,77 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             guard let p = usage.cursorPercent, p.totalPercentUsed > 0 else { return "" }
             return "\(Int(p.totalPercentUsed))%"  // 예: "6%"
         }
+    }
+
+    // MARK: - 첫 실행 자동 업데이트 프롬프트
+
+    /// 첫 실행 시 자동 업데이트 프롬프트 표시 여부를 기록하는 UserDefaults 키
+    static let didAskAutomaticUpdatesKey = "didAskAutomaticUpdatesPermission"
+
+    /// 아직 한 번도 물어본 적 없으면 true. 한 번 물어보면 다시 묻지 않는다.
+    static func shouldAskAutomaticUpdatesPermission(defaults: UserDefaults) -> Bool {
+        !defaults.bool(forKey: didAskAutomaticUpdatesKey)
+    }
+
+    /// 첫 실행 시 자동 업데이트 여부를 체크박스 창으로 물어보고, 선택을
+    /// Sparkle updater에 적용한 뒤 "물어봤음"을 기록한다.
+    /// 이미 물어봤으면 아무것도 하지 않는다.
+    private func presentAutomaticUpdatesPromptIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard Self.shouldAskAutomaticUpdatesPermission(defaults: defaults) else { return }
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = store.t("so-agentbar에 오신 것을 환영합니다", "Welcome to so-agentbar")
+        alert.informativeText = store.t(
+            "새 버전이 나오면 자동으로 확인할까요? 이 설정은 나중에 설정 화면에서 변경할 수 있습니다.",
+            "Automatically check for new versions when they're released? You can change this later in Settings.")
+
+        let checkbox = NSButton(
+            checkboxWithTitle: store.t("새 버전을 자동으로 확인", "Automatically check for new versions"),
+            target: nil,
+            action: nil)
+        checkbox.state = .on
+        alert.accessoryView = checkbox
+        alert.addButton(withTitle: store.t("시작", "Continue"))
+
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+
+        updaterController.updater.automaticallyChecksForUpdates = (checkbox.state == .on)
+        defaults.set(true, forKey: Self.didAskAutomaticUpdatesKey)
+    }
+
+    // MARK: - Edit 메뉴 (LSUIElement 앱의 Cmd+C/V/X/A 라우팅 복원)
+
+    /// 표준 편집 항목을 담은 Edit 메뉴를 구성한다.
+    /// LSUIElement(.accessory) 앱은 기본 메인 메뉴가 없어 표준 편집
+    /// 단축키가 first responder로 전달되지 않는다. 이 메뉴를 메인 메뉴에
+    /// 설치하면 팝오버 내 TextEditor에서 복사/붙여넣기가 동작한다.
+    static func buildEditMenu() -> NSMenu {
+        let menu = NSMenu(title: "Edit")
+
+        let undo = menu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        undo.keyEquivalentModifierMask = [.command]
+        let redo = menu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+
+        menu.addItem(.separator())
+
+        menu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        menu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        menu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        menu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+
+        return menu
+    }
+
+    private func installMainMenu() {
+        let mainMenu = NSMenu()
+        let editItem = NSMenuItem()
+        editItem.submenu = Self.buildEditMenu()
+        mainMenu.addItem(editItem)
+        NSApp.mainMenu = mainMenu
     }
 
     private func updateIcon() {

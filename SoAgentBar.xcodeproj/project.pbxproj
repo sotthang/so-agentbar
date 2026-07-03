@@ -56,6 +56,8 @@
 		UF001UF001UF001UF001UF01 /* KeepAwakeManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF001UF001UF001UF001UF02 /* KeepAwakeManagerTests.swift */; };
 		UF002UF002UF002UF002UF01 /* ClipboardMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF002UF002UF002UF002UF02 /* ClipboardMonitorTests.swift */; };
 		UF003UF003UF003UF003UF01 /* QuickNoteStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF003UF003UF003UF003UF02 /* QuickNoteStoreTests.swift */; };
+		ED001ED001ED001ED001ED01 /* EditMenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED001ED001ED001ED001ED02 /* EditMenuTests.swift */; };
+		AU001AU001AU001AU001AU01 /* AutoUpdatePromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AU001AU001AU001AU001AU02 /* AutoUpdatePromptTests.swift */; };
 		UF017UF017UF017UF017UF01 /* TestConformances.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF017UF017UF017UF017UF02 /* TestConformances.swift */; };
 		UF010UF010UF010UF010UF01 /* KeepAwakeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF010UF010UF010UF010UF02 /* KeepAwakeManager.swift */; };
 		UF011UF011UF011UF011UF01 /* ClipboardEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = UF011UF011UF011UF011UF02 /* ClipboardEntry.swift */; };
@@ -184,6 +186,8 @@
 		UF001UF001UF001UF001UF02 /* KeepAwakeManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeepAwakeManagerTests.swift; sourceTree = "<group>"; };
 		UF002UF002UF002UF002UF02 /* ClipboardMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardMonitorTests.swift; sourceTree = "<group>"; };
 		UF003UF003UF003UF003UF02 /* QuickNoteStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickNoteStoreTests.swift; sourceTree = "<group>"; };
+		ED001ED001ED001ED001ED02 /* EditMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditMenuTests.swift; sourceTree = "<group>"; };
+		AU001AU001AU001AU001AU02 /* AutoUpdatePromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoUpdatePromptTests.swift; sourceTree = "<group>"; };
 		UF017UF017UF017UF017UF02 /* TestConformances.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestConformances.swift; sourceTree = "<group>"; };
 		CX001CX001CX001CX001CX02 /* CodexSessionMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexSessionMonitorTests.swift; sourceTree = "<group>"; };
 		CX002CX002CX002CX002CX02 /* SessionCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCoordinatorTests.swift; sourceTree = "<group>"; };
@@ -439,6 +443,8 @@
 				UF001UF001UF001UF001UF02 /* KeepAwakeManagerTests.swift */,
 				UF002UF002UF002UF002UF02 /* ClipboardMonitorTests.swift */,
 				UF003UF003UF003UF003UF02 /* QuickNoteStoreTests.swift */,
+				ED001ED001ED001ED001ED02 /* EditMenuTests.swift */,
+				AU001AU001AU001AU001AU02 /* AutoUpdatePromptTests.swift */,
 				UF017UF017UF017UF017UF02 /* TestConformances.swift */,
 				STP002STP002STP002STP02 /* ScheduledTaskParserTests.swift */,
 				MQ001MQ001MQ001MQ001MQ02 /* MenubarQuotaSuffixTests.swift */,
@@ -674,6 +680,8 @@
 				UF001UF001UF001UF001UF01 /* KeepAwakeManagerTests.swift in Sources */,
 				UF002UF002UF002UF002UF01 /* ClipboardMonitorTests.swift in Sources */,
 				UF003UF003UF003UF003UF01 /* QuickNoteStoreTests.swift in Sources */,
+				ED001ED001ED001ED001ED01 /* EditMenuTests.swift in Sources */,
+				AU001AU001AU001AU001AU01 /* AutoUpdatePromptTests.swift in Sources */,
 				UF017UF017UF017UF017UF01 /* TestConformances.swift in Sources */,
 				STP002STP002STP002STP01 /* ScheduledTaskParserTests.swift in Sources */,
 				CX001CX001CX001CX001CX01 /* CodexSessionMonitorTests.swift in Sources */,

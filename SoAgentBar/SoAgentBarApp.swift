@@ -228,6 +228,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
     private var previousAgentCount = 0
 
+    /// [SPEC-003 R8.4] agents/style 변경 시 컨트롤러 갱신 공통 경로 — $agents/$menubarStyle
+    /// sink에서 중복되던 `animationController.update(...)` 호출을 하나로 모은 것(동작 변경 없음).
+    private func updateAnimationController(agents: [Agent], style: MenubarStyle) {
+        animationController.update(
+            style: style,
+            runningCount: MenubarActivityIndicator.runningCount(in: agents),
+            isSustaining: MenubarActivityIndicator.hasSustainingActivity(in: agents),
+            now: Date()
+        )
+    }
+
     private func startIconUpdateTimer() {
         // agents 또는 menubarStyle 변경 감지 → 아이콘 업데이트
         // [SPEC-003 R8.4] ① controller.update(...) 가 먼저 — updateIcon()이 이번 tick의
@@ -237,12 +248,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             .receive(on: RunLoop.main)
             .sink { [weak self] agents in
                 guard let self else { return }
-                self.animationController.update(
-                    style: self.store.menubarStyle,
-                    runningCount: MenubarActivityIndicator.runningCount(in: agents),
-                    isSustaining: MenubarActivityIndicator.hasSustainingActivity(in: agents),
-                    now: Date()
-                )
+                self.updateAnimationController(agents: agents, style: self.store.menubarStyle)
                 self.updateIcon()
                 // ③ 1초 타이머 유지 조건 — 현행 그대로(최상위 한정, R1.2 회귀 금지)
                 let needsTimer = agents.contains { $0.status == .working || $0.status == .waitingApproval }
@@ -254,12 +260,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             .receive(on: RunLoop.main)
             .sink { [weak self] style in
                 guard let self else { return }
-                self.animationController.update(
-                    style: style,
-                    runningCount: MenubarActivityIndicator.runningCount(in: self.store.agents),
-                    isSustaining: MenubarActivityIndicator.hasSustainingActivity(in: self.store.agents),
-                    now: Date()
-                )
+                self.updateAnimationController(agents: self.store.agents, style: style)
                 self.updateIcon()
             }
             .store(in: &cancellables)

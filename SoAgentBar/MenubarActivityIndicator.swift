@@ -143,7 +143,7 @@ enum MenubarActivityIndicator {
         return image
     }
 
-    /// R3.3 — 프레임 캐시 구성용 루프. C3(컨트롤러)에서 사용 예정 — C2 시점에는 아무도 호출하지 않는다.
+    /// R3.3 — 프레임 캐시 구성용 루프. `MenubarAnimationController.init`이 호출한다.
     nonisolated static func makeFrames(source: NSImage) -> [NSImage] {
         (0..<frameCount).map { makeFrame(index: $0, source: source) }
     }

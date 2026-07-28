@@ -170,4 +170,11 @@ final class MenubarAnimationController {
     private func emitCurrentFrame() {
         if let img = currentImage { onFrame?(img) }
     }
+
+    /// `.common` 모드로 등록된 Timer 는 런루프가 강하게 잡는다. 현재는 이 컨트롤러가
+    /// AppDelegate 수명과 같고 `applicationWillTerminate` 에서 `suspend()` 를 타지만,
+    /// 그 가정에 기대지 않도록 여기서도 무효화한다.
+    deinit {
+        timer?.invalidate()
+    }
 }

@@ -144,6 +144,8 @@
 		MA003MA003MA003MA003MA01 /* MenubarBodyCharacterizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MA003MA003MA003MA003MA02 /* MenubarBodyCharacterizationTests.swift */; };
 		MA001MA001MA001MA001MA01 /* MenubarActivityIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = MA001MA001MA001MA001MA02 /* MenubarActivityIndicator.swift */; };
 		MA004MA004MA004MA004MA01 /* MenubarActivityIndicatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MA004MA004MA004MA004MA02 /* MenubarActivityIndicatorTests.swift */; };
+		MA002MA002MA002MA002MA01 /* MenubarAnimationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = MA002MA002MA002MA002MA02 /* MenubarAnimationController.swift */; };
+		MA005MA005MA005MA005MA01 /* MenubarAnimationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MA005MA005MA005MA005MA02 /* MenubarAnimationControllerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -224,6 +226,8 @@
 		MA003MA003MA003MA003MA02 /* MenubarBodyCharacterizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarBodyCharacterizationTests.swift; sourceTree = "<group>"; };
 		MA001MA001MA001MA001MA02 /* MenubarActivityIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarActivityIndicator.swift; sourceTree = "<group>"; };
 		MA004MA004MA004MA004MA02 /* MenubarActivityIndicatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarActivityIndicatorTests.swift; sourceTree = "<group>"; };
+		MA002MA002MA002MA002MA02 /* MenubarAnimationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarAnimationController.swift; sourceTree = "<group>"; };
+		MA005MA005MA005MA005MA02 /* MenubarAnimationControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarAnimationControllerTests.swift; sourceTree = "<group>"; };
 		PA1000PA1000PA1000PA1002 /* char_0.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_0.png; path = "Assets/pixel-agents/characters/char_0.png"; sourceTree = "<group>"; };
 		PA1001PA1001PA1001PA1002 /* char_1.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_1.png; path = "Assets/pixel-agents/characters/char_1.png"; sourceTree = "<group>"; };
 		PA1002PA1002PA1002PA1002 /* char_2.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_2.png; path = "Assets/pixel-agents/characters/char_2.png"; sourceTree = "<group>"; };
@@ -327,6 +331,7 @@
 				CU001CU001CU001CU001CU02 /* CursorUsageProvider.swift */,
 				CU002CU002CU002CU002CU02 /* CursorTokenStore.swift */,
 				MA001MA001MA001MA001MA02 /* MenubarActivityIndicator.swift */,
+				MA002MA002MA002MA002MA02 /* MenubarAnimationController.swift */,
 				3E1ED4571EA5484EA2B785B1 /* MenuBarIconView.swift */,
 				3E1ED4571EA5484EA2B785B3 /* AgentListView.swift */,
 				D0A7CBDB2F7556860052C5A3 /* SettingsView.swift */,
@@ -463,6 +468,7 @@
 				CU003CU003CU003CU003CU02 /* CursorUsageProviderTests.swift */,
 				MA003MA003MA003MA003MA02 /* MenubarBodyCharacterizationTests.swift */,
 				MA004MA004MA004MA004MA02 /* MenubarActivityIndicatorTests.swift */,
+				MA005MA005MA005MA005MA02 /* MenubarAnimationControllerTests.swift */,
 			);
 			path = SoAgentBarTests;
 			sourceTree = "<group>";
@@ -672,6 +678,7 @@
 				CU001CU001CU001CU001CU01 /* CursorUsageProvider.swift in Sources */,
 				CU002CU002CU002CU002CU01 /* CursorTokenStore.swift in Sources */,
 				MA001MA001MA001MA001MA01 /* MenubarActivityIndicator.swift in Sources */,
+				MA002MA002MA002MA002MA01 /* MenubarAnimationController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -712,6 +719,7 @@
 				CU003CU003CU003CU003CU01 /* CursorUsageProviderTests.swift in Sources */,
 				MA003MA003MA003MA003MA01 /* MenubarBodyCharacterizationTests.swift in Sources */,
 				MA004MA004MA004MA004MA01 /* MenubarActivityIndicatorTests.swift in Sources */,
+				MA005MA005MA005MA005MA01 /* MenubarAnimationControllerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

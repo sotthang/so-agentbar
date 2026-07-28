@@ -23,6 +23,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var pixelHotkeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
     private var cancellables = Set<AnyCancellable>()
+    // [SPEC-003 C4] 로고 바운스 애니메이션 컨트롤러. NSImage(named:"logo")를 1회만 취득하며
+    // 공유 캐시 인스턴스를 변이시키지 않는다(R3.5) — makeLegacyLogoImage()와 같은 원칙.
+    private lazy var animationController = MenubarAnimationController()
+    // [SPEC-003 R9] 슬립/웨이크 옵저버 — applicationWillTerminate에서 해제한다(R9.4).
+    private var workspaceObservers: [NSObjectProtocol] = []
     private(set) var updaterController: SPUStandardUpdaterController!
     private var pixelWindowController: PixelAgentsWindowController?
 
@@ -121,6 +126,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             startIconUpdateTimer()
             setupHotkey()
             observePinState()
+            observeSleepWake()
             presentAutomaticUpdatesPromptIfNeeded()
         }
     }
@@ -195,6 +201,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         button.action = #selector(togglePopover(_:))
         button.target = self
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        // [SPEC-003 R2.10] 기본값 의존을 없애는 방어. 레거시 18x18 이미지는 콘텐츠 rect 안에
+        // 들어가므로 .scaleNone에서도 육안 변화가 없다(AC41).
+        button.imageScaling = .scaleNone
+
+        // [SPEC-003 R7.9/R8.2] 타이머 tick마다 button.image만 교체한다. updateIcon() 전체를
+        // 재실행하지 않는다(R7.12) — usage 조회/문자열 빌드까지 7fps로 돌면 안 된다.
+        animationController.onFrame = { [weak self] image in
+            self?.statusItem?.button?.image = image
+        }
 
         updateIcon()
     }
@@ -215,18 +230,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
     private func startIconUpdateTimer() {
         // agents 또는 menubarStyle 변경 감지 → 아이콘 업데이트
+        // [SPEC-003 R8.4] ① controller.update(...) 가 먼저 — updateIcon()이 이번 tick의
+        // 최신 currentImage를 읽어야 한다(§3-3 순서 계약). controller.update(...)는 onFrame을
+        // 방출하지 않으므로, 순서가 뒤집히면 updateIcon()이 낡은 프레임을 대입한다.
         store.$agents
             .receive(on: RunLoop.main)
             .sink { [weak self] agents in
-                self?.updateIcon()
+                guard let self else { return }
+                self.animationController.update(
+                    style: self.store.menubarStyle,
+                    runningCount: MenubarActivityIndicator.runningCount(in: agents),
+                    isSustaining: MenubarActivityIndicator.hasSustainingActivity(in: agents),
+                    now: Date()
+                )
+                self.updateIcon()
+                // ③ 1초 타이머 유지 조건 — 현행 그대로(최상위 한정, R1.2 회귀 금지)
                 let needsTimer = agents.contains { $0.status == .working || $0.status == .waitingApproval }
-                self?.adjustTimerForActivity(hasWorking: needsTimer)
+                self.adjustTimerForActivity(hasWorking: needsTimer)
             }
             .store(in: &cancellables)
 
         store.$menubarStyle
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.updateIcon() }
+            .sink { [weak self] style in
+                guard let self else { return }
+                self.animationController.update(
+                    style: style,
+                    runningCount: MenubarActivityIndicator.runningCount(in: self.store.agents),
+                    isSustaining: MenubarActivityIndicator.hasSustainingActivity(in: self.store.agents),
+                    now: Date()
+                )
+                self.updateIcon()
+            }
             .store(in: &cancellables)
 
         store.usageCoordinator.$menubarUsage
@@ -369,8 +404,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     // MARK: - [SPEC-003 R0] iconSource / buildMenubarBody — 아이콘/본문 결정 순수 함수
 
     /// R0.3 — 이미지 출처 결정. R1.4의 3줄 규칙을 이 함수 하나로 통일한다.
-    /// R0.4: 이 커밋(C1) 시점에는 `.animatedFrame`을 `.legacyLogo`와 동일하게 처리한다
-    /// (`resolveImage(for:)`에서 두 케이스 모두 레거시 로고 경로로 감 — 행위 변경 0).
+    /// C4부터 `resolveImage(for:)`가 `.animatedFrame`을 `animationController.currentImage`로
+    /// 분기시킨다(R1.4) — `.legacyLogo`와 더 이상 동일하지 않다.
     nonisolated static func iconSource(agentsIsEmpty: Bool, isQuotaMode: Bool) -> MenubarIconSource {
         switch (agentsIsEmpty, isQuotaMode) {
         case (true, false):  return .legacyLogo
@@ -478,14 +513,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         NSApp.mainMenu = mainMenu
     }
 
-    /// [SPEC-003 R0.5] 이미지 출처 → 실제 NSImage. C1에서는 `.animatedFrame`을 `.legacyLogo`와
-    /// 동일하게 처리한다(R0.4 — 컨트롤러가 아직 없으므로 행위 변경 0). C4에서 `.animatedFrame`만
-    /// `animationController.currentImage`로 교체된다.
+    /// [SPEC-003 R1.4/R8.2] 이미지 출처 → 실제 NSImage. quota 모드(`.animatedFrame`)는
+    /// 애니메이션 컨트롤러의 현재 tick 프레임을 쓴다 — 프레임 0으로 되돌리거나 tick을
+    /// 리셋하지 않는다(R8.2). 없으면(로고 로드 실패 등) nil → didSetIconImage == false로
+    /// 이어져 기존 폴백("🤖")으로 되돌아간다(R3.6).
     private func resolveImage(for source: MenubarIconSource) -> NSImage? {
         switch source {
         case .none:          return nil
         case .legacyLogo:    return makeLegacyLogoImage()
-        case .animatedFrame: return makeLegacyLogoImage()
+        case .animatedFrame: return animationController.currentImage
         }
     }
 
@@ -504,7 +540,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         let agents = store.agents
         let style = store.menubarStyle
         let isQuotaMode = (style == .quotaSession || style == .quotaSessionAndWeekly)
-        let activeCount = agents.filter { $0.status == .working }.count
+        // [SPEC-003 R1.2 예외/AC37] 최상위만 세던 것을 트리 전체(서브에이전트 포함) 집계로 정정.
+        // 아이콘 티어(controller)와 툴팁 숫자가 동일한 runningCount(in:)에서 나오도록 통일한다(NFR6).
+        let activeCount = MenubarActivityIndicator.runningCount(in: agents)
         let approvalCount = agents.filter { $0.status == .waitingApproval }.count
 
         // 1) 이미지 결정 — 호출당 정확히 1회 대입 (R0.5 / R8.3)
@@ -577,6 +615,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 self?.popover?.behavior = pinned ? .applicationDefined : .transient
             }
             .store(in: &cancellables)
+    }
+
+    // MARK: - 슬립/웨이크 (SPEC-003 R9)
+
+    /// R9.1 — `NSWorkspace.shared.notificationCenter`의 공개 알림 4개만 등록한다.
+    /// `com.apple.screenIsLocked` 등 비공개 알림은 쓰지 않는다(R9.2).
+    private func observeSleepWake() {
+        let nc = NSWorkspace.shared.notificationCenter
+        let sleepNames: [Notification.Name] = [
+            NSWorkspace.willSleepNotification,
+            NSWorkspace.screensDidSleepNotification
+        ]
+        let wakeNames: [Notification.Name] = [
+            NSWorkspace.didWakeNotification,
+            NSWorkspace.screensDidWakeNotification
+        ]
+        for name in sleepNames {
+            let observer = nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.animationController.suspend() }
+            }
+            workspaceObservers.append(observer)
+        }
+        for name in wakeNames {
+            let observer = nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.animationController.resume(now: Date()) }
+            }
+            workspaceObservers.append(observer)
+        }
     }
 
     // MARK: - 글로벌 핫키 — Carbon API (접근성 권한 불필요)
@@ -706,6 +772,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // [SPEC-003 R9.4] 옵저버 해제는 deinit이 아니라 여기서 한다 — AppDelegate는 앱 수명
+        // 동안 살아있어 deinit이 사실상 호출되지 않는다.
+        animationController.suspend()
+        let nc = NSWorkspace.shared.notificationCenter
+        workspaceObservers.forEach { nc.removeObserver($0) }
+        workspaceObservers.removeAll()
+
         iconUpdateTimer?.invalidate()
         unregisterHotkey()
         unregisterPixelHotkey()

@@ -5,6 +5,14 @@ import Combine
 import UserNotifications
 import Sparkle
 
+// [SPEC-003 R0.3] 이미지 출처 결정 결과. AppDelegate 밖 파일 최상위에 둔다
+// (extension 안에 넣으면 AppDelegate.MenubarIconSource가 되어 테스트 가독성이 떨어짐 — arch §10-3.4).
+enum MenubarIconSource: Equatable {
+    case none
+    case legacyLogo
+    case animatedFrame
+}
+
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate, SPUStandardUserDriverDelegate {
     private var statusItem: NSStatusItem?
@@ -358,6 +366,47 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
     }
 
+    // MARK: - [SPEC-003 R0] iconSource / buildMenubarBody — 아이콘/본문 결정 순수 함수
+
+    /// R0.3 — 이미지 출처 결정. R1.4의 3줄 규칙을 이 함수 하나로 통일한다.
+    /// R0.4: 이 커밋(C1) 시점에는 `.animatedFrame`을 `.legacyLogo`와 동일하게 처리한다
+    /// (`resolveImage(for:)`에서 두 케이스 모두 레거시 로고 경로로 감 — 행위 변경 0).
+    nonisolated static func iconSource(agentsIsEmpty: Bool, isQuotaMode: Bool) -> MenubarIconSource {
+        switch (agentsIsEmpty, isQuotaMode) {
+        case (true, false):  return .legacyLogo
+        case (true, true):   return .animatedFrame
+        case (false, true):  return .animatedFrame
+        case (false, false): return .none
+        }
+    }
+
+    /// R0.1 — 메뉴바 본문 문자열 결정. R0.2 표 10행을 그대로 옮긴 것.
+    /// - didSetIconImage: "이번 updateIcon() 호출에서 button.image에 non-nil을 세팅했는가"이지
+    ///   "로고를 로드했는가"가 아니다 (R0.1 주의).
+    /// - emoji: store.menuBarEmoji(for:)가 인스턴스 메서드이므로 클로저로 주입한다.
+    nonisolated static func buildMenubarBody(
+        agents: [Agent],
+        style: MenubarStyle,
+        approvalCount: Int,
+        didSetIconImage: Bool,
+        emoji: (Agent) -> String
+    ) -> String {
+        if agents.isEmpty { return didSetIconImage ? "" : "🤖" }
+        switch style {
+        case .emoji:
+            return agents.prefix(4).map(emoji).joined()
+        case .emojiCount:
+            let e = agents.first.map(emoji) ?? "🤖"
+            let firstIsWaiting = agents.first?.status == .waitingApproval
+            let needsBadge = approvalCount > 0 && !firstIsWaiting
+            return "\(e) \(agents.count)" + (needsBadge ? "❗" : "")
+        case .countOnly:
+            return "\(agents.count)" + (approvalCount > 0 ? "❗" : "")
+        case .quotaSession, .quotaSessionAndWeekly:
+            return didSetIconImage ? "" : "🤖"
+        }
+    }
+
     // MARK: - 첫 실행 자동 업데이트 프롬프트
 
     /// 첫 실행 시 자동 업데이트 프롬프트 표시 여부를 기록하는 UserDefaults 키
@@ -429,71 +478,65 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         NSApp.mainMenu = mainMenu
     }
 
+    /// [SPEC-003 R0.5] 이미지 출처 → 실제 NSImage. C1에서는 `.animatedFrame`을 `.legacyLogo`와
+    /// 동일하게 처리한다(R0.4 — 컨트롤러가 아직 없으므로 행위 변경 0). C4에서 `.animatedFrame`만
+    /// `animationController.currentImage`로 교체된다.
+    private func resolveImage(for source: MenubarIconSource) -> NSImage? {
+        switch source {
+        case .none:          return nil
+        case .legacyLogo:    return makeLegacyLogoImage()
+        case .animatedFrame: return makeLegacyLogoImage()
+        }
+    }
+
+    /// [SPEC-003 R0.6] 공유 캐시 인스턴스(`NSImage(named:)`)를 변이시키지 않는다.
+    /// `AgentListView.swift:73`이 같은 공유 인스턴스를 쓰므로, 복제 후 리사이즈한다.
+    private func makeLegacyLogoImage() -> NSImage? {
+        guard let img = NSImage(named: "logo")?.copy() as? NSImage else { return nil }
+        img.size = NSSize(width: 18, height: 18)
+        img.isTemplate = false
+        return img
+    }
+
     private func updateIcon() {
         guard let button = statusItem?.button else { return }
 
-        button.image = nil
-
         let agents = store.agents
+        let style = store.menubarStyle
+        let isQuotaMode = (style == .quotaSession || style == .quotaSessionAndWeekly)
         let activeCount = agents.filter { $0.status == .working }.count
         let approvalCount = agents.filter { $0.status == .waitingApproval }.count
 
-        let style = store.menubarStyle
-        let isQuotaMode = (style == .quotaSession || style == .quotaSessionAndWeekly)
+        // 1) 이미지 결정 — 호출당 정확히 1회 대입 (R0.5 / R8.3)
+        let source = Self.iconSource(agentsIsEmpty: agents.isEmpty, isQuotaMode: isQuotaMode)
+        let image = resolveImage(for: source)
+        button.image = image
+        let didSetIconImage = (image != nil)
 
-        // 1) 본문 빌드
-        let body: String
+        // 2) 본문 빌드 (R0.1)
+        let body = Self.buildMenubarBody(
+            agents: agents,
+            style: style,
+            approvalCount: approvalCount,
+            didSetIconImage: didSetIconImage,
+            emoji: { self.store.menuBarEmoji(for: $0) }
+        )
+
+        // 3) 툴팁 — 현행 3분기 구조·문구 그대로 보존
         if agents.isEmpty {
-            if let img = NSImage(named: "logo") {
-                img.size = NSSize(width: 18, height: 18)
-                img.isTemplate = false
-                button.image = img
-                body = ""
-            } else {
-                body = "🤖"
-            }
             button.toolTip = "so-agentbar — \(store.t("실행 중인 세션 없음", "No running sessions"))"
+        } else if approvalCount > 0 {
+            button.toolTip = "so-agentbar — \(approvalCount) \(store.t("개 승인 대기", "awaiting approval"))"
         } else {
-            // 승인 대기 중인 세션이 있으면 느낌표 뱃지 추가
-            // .emoji 모드: 각 에이전트 이모지에 이미 상태가 표현됨(⏳ 또는 커스텀+❗) → 글로벌 뱃지 불필요
-            // .emojiCount: 첫 에이전트만 보여지므로, 그 외 승인 대기가 있으면 글로벌 뱃지 필요
-            // .countOnly: 이모지 없음 → 항상 글로벌 뱃지 필요
-            // 쿼터 모드: suffix에 쿼터만 표시, body는 빈 문자열
-            switch style {
-            case .emoji:
-                body = agents.prefix(4).map { store.menuBarEmoji(for: $0) }.joined()
-            case .emojiCount:
-                let emoji = agents.first.map { store.menuBarEmoji(for: $0) } ?? "🤖"
-                let firstIsWaiting = agents.first?.status == .waitingApproval
-                // 첫 에이전트에 이미 대기 표시가 있으면 중복 방지
-                let needsBadge = approvalCount > 0 && !firstIsWaiting
-                body = "\(emoji) \(agents.count)" + (needsBadge ? "❗" : "")
-            case .countOnly:
-                body = "\(agents.count)" + (approvalCount > 0 ? "❗" : "")
-            case .quotaSession, .quotaSessionAndWeekly:
-                if let img = NSImage(named: "logo") {
-                    img.size = NSSize(width: 18, height: 18)
-                    img.isTemplate = false
-                    button.image = img
-                    body = ""
-                } else {
-                    body = "🤖"
-                }
-            }
-
-            if approvalCount > 0 {
-                button.toolTip = "so-agentbar — \(approvalCount) \(store.t("개 승인 대기", "awaiting approval"))"
-            } else {
-                button.toolTip = "so-agentbar — \(activeCount) \(store.t("개 에이전트 실행 중", "agents running"))"
-            }
+            button.toolTip = "so-agentbar — \(activeCount) \(store.t("개 에이전트 실행 중", "agents running"))"
         }
 
-        // 2) suffix 결정 — menubarUsage 기반 (선택 프로바이더, RX.4)
+        // 4) suffix 결정 — menubarUsage 기반 (선택 프로바이더, RX.4)
         // buildUsageSuffix: 쿼터 모드 아니거나 usage nil/에러 → ""
         let menubarUsage = store.usageCoordinator.menubarUsage
         let suffix = Self.buildUsageSuffix(usage: menubarUsage, mode: style)
 
-        // 3) attributedTitle 일원화
+        // 5) attributedTitle 일원화
         // Claude 선택 시: quota.sessionUtilization/weeklyUtilization → 임계 빨강 적용
         // Codex/Gemini 선택 시: sessionUtil/weeklyUtil=nil → 빨강 분기 타지 않음
         let sessionUtil: Int?

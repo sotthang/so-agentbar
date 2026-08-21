@@ -22,3 +22,5 @@ CLAUDE.local.md
 
 # so-adk
 specs/
+# so-adk 마이그레이션 백업 (로컬 보관용)
+.claude/.so-adk-backup-*/

@@ -1,12 +1,6 @@
 {
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          { "type": "command", "command": ".claude/hooks/post-edit-check.sh" }
-        ]
-      }
-    ]
+  "enabledPlugins": {
+    "so-adk-core@so-adk": true,
+    "so-adk-orchestrator@so-adk": true
   }
 }

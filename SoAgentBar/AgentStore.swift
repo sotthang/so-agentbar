@@ -846,7 +846,7 @@ class AgentStore: ObservableObject {
 
     /// 에러 세션이 픽셀 창에 머무는 최대 시간.
     /// Why: 사용자가 에러 발생을 인지할 시간을 주되, 화면이 영구적으로 어지러워지지 않도록 자동 정리.
-    static let errorSessionRetention: TimeInterval = 300
+    nonisolated static let errorSessionRetention: TimeInterval = 300
 
     /// 픽셀 창/메뉴 표시 대상 세션을 결정하는 순수 함수.
     /// - showIdleSessions=true: 모든 세션 (단, 5분 이상 지난 에러는 제외)

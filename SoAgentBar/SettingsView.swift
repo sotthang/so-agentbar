@@ -667,6 +667,21 @@ struct SettingsView: View {
     }
 
     private func sectionHeader(_ title: String) -> some View {
+        SettingsSectionHeader(title: title)
+    }
+
+    private func settingRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        SettingsRow(content: content)
+    }
+}
+
+// MARK: - 설정 섹션 공용 뷰
+
+/// Section title used by every settings section (shared with sections in other files).
+struct SettingsSectionHeader: View {
+    let title: String
+
+    var body: some View {
         Text(title)
             .font(.system(size: 11, weight: .semibold))
             .foregroundColor(.secondary)
@@ -674,9 +689,18 @@ struct SettingsView: View {
             .padding(.top, 16)
             .padding(.bottom, 4)
     }
+}
 
-    private func settingRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
+/// Row container that applies the standard settings row padding.
+struct SettingsRow<Content: View>: View {
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
     }

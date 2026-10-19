@@ -8,6 +8,7 @@ import CoreGraphics
 // SPEC-004 커밋 8 — DockPinManager(arch §2.10, §3) 단위 테스트.
 // 커버 AC: AC1.1–1.6, AC4.2–4.4, AC4.6, AC4.8, AC4.9, AC4.10(a–c), AC5.11(매니저), AC7.5, AC8.3(매니저 경로),
 //          AC8.4c(매니저부), AC8.5–8.8, AC8.9(매니저부), AC8.10(매니저 스냅숏), AC8.11(b,c), AC8.12, AC9.1–9.5, AC9.6(매니저부, 11c),
+//          AC9.7(a–e), AC9.8(a–c), AC9.9, AC9.10, AC9.11, AC9.12, AC9.14(11e·11f),
 //          AC10.1–10.3, AC12.1, AC12.2, AC12.3(makeLive 연결), AC12.4, AC15.1–15.4
 //          + R4.4 매니저 수준 타이머 집합, R4.5 prefsPoll, R5.8 watchdog, R6.1 Dock 재시작, R8.8 지금 되돌리기,
 //          R10.1–10.4 세션 신호, S1 targetChoices, arch §12 I2(setTarget 즉시 재계산), I4, I9, I10.
@@ -1372,7 +1373,8 @@ final class DockPinManagerTests: XCTestCase {
 
     // 11e 범위: freshTrustCheck 5초 반복 타이머 → permission.freshTrustCheck 1회, 2초 시한(.freshTrustTimeout),
     // 한 번에 하나, 정리 때 세대 올림 + 토큰 cancel·nil(I13), N20 로그. applyFresh는 세대 확인과 로그만 하고
-    // H(hasPermission)를 바꾸지 않는다(래치·적용은 11f). 그래서 아래 "결과가 상태를 바꾸지 않는다" 단정은 11f에서 고친다.
+    // H(hasPermission)를 바꾸지 않았다(래치·적용은 11f). (11f) 결과 적용 단정은 7-2 래치 규칙으로 고쳤다
+    // (test_11f_active_*, test_11f_needsPermission_*, test_AC9_8c_disableWhileInFlight_thenReEnable_*).
     // 가짜 확인은 기본 무응답(보류)이다. 활성화 = t0, 첫 확인 = t0+5, 그 시한 = t0+7, 다음 확인 = t0+10.
 
     /// AC9.9 — .active + 탭 실행 중: 5초마다 정확히 1회, 그 전에는 0회
@@ -1532,31 +1534,36 @@ final class DockPinManagerTests: XCTestCase {
         XCTAssertEqual(h.fakes.permission.freshCount, 2, "다음 주기 확인")
     }
 
-    /// 11e: 결과가 프로세스 안 판정과 달라도 H를 바꾸지 않는다(적용은 11f). 활성 + r = false
-    func test_11e_active_freshFalse_whileInProcessTrue_statusUnchanged_noStop() {
+    /// (11f로 갱신, 옛 11e "상태 그대로") 활성 + t = true + r = false → R9.3 순서로 탭부터 제거, .needsPermission(L = false).
+    /// 다음 폴링 t = true는 무시된다(7-1 넷째 행).
+    func test_11f_active_freshFalse_whileInProcessTrue_stopsTapFirst_needsPermission() {
         let h = harness("11e_active_false")
         h.start()
         h.advance(5)
         XCTAssertEqual(h.fakes.permission.freshCount, 1, "사전 조건")
         let stops = h.fakes.tap.stopCount
+        h.fakes.log.clear()
         h.fakes.permission.completeFresh(false)
-        XCTAssertEqual(h.fakes.tap.stopCount, stops, "11e: stop 0회")
-        XCTAssertTrue(h.fakes.tap.isRunning)
-        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name), "11e: 상태 그대로")
-        h.advance(1)                                          // 다음 폴링 틱(t = true)
-        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+        XCTAssertEqual(h.fakes.tap.stopCount, stops + 1, "11f: r = false가 이긴다 → stop 1회")
+        XCTAssertFalse(h.fakes.tap.isRunning)
+        XCTAssertEqual(h.manager.status, .needsPermission, "11f: .needsPermission")
+        assertStopBeforeNeedsPermission(h)
+        h.advance(1)                                          // 다음 폴링 틱(t = true) — L = false라 무시
+        XCTAssertEqual(h.manager.status, .needsPermission, "L = false + t = true → 무시(다음 주기 확인까지)")
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "다시 켜지지 않는다")
     }
 
-    /// 11e: .needsPermission + r = true(t = false)도 H 그대로
-    func test_11e_needsPermission_freshTrue_whileInProcessFalse_statusUnchanged_noStart() {
+    /// (11f로 갱신, 옛 11e "상태 그대로") .needsPermission + t = false + r = true → 탭 시작(L = true). 사용자 r5 버그의 해결 지점
+    func test_11f_needsPermission_freshTrue_whileInProcessFalse_startsTap_pinned() {
         let h = harness("11e_np_true")
         h.fakes.permission.trusted = false
         h.start()
         h.advance(5)
         XCTAssertEqual(h.fakes.permission.freshCount, 1, "사전 조건")
         h.fakes.permission.completeFresh(true)
-        XCTAssertEqual(h.fakes.tap.startCount, 0, "11e: start 0회")
-        XCTAssertEqual(h.manager.status, .needsPermission, "11e: 상태 그대로")
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "11f: r = true가 이긴다 → start 1회(R9.2)")
+        XCTAssertTrue(h.fakes.tap.isRunning)
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name), "11f: 고정 상태")
     }
 
     /// AC9.8(b) — 한 번에 하나. 새 확인이 시작될 때 이전 확인이 끝나 있어야 한다(20초, 무응답·응답 섞음)
@@ -1608,8 +1615,11 @@ final class DockPinManagerTests: XCTestCase {
         h.advance(5)
         XCTAssertEqual(h.fakes.permission.freshCount, 2, "다시 켜고 5초 뒤 새 확인")
         XCTAssertTrue(h.fakes.permission.isFreshPending)
+        let stops = h.fakes.tap.stopCount
         h.fakes.permission.completeFresh(false)
-        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name), "11e: 결과는 상태를 바꾸지 않는다")
+        // (11f로 갱신) 다시 켠 뒤의 확인은 새 세대다 → 결과가 적용된다. r = false, t = true → 탭부터 제거, L = false
+        XCTAssertEqual(h.fakes.tap.stopCount, stops + 1, "11f: 새 세대의 r = false → stop 1회")
+        XCTAssertEqual(h.manager.status, .needsPermission, "11f: 결과가 적용된다(정리 전 세대만 버린다)")
     }
 
     /// R12 shutdown도 같은 정리: 확인·시한 cancel, 늦은 결과 무시
@@ -1690,6 +1700,463 @@ final class DockPinManagerTests: XCTestCase {
         live.start()
         live.advance(10)
         XCTAssertGreaterThanOrEqual(live.fakes.permission.freshCount, 1, "양성 짝: 일반 매니저는 10초에 1회 이상")
+    }
+
+    // MARK: AC9.7 · AC9.10 · AC9.11 · AC9.12 · AC9.14 (r6, 커밋 11f) — 비대칭 래치, applyInProcess 단일 진입점
+
+    // 용어(SPEC R9.6 7번): H = 매니저의 "권한 있음", L = 래치(nil | true | false), t = 프로세스 안 판정, r = 새 프로세스 결과.
+    // 래치는 공개되지 않으므로 행동으로 관찰한다:
+    //   L = nil   → t = false 폴링이 그 자리에서 탭을 끈다(주기 밖 확인 없음).
+    //   L = true  → t = false 폴링은 탭을 끄지 않고 주기 밖 확인(.latchDoubt)만 부른다.
+    //   L = false → t = true 폴링은 무시된다(탭 시작 0회).
+    // 시각: 활성화 = t0, 첫 주기 확인 = t0+5(응답 보류), 폴링 t0+6, 7, …, 다음 주기 확인 t0+10, 시한 = 시작 + 2초.
+
+    /// 사용자 r5 버그 재현으로 L = true를 만든다: 프로세스 안 판정이 낡은 false로 고정된 채(t = false) 첫 주기 확인이 r = true.
+    /// 반환 시각 t0+5, 진행 중 확인 없음, 탭 실행 중, 다음 폴링 t0+6.
+    private func latchedTrueHarness(_ name: String, file: StaticString = #filePath, line: UInt = #line) -> Harness {
+        let h = harness(name)
+        h.fakes.permission.trusted = false
+        h.start()
+        XCTAssertEqual(h.manager.status, .needsPermission, "사전 조건: 낡은 false → 권한 대기", file: file, line: line)
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "사전 조건: t0+5 주기 확인", file: file, line: line)
+        h.fakes.permission.completeFresh(true)
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "사전 조건: r = true(t = false) → 탭 시작(L = true)", file: file, line: line)
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name),
+                       "사전 조건: 고정 상태(L = true)", file: file, line: line)
+        XCTAssertFalse(h.fakes.permission.isFreshPending, "사전 조건: 진행 중 확인 없음", file: file, line: line)
+        return h
+    }
+
+    /// 탭 실행 중(t = true) 첫 주기 확인이 r = false → L = false, .needsPermission. 반환 시각 t0+5, t = true 그대로.
+    private func latchedFalseHarness(_ name: String, file: StaticString = #filePath, line: UInt = #line) -> Harness {
+        let h = harness(name)
+        h.start()
+        XCTAssertTrue(h.fakes.tap.isRunning, "사전 조건", file: file, line: line)
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "사전 조건: t0+5 주기 확인", file: file, line: line)
+        h.fakes.permission.completeFresh(false)
+        XCTAssertEqual(h.fakes.tap.stopCount, 1, "사전 조건: r = false(t = true) → 탭 제거(L = false)", file: file, line: line)
+        XCTAssertEqual(h.manager.status, .needsPermission, "사전 조건: 권한 대기(L = false)", file: file, line: line)
+        XCTAssertFalse(h.fakes.permission.isFreshPending, "사전 조건: 진행 중 확인 없음", file: file, line: line)
+        return h
+    }
+
+    /// R9.3/AC9.1 순서: 로그에서 tap.stop이 status:needsPermission보다 먼저다
+    private func assertStopBeforeNeedsPermission(_ h: Harness, file: StaticString = #filePath, line: UInt = #line) {
+        let entries = h.fakes.log.entries
+        guard let stopIndex = entries.firstIndex(of: "tap.stop") else {
+            return XCTFail("tap.stop 기록 없음: \(entries)", file: file, line: line)
+        }
+        XCTAssertFalse(entries[..<stopIndex].contains("status:needsPermission"),
+                       "AC9.1 순서: stop이 상태 변경보다 먼저", file: file, line: line)
+        XCTAssertTrue(entries[(stopIndex + 1)...].contains("status:needsPermission"),
+                      "stop 뒤에 .needsPermission", file: file, line: line)
+    }
+
+    /// 새 프로세스 확인이 어느 예약 안에서 시작됐는지(nil = 예약 밖) 기록한다
+    private func recordFreshOrigins(_ h: Harness) -> () -> [DockPinTimerKind?] {
+        var kinds: [DockPinTimerKind?] = []
+        let scheduler = h.fakes.scheduler
+        h.fakes.permission.onFresh = { kinds.append(scheduler.currentKind) }
+        return { kinds }
+    }
+
+    // MARK: AC9.7 (a) — L = nil, t = true, r = false → stop → 중단 → .needsPermission, L = false
+
+    func test_AC9_7a_activeDriving_freshFalse_inProcessTrue_stopFirst_thenAbortRestore_thenNeedsPermission() {
+        let h = drivingHarness("AC9_7a_order")
+        h.advance(5)                                       // 1차 실패 t0+2.224 → 재시도 t0+3.224에 2차 되돌리기 진행 중
+        XCTAssertEqual(h.manager.status, .relocating(displayName: Fixture.builtIn.name), "사전 조건: t0+5에 되돌리는 중")
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "사전 조건: t0+5 주기 확인")
+        h.fakes.log.clear()
+        h.fakes.permission.completeFresh(false)
+        let entries = h.fakes.log.entries
+        guard let stopIndex = entries.firstIndex(of: "tap.stop") else {
+            return XCTFail("tap.stop 기록 없음(r = false가 탭을 꺼야 한다): \(entries)")
+        }
+        let after = entries[(stopIndex + 1)...]
+        XCTAssertEqual(after.filter { $0 == "move" }.count, 1, "stop 뒤에는 복원 이동 1개뿐(되돌리기 중단이 stop보다 뒤)")
+        XCTAssertTrue(after.contains("status:needsPermission"), "상태 변경이 stop보다 뒤")
+        XCTAssertFalse(entries[..<stopIndex].contains("status:needsPermission"))
+        XCTAssertEqual(h.moves.last, Fixture.cursorOnBuiltIn, "복원 이벤트는 보낸다(R8.5 예외 2)")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+        XCTAssertEqual(h.fakes.tap.stopCount, 1)
+    }
+
+    func test_AC9_7a_latchFalse_inProcessTruePollsIgnored_noOutOfCycleCheck_untilPeriodicTrue() {
+        let h = latchedFalseHarness("AC9_7a_latch")
+        let starts = h.fakes.tap.startCount
+        h.advance(4)                                       // t0+6…9 폴링 t = true ×4
+        XCTAssertEqual(h.fakes.tap.startCount, starts, "L = false + t = true → 무시(start 0회)")
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "L = false에서 폴링은 주기 밖 확인을 부르지 않는다")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+
+        h.advance(1)                                       // t0+10 주기 확인
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "다음 주기 확인")
+        h.fakes.permission.completeFresh(true)             // r = true, t = true → L = nil
+        XCTAssertEqual(h.fakes.tap.startCount, starts + 1, "주기 확인 r = true → start 1회")
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+
+        h.fakes.permission.trusted = false                 // L = nil 확인: t = false 폴링이 그 자리에서 탭을 끈다
+        h.advance(1)
+        XCTAssertEqual(h.fakes.tap.stopCount, 2, "L = nil → 프로세스 안 false가 바로 적용")
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "L = nil → 주기 밖 확인 없음")
+    }
+
+    // MARK: AC9.7 (b) — 사용자 버그: L = true, 낡은 false는 확인만 부른다
+
+    func test_AC9_7b_userBug_freshTrue_latchTrue_pollFalse_doubtCheck_trueKeeps_falseStopsInOrder() {
+        let h = latchedTrueHarness("AC9_7b")
+        let starts = h.fakes.tap.startCount
+        let origins = recordFreshOrigins(h)
+        h.advance(1)                                       // t0+6 폴링 t = false
+        XCTAssertEqual(h.fakes.tap.stopCount, 0, "L = true: 낡은 false 혼자서는 탭을 끄지 않는다")
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "주기 밖 확인 즉시 1회(7-1 셋째 행)")
+        XCTAssertEqual(origins(), [.repeating(.permissionPoll)], "폴링 틱 안에서 시작된 주기 밖 확인")
+        XCTAssertTrue(h.fakes.permission.isFreshPending)
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name), "H 그대로(true)")
+
+        h.fakes.permission.completeFresh(true)             // 확인이 true → 아무 일도 없다, L = true 유지
+        XCTAssertEqual(h.fakes.tap.startCount, starts, "start 0회")
+        XCTAssertEqual(h.fakes.tap.stopCount, 0, "stop 0회")
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+
+        h.advance(1)                                       // t0+7 — L = true 유지 → 또 확인
+        XCTAssertEqual(h.fakes.permission.freshCount, 3, "L = true 유지 → 다음 폴링도 확인 1회")
+        XCTAssertEqual(h.fakes.tap.stopCount, 0)
+
+        h.fakes.log.clear()
+        h.fakes.permission.completeFresh(false)            // 실제 철회: r = false(= t) → L = nil, 탭부터 제거
+        XCTAssertEqual(h.fakes.tap.stopCount, 1, "확인 false → stop 1회")
+        XCTAssertFalse(h.fakes.tap.isRunning)
+        XCTAssertEqual(h.manager.status, .needsPermission)
+        assertStopBeforeNeedsPermission(h)
+
+        h.advance(1)                                       // t0+8 — L = nil이면 더 확인하지 않는다
+        XCTAssertEqual(h.fakes.permission.freshCount, 3, "L = nil → 폴링 false가 주기 밖 확인을 부르지 않는다")
+        XCTAssertEqual(h.fakes.tap.startCount, starts)
+    }
+
+    /// 7-6 덧붙임 — 흔들림 없음: 낡은 false가 10초 동안 매초 와도(확인은 매번 true) 탭이 꺼졌다 켜지지 않는다
+    func test_AC9_7b_userBug_noFlapping_staleFalseEverySecond_tapStaysOnPinned() {
+        let h = latchedTrueHarness("AC9_7b_noflap")
+        h.fakes.permission.autoRespondFresh = true
+        let historyStart = h.statusHistory.count
+        let freshBefore = h.fakes.permission.freshCount
+        h.advance(10)
+        XCTAssertEqual(h.fakes.tap.stopCount, 0, "stop 0회")
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "start 추가 0회")
+        XCTAssertTrue(h.fakes.tap.isRunning)
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+        XCTAssertFalse(h.statusHistory.dropFirst(historyStart).contains(.needsPermission), "상태가 권한 대기로 튀지 않는다")
+        XCTAssertGreaterThanOrEqual(h.fakes.permission.freshCount - freshBefore, 10, "낡은 false마다 확인만 불렀다")
+    }
+
+    /// 7-6 — L = true에서 실제 철회: 다음 폴링(≤1초) + 확인 1회 안에 탭부터 제거하고, 그 뒤 L = nil
+    func test_AC9_7b_latchTrue_realRevoke_detectedAtNextPoll_tapStopFirst() {
+        let h = latchedTrueHarness("AC9_7b_revoke")
+        h.fakes.permission.autoRespondFresh = false        // ground truth도 철회
+        h.fakes.log.clear()
+        h.advance(1)                                       // t0+6
+        XCTAssertEqual(h.fakes.tap.stopCount, 1, "1초 안에 stop 1회")
+        XCTAssertFalse(h.fakes.tap.isRunning)
+        XCTAssertEqual(h.manager.status, .needsPermission)
+        assertStopBeforeNeedsPermission(h)
+        let fresh = h.fakes.permission.freshCount
+        h.advance(3)                                       // t0+9 — L = nil
+        XCTAssertEqual(h.fakes.permission.freshCount, fresh, "L = nil → 주기 밖 확인 없음")
+        XCTAssertEqual(h.fakes.tap.stopCount, 1)
+    }
+
+    // MARK: AC9.7 (c) — L = true + 확인 진행 중: 프로세스 안 false가 여러 번 와도 확인이 늘지 않고, 그 결과가 정한다
+
+    func test_AC9_7c_latchTrue_checkInFlight_threeInProcessFalseReads_noNewCheck_resultDecides() {
+        let h = latchedTrueHarness("AC9_7c")
+        h.advance(1)                                       // t0+6 — 주기 밖 확인 #2 시작(보류)
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "사전 조건: 주기 밖 확인 진행 중")
+        XCTAssertTrue(h.fakes.permission.isFreshPending)
+
+        var readKinds: [DockPinTimerKind?] = []
+        let scheduler = h.fakes.scheduler
+        h.fakes.permission.onCheck = { readKinds.append(scheduler.currentKind) }
+        h.fakes.displayChanges.send(.screenParametersChanged)   // 디바운스 t0+6.5
+        h.fakes.systemEvents.send(.accessibilityChanged)        // 재확인 t0+7, t0+9
+        h.advance(1.5)                                          // t0+7.5 — 디바운스·폴링·재확인 = 프로세스 안 false 3번
+        XCTAssertTrue(readKinds.contains(.displayDebounce), "디바운스 읽기: \(readKinds)")
+        XCTAssertTrue(readKinds.contains(.repeating(.permissionPoll)), "폴링 읽기: \(readKinds)")
+        XCTAssertTrue(readKinds.contains(.permissionRecheck), "재확인 읽기: \(readKinds)")
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "진행 중이면 확인 시작이 늘지 않는다")
+        XCTAssertEqual(h.fakes.tap.stopCount, 0, "그 사이 stop 0회")
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+
+        h.fakes.log.clear()
+        h.fakes.permission.completeFresh(false)            // 진행 중이던 확인의 결과가 정한다
+        XCTAssertEqual(h.fakes.tap.stopCount, 1)
+        XCTAssertEqual(h.manager.status, .needsPermission)
+        assertStopBeforeNeedsPermission(h)
+    }
+
+    // MARK: AC9.7 (d) — L = true에서 시한 초과·결과 nil → L = nil, 프로세스 안 판정으로 판단
+
+    func test_AC9_7d_latchTrue_doubtCheckTimesOut_tInProcessFalse_stopsTapFirst() {
+        let h = latchedTrueHarness("AC9_7d_timeout")
+        h.advance(1)                                       // t0+6 주기 밖 확인(시한 t0+8)
+        XCTAssertTrue(h.fakes.permission.isFreshPending, "사전 조건")
+        h.fakes.log.clear()
+        h.advance(1.9)                                     // t0+7.9
+        XCTAssertEqual(h.fakes.tap.stopCount, 0, "시한 전에는 stop 0회")
+        XCTAssertEqual(h.fakes.permission.freshCount, 2)
+        h.advance(0.1)                                     // t0+8 시한
+        XCTAssertEqual(h.fakes.permission.freshCancelCount, 1, "시한 → 확인 취소 1회")
+        XCTAssertEqual(h.fakes.tap.stopCount, 1, "L = nil로 풀고 t = false 적용 → stop 1회")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+        assertStopBeforeNeedsPermission(h)
+    }
+
+    func test_AC9_7d_latchTrue_doubtCheckNil_tInProcessFalse_stopsTap_thenLatchCleared() {
+        let h = latchedTrueHarness("AC9_7d_nil")
+        h.advance(1)                                       // t0+6
+        XCTAssertTrue(h.fakes.permission.isFreshPending, "사전 조건")
+        h.fakes.log.clear()
+        h.fakes.permission.completeFresh(nil)
+        XCTAssertEqual(h.fakes.tap.stopCount, 1, "결과 nil + L = true → 래치 풀고 t = false → stop 1회")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+        assertStopBeforeNeedsPermission(h)
+        h.advance(1)                                       // t0+7 — L = nil
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "L = nil → 주기 밖 확인 없음")
+    }
+
+    /// 7-2 — L = true + 결과 nil인데 그 순간 t = true → 래치만 풀리고 H 그대로. 그 뒤 t = false는 바로 적용된다(L = nil)
+    func test_AC9_7d_latchTrue_doubtCheckNil_tInProcessTrue_latchCleared_inProcessDecides() {
+        let h = latchedTrueHarness("AC9_7d_nil_true")
+        h.advance(1)                                       // t0+6 주기 밖 확인
+        XCTAssertTrue(h.fakes.permission.isFreshPending, "사전 조건")
+        h.fakes.permission.trusted = true
+        h.fakes.permission.completeFresh(nil)
+        XCTAssertEqual(h.fakes.tap.stopCount, 0, "t = true → stop 0회")
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+        h.fakes.permission.trusted = false
+        h.advance(1)                                       // t0+7
+        XCTAssertEqual(h.fakes.tap.stopCount, 1, "L = nil이므로 t = false가 그 자리에서 탭을 끈다")
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "주기 밖 확인 없음")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+    }
+
+    // MARK: AC9.7 (e) — L = true에서 t = true 1회 → L = nil
+
+    func test_AC9_7e_latchTrue_inProcessTrueOnce_clearsLatch_thenFalseStopsImmediately() {
+        let h = latchedTrueHarness("AC9_7e")
+        h.fakes.permission.trusted = true
+        h.advance(1)                                       // t0+6 — L == t → L = nil, H 그대로
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "start 추가 0회")
+        XCTAssertEqual(h.fakes.tap.stopCount, 0, "stop 0회")
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "주기 밖 확인 0회")
+        h.fakes.permission.trusted = false
+        h.advance(1)                                       // t0+7
+        XCTAssertEqual(h.fakes.tap.stopCount, 1, "L = nil → stop 1회")
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "주기 밖 확인 0회")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+    }
+
+    // MARK: AC9.10 (C12, 7-3) — 프로세스 안 경로로 H가 바뀌면 진행 중 확인의 세대를 올린다
+
+    func test_AC9_10_active_inFlight_pollFalse_stops_lateFreshTrueCannotReEnable() {
+        let h = harness("AC9_10_revoke")
+        h.start()
+        h.advance(5)                                       // 주기 확인 진행 중(L = nil, H = true)
+        XCTAssertTrue(h.fakes.permission.isFreshPending, "사전 조건")
+        h.fakes.permission.trusted = false
+        h.advance(1)                                       // t0+6 폴링 t = false
+        XCTAssertEqual(h.fakes.tap.stopCount, 1, "stop 1회")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+        XCTAssertEqual(h.fakes.permission.freshCancelCount, 1, "H 변경 → 진행 중 확인 cancel(세대 올림, 7-3)")
+        XCTAssertFalse(h.fakes.permission.isFreshPending)
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.freshTrustTimeout), 0, "시한 예약도 cancel(I13)")
+
+        h.fakes.permission.completeFresh(true)             // 늦은 결과 — 버려진다
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "늦은 r = true로 탭이 다시 켜지지 않는다")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+        h.advance(1)                                       // t0+7 — L = nil 확인(t = false 폴링 → 주기 밖 확인 없음)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "L = nil")
+        h.advance(3)                                       // t0+10 — 토큰이 치워져 다음 주기 확인이 정상 시작(I13)
+        XCTAssertEqual(h.fakes.permission.freshCount, 2)
+    }
+
+    func test_AC9_10_needsPermission_inFlight_pollTrue_starts_lateFreshFalseCannotStop() {
+        let h = harness("AC9_10_grant")
+        h.fakes.permission.trusted = false
+        h.start()
+        h.advance(5)                                       // 주기 확인 진행 중(L = nil, H = false)
+        XCTAssertTrue(h.fakes.permission.isFreshPending, "사전 조건")
+        h.fakes.permission.trusted = true
+        h.advance(1)                                       // t0+6 폴링 t = true
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "start 1회")
+        XCTAssertEqual(h.fakes.permission.freshCancelCount, 1, "H 변경 → 진행 중 확인 cancel(세대 올림, 7-3)")
+        XCTAssertFalse(h.fakes.permission.isFreshPending)
+
+        h.fakes.permission.completeFresh(false)            // 늦은 결과 — 버려진다
+        XCTAssertEqual(h.fakes.tap.stopCount, 0, "늦은 r = false로 탭이 꺼지지 않는다")
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+        h.advance(4)                                       // t0+10
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "다음 주기 확인 정상 시작(I13)")
+    }
+
+    // MARK: AC9.11 (C11, 7-1·7-4) — 모든 읽기는 applyInProcess, 래치 수명
+
+    /// (a) L = true에서 .dockNotBottom → L = nil. 진행 중이던 확인의 결과는 버린다(I12). 이어 prefsPoll t = false → .needsPermission
+    func test_AC9_11a_latchTrue_dockNotBottom_clearsLatch_thenPrefsPollFalse_needsPermission() {
+        let h = latchedTrueHarness("AC9_11a")
+        h.fakes.dockPreferences.orientationValue = .left
+        h.fakes.displayChanges.send(.screenParametersChanged)
+        h.advance(0.5)                                     // t0+5.5 디바운스: 방향 left → .dockNotBottom
+        XCTAssertEqual(h.manager.status, .inactive(.dockNotBottom(.left)), "사전 조건: 탭 없음 상태")
+        XCTAssertFalse(h.fakes.tap.isRunning)
+        h.fakes.permission.completeFresh(true)             // 디바운스 읽기가 부른 확인이 있었다면 그 결과는 버린다(I12)
+        XCTAssertEqual(h.manager.status, .inactive(.dockNotBottom(.left)))
+        h.advance(3)                                       // t0+8.5 prefsPoll: t = false, L = nil → H = false
+        XCTAssertEqual(h.manager.status, .needsPermission, "freshTrustCheck 없는 상태로 가면 L = nil → t = false 적용")
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "탭은 다시 켜지지 않는다")
+    }
+
+    /// (a 보강) L = true에서 화면 1대(.singleDisplay) → L = nil. 다시 2대 → 디바운스 t = false로 .needsPermission(탭 시작 0회)
+    func test_AC9_11a_latchTrue_singleDisplay_clearsLatch_thenDual_inProcessFalse_needsPermission() {
+        let h = latchedTrueHarness("AC9_11a_single")
+        h.fakes.displays.displays = [Fixture.builtIn]
+        h.fakes.displayChanges.send(.reconfigured)
+        h.advance(0.5)                                     // t0+5.5
+        XCTAssertEqual(h.manager.status, .inactive(.singleDisplay), "사전 조건: H = true + 화면 1대")
+        h.fakes.permission.completeFresh(true)             // 있었다면 버린다(I12)
+        h.fakes.displays.displays = DockPinFixtures.thisMac
+        h.fakes.displayChanges.send(.reconfigured)
+        h.advance(0.5)                                     // t0+6 디바운스(화면 1대 동안 폴링 없음)
+        XCTAssertEqual(h.manager.status, .needsPermission, "L이 풀렸으므로 디바운스 읽기 t = false가 적용된다")
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "다시 2대가 돼도 탭을 켜지 않는다")
+    }
+
+    /// (7-4) 정리 때 L = nil — 끄고 다시 켜면 t = false가 그대로 적용된다
+    func test_AC9_11_latchTrue_disableThenEnable_latchCleared_needsPermission() {
+        let h = latchedTrueHarness("AC9_11_teardown")
+        h.manager.setEnabled(false)
+        h.manager.setEnabled(true)
+        XCTAssertEqual(h.manager.status, .needsPermission, "정리 → L = nil → readAll t = false 적용")
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "다시 켤 때 탭 시작 0회")
+        h.advance(1)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "L = nil → 폴링 false가 주기 밖 확인을 부르지 않는다")
+    }
+
+    /// (b) L = true에서 디스플레이 디바운스 재계산의 동기 읽기 t = false → stop 0회, 주기 밖 확인 1회
+    func test_AC9_11b_latchTrue_debounceRecomputeReadsFalse_noStop_oneDoubtCheck() {
+        let h = latchedTrueHarness("AC9_11b")
+        let origins = recordFreshOrigins(h)
+        h.fakes.displayChanges.send(.screenParametersChanged)
+        h.advance(0.5)                                     // t0+5.5 — 폴링 전
+        XCTAssertEqual(h.fakes.tap.stopCount, 0, "디바운스 읽기도 applyInProcess(L = true) → stop 0회")
+        XCTAssertEqual(origins(), [.displayDebounce], "디바운스에서 주기 밖 확인 1회")
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+    }
+
+    /// (b 보강) readAll 경로(잠금 해제 → sessionSettle)도 applyInProcess(reconcile: false)다 — L = true면 탭을 끄지 않는다
+    func test_AC9_11b_latchTrue_sessionSettleReadAll_falseRead_noStop_doubtCheck() {
+        let h = latchedTrueHarness("AC9_11b_settle")
+        h.fakes.permission.autoRespondFresh = true
+        let origins = recordFreshOrigins(h)
+        h.advance(0.2)                                     // t0+5.2
+        h.fakes.systemEvents.send(.screenUnlocked)         // settle t0+6.2
+        h.advance(1.0)                                     // t0+6.2
+        XCTAssertTrue(origins().contains(.sessionSettle), "readAll 읽기도 주기 밖 확인을 부른다: \(origins())")
+        XCTAssertEqual(h.fakes.tap.stopCount, 0, "stop 0회")
+        XCTAssertTrue(h.fakes.tap.isRunning)
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+    }
+
+    /// (c) L = true에서 권한 알림은 L을 바꾸지 않는다 — 알림 뒤에도 낡은 false가 탭을 끄지 않는다
+    func test_AC9_11c_latchTrue_accessibilityNotification_latchUnchanged_noStop() {
+        let h = latchedTrueHarness("AC9_11c_true")
+        h.fakes.permission.autoRespondFresh = true         // 확인은 계속 true
+        h.fakes.systemEvents.send(.accessibilityChanged)
+        h.advance(4)                                       // t0+9 — 재확인 +1.0·+3.0 + 폴링
+        XCTAssertEqual(h.fakes.tap.stopCount, 0, "알림이 래치를 풀었다면 t0+6 폴링이 탭을 껐다")
+        XCTAssertEqual(h.fakes.tap.startCount, 1)
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+    }
+
+    /// (c) L = false에서 권한 알림도 L을 바꾸지 않는다 — 재확인 t = true가 탭을 켜지 않는다
+    func test_AC9_11c_latchFalse_accessibilityNotification_latchUnchanged_noStart() {
+        let h = latchedFalseHarness("AC9_11c_false")
+        let starts = h.fakes.tap.startCount
+        h.fakes.systemEvents.send(.accessibilityChanged)
+        h.advance(3.5)                                     // t0+8.5 — 재확인 +1.0·+3.0(N21 확인은 응답 없이 시한)
+        XCTAssertEqual(h.fakes.tap.startCount, starts, "L = false 유지 → t = true 재확인 무시")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+    }
+
+    // MARK: AC9.12 (7-5, D4) — L = true 동안 비용 상한
+
+    func test_AC9_12_latchTrue_staleFalseFixed_autoTrue_tenSeconds_atMost12Checks_noStop() {
+        let h = latchedTrueHarness("AC9_12")
+        h.fakes.permission.autoRespondFresh = true
+        let before = h.fakes.permission.freshCount
+        h.advance(10)
+        let started = h.fakes.permission.freshCount - before
+        XCTAssertLessThanOrEqual(started, 12, "10초에 확인 12회 이하(약 1회/초 + 주기)")
+        XCTAssertGreaterThanOrEqual(started, 10, "양성 짝: 낡은 false 폴링마다 주기 밖 확인 1회")
+        XCTAssertEqual(h.fakes.tap.stopCount, 0, "stop 0회")
+    }
+
+    // MARK: AC9.14 (R9.5 N21) — L = false에서 알림 뒤 +1.0초 재확인에 확인 1회 앞당김
+
+    func test_AC9_14_latchFalse_notification_plusOne_advancesOneCheck_thenTrueStarts() {
+        let h = latchedFalseHarness("AC9_14")
+        let starts = h.fakes.tap.startCount
+        let origins = recordFreshOrigins(h)
+        h.fakes.systemEvents.send(.accessibilityChanged)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "알림 처리 자리에서 확인 시작 0회")
+        h.advance(1.0)                                     // t0+6 재확인 +1.0
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "+1.0 재확인 뒤 주기 밖 확인 1회")
+        XCTAssertEqual(origins(), [.permissionRecheck], "재확인 예약 안에서 시작")
+        XCTAssertEqual(h.fakes.tap.startCount, starts, "L = false 그대로 → start 0회")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+        h.fakes.permission.completeFresh(true)             // r = true, t = true → L = nil
+        XCTAssertEqual(h.fakes.tap.startCount, starts + 1, "start 1회")
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+    }
+
+    /// +3.0 재확인에서는 앞당기지 않는다. 결과 false면 L = false 그대로(start 0회)
+    func test_AC9_14_latchFalse_plusThreeRecheck_doesNotAdvance() {
+        let h = latchedFalseHarness("AC9_14_plus3")
+        let starts = h.fakes.tap.startCount
+        h.fakes.systemEvents.send(.accessibilityChanged)
+        h.advance(1.0)                                     // t0+6 — 앞당긴 확인 #2
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "사전 조건: +1.0 앞당김")
+        h.fakes.permission.completeFresh(false)            // r = false ≠ t → L = false 유지
+        h.advance(2.0)                                     // t0+8 — +3.0 재확인
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "+3.0에서는 앞당기지 않는다")
+        XCTAssertEqual(h.fakes.tap.startCount, starts, "L = false → start 0회")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+    }
+
+    /// +1.0 시점에 확인이 진행 중이면 새로 시작하지 않는다
+    func test_AC9_14_latchFalse_checkInFlightAtPlusOne_noAdvance() {
+        let h = latchedFalseHarness("AC9_14_inflight")
+        h.advance(4.2)                                     // t0+9.2
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "사전 조건: L = false 유지(폴링 t = true 무시)")
+        h.fakes.systemEvents.send(.accessibilityChanged)   // +1.0 = t0+10.2
+        h.advance(1.0)                                     // t0+10 주기 확인 시작(보류) → t0+10.2 재확인
+        XCTAssertTrue(h.fakes.permission.isFreshPending, "사전 조건: 주기 확인 진행 중")
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "진행 중이면 앞당김 0회(주기 확인 1회만)")
+        XCTAssertEqual(h.fakes.tap.startCount, 1)
+    }
+
+    /// L = nil에서는 같은 알림이 +1.0에 주기 밖 확인을 부르지 않는다(회귀 가드)
+    func test_AC9_14_latchNil_notification_noAdvance() {
+        let h = harness("AC9_14_nil")
+        h.fakes.permission.trusted = false
+        h.start()
+        XCTAssertEqual(h.manager.status, .needsPermission, "사전 조건: L = nil, H = false")
+        h.fakes.systemEvents.send(.accessibilityChanged)
+        h.advance(3.0)                                     // +1.0·+3.0 재확인(주기 확인 t0+5 전)
+        XCTAssertEqual(h.fakes.permission.freshCount, 0, "L = nil → 앞당김 0회")
     }
 
     // MARK: - AC10 세션

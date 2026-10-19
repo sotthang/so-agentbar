@@ -71,6 +71,9 @@ final class DockPinManager: ObservableObject {
     private var freshCheckToken: DockPinCancellable?        // != nil ⇔ 진행 중
     private var freshTimeoutToken: DockPinCancellable?
     private var freshGeneration = 0
+    // (r6) R9.6 7번 — 래치 L. 새 프로세스 결과가 프로세스 안 판정과 달랐던 값(7-2).
+    // 7-4: reconcile 뒤 requiredTimers에 freshTrustCheck가 없거나 정리하면 nil. 권한 알림으로는 바뀌지 않는다
+    private var trustLatch: Bool?
 
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.sotthang.soagentbar",
                                        category: "DockPin")
@@ -185,12 +188,13 @@ final class DockPinManager: ObservableObject {
     }
 
     /// 활성화 입력과 디스플레이 맵의 원천(권한·디스플레이·Spaces·방향)을 각 1회 읽는다
+    /// 권한은 R9.6 7-1 단일 진입점으로 적용하고, reconcile은 호출측 한 번으로 합친다(arch §12 I11)
     private func readConfiguration() {
-        hasPermission = readTrust()
         allDisplays = deps.displays.allDisplays()
         mainID = deps.displays.mainDisplayID()
         separateSpaces = deps.dockPreferences.screensHaveSeparateSpaces()
         orientation = deps.dockPreferences.orientation()
+        applyInProcess(readTrust(), reconcile: false)
     }
 
     private func refreshSessionState() {
@@ -238,7 +242,9 @@ final class DockPinManager: ObservableObject {
             }
         }
         publish()
-        syncRepeatingTimers()
+        if !syncRepeatingTimers().contains(.freshTrustCheck) {
+            trustLatch = nil                                    // R9.6 7-4. 진행 중 확인은 applyFresh 가드가 버린다(arch §12 I12)
+        }
         lastFingerprint = currentFingerprint
         if scanAfter { activationScan() }
     }
@@ -283,7 +289,8 @@ final class DockPinManager: ObservableObject {
 
     // MARK: - 반복 타이머 (R4.4)
 
-    private func syncRepeatingTimers() {
+    @discardableResult
+    private func syncRepeatingTimers() -> Set<DockPinRepeatingTimer> {
         let required = isEnabled && !isShutDown
             ? DockPinPolicy.requiredTimers(activation: activation, tapState: tapState) : []
         for (kind, token) in repeating where !required.contains(kind) {
@@ -293,6 +300,7 @@ final class DockPinManager: ObservableObject {
         for kind in required where repeating[kind] == nil {
             scheduleRepeating(kind)
         }
+        return required
     }
 
     private func interval(_ kind: DockPinRepeatingTimer) -> TimeInterval {
@@ -317,11 +325,11 @@ final class DockPinManager: ObservableObject {
     private func fireRepeating(_ kind: DockPinRepeatingTimer) {
         repeating[kind] = nil
         switch kind {
-        case .permissionPoll: checkPermission()
+        case .permissionPoll: applyInProcess(readTrust())
         case .dockPoll: locateAndEvaluate(.quick, trigger: .poll)
         case .prefsPoll:                                         // R4.5 — 방향과 권한만
             orientation = deps.dockPreferences.orientation()
-            hasPermission = readTrust()
+            applyInProcess(readTrust(), reconcile: false)
             reconcile()
         case .tapWatchdog: _ = deps.tap.reenableIfNeeded()       // R5.8
         case .tapRetry: retryTap()
@@ -356,17 +364,33 @@ final class DockPinManager: ObservableObject {
             dockProbe: deps.dockPreferences.dockPID().map { deps.permission.dockProbeTrusted(dockPID: $0) })
     }
 
-    private func checkPermission() {
-        let trusted = readTrust()
-        if hasPermission && !trusted {
-            if deps.tap.isRunning { deps.tap.stop() }           // AC9.1 — 다른 어떤 처리보다 먼저
+    /// R9.2·R9.3 — H를 바꾼다. true→false면 탭 제거가 다른 어떤 처리보다 먼저다(AC9.1). 반환값 = H가 바뀌었는지
+    @discardableResult
+    private func setPermission(_ trusted: Bool, reconcile shouldReconcile: Bool = true) -> Bool {
+        guard trusted != hasPermission else { return false }
+        if !trusted {
+            if deps.tap.isRunning { deps.tap.stop() }
             tapState = .none
             relocator.abort(.permissionLost)
-            hasPermission = false
-            reconcile()
-        } else if !hasPermission && trusted {
-            hasPermission = true
-            reconcile()
+        }
+        hasPermission = trusted
+        if shouldReconcile { reconcile() }
+        return true
+    }
+
+    /// R9.6 7-1 — 프로세스 안 판정(t)을 적용하는 유일한 진입점(폴링·재확인·prefsPoll·디바운스·readAll)
+    private func applyInProcess(_ trusted: Bool, reconcile shouldReconcile: Bool = true) {
+        switch trustLatch {
+        case nil:
+            if setPermission(trusted, reconcile: shouldReconcile) {
+                invalidateFreshCheck()                           // 7-3 — 늦게 온 결과를 버린다(AC9.10)
+            }
+        case trusted?:
+            trustLatch = nil                                     // L == t → 래치 해제, H 그대로(AC9.7 e)
+        case true?:                                              // t == false — 확인만 부른다(AC9.7 b·c)
+            if freshCheckToken == nil { startFreshCheck(.latchDoubt) }
+        case false?:                                             // t == true — 다음 주기 확인까지 무시(AC9.7 a)
+            break
         }
     }
 
@@ -402,19 +426,38 @@ final class DockPinManager: ObservableObject {
         freshGeneration += 1
     }
 
-    /// R9.6 7-2 — 11e: 가드와 로그(N20)만. H는 바꾸지 않는다(적용은 11f)
+    /// R9.6 7-2 — 새 프로세스 결과(r) 적용. 세대가 맞을 때만 온다. 이 경로의 setPermission은 세대를 올리지 않는다
     private func applyFresh(_ result: Bool?, reason: String, origin: DockPinFreshCheckOrigin) {
         let r = result.map { $0 ? "1" : "0" } ?? "nil(\(reason))"
-        let t = hasPermission ? "1" : "0"
         guard isEnabled, !isShutDown,
               DockPinPolicy.requiredTimers(activation: activation, tapState: tapState).contains(.freshTrustCheck) else {
             Self.logger.debug("fresh r=\(r, privacy: .public) dropped (not required)")           // arch §12 I12
             return
         }
-        Self.logger.debug("fresh r=\(r, privacy: .public) t=\(t, privacy: .public) origin=\("\(origin)", privacy: .public)")
-        if let result, result != hasPermission {
+        let latchBefore = Self.describe(trustLatch)
+        var inProcess: Bool?
+        if let result {
+            let trusted = readTrust()
+            inProcess = trusted
+            trustLatch = result == trusted ? nil : result
+            setPermission(result)                                // false면 탭부터 제거(R9.3), true면 R9.2
+        } else if trustLatch == true {                           // AC9.7 d — 래치를 풀고 프로세스 안 판정으로
+            trustLatch = nil
+            let trusted = readTrust()
+            inProcess = trusted
+            applyInProcess(trusted)
+        }
+        let t = Self.describe(inProcess)
+        let latchAfter = Self.describe(trustLatch)
+        Self.logger.debug("fresh r=\(r, privacy: .public) t=\(t, privacy: .public) L=\(latchBefore, privacy: .public)->\(latchAfter, privacy: .public) origin=\("\(origin)", privacy: .public)")
+        if let result, let inProcess, result != inProcess {
             Self.logger.debug("fresh-mismatch r=\(r, privacy: .public) t=\(t, privacy: .public)")
         }
+    }
+
+    /// 로그용 표기: true → "1", false → "0", nil → "-"
+    private static func describe(_ value: Bool?) -> String {
+        value.map { $0 ? "1" : "0" } ?? "-"
     }
 
     // MARK: - 디스플레이 (R4.3, R4.8)
@@ -522,9 +565,14 @@ final class DockPinManager: ObservableObject {
     /// R9.5 / AC9.5 — 알림 순간 읽으면 tccd 기록 전 낡은 false가 캐시된다(F22). 새 알림은 대기 중 확인을 대신한다
     private func schedulePermissionRechecks() {
         cancelPermissionRechecks()
-        for delay in DockPinTuning.permissionNotifyRecheckDelays {
+        for (index, delay) in DockPinTuning.permissionNotifyRecheckDelays.enumerated() {
+            let advanceFresh = index == 0                        // N21 — +1.0 재확인만 확인을 앞당긴다(AC9.14)
             permissionRecheckTokens.append(deps.scheduler.schedule(after: delay, kind: .permissionRecheck) { [weak self] in
-                self?.checkPermission()
+                guard let self else { return }
+                self.applyInProcess(self.readTrust())
+                if advanceFresh, self.trustLatch == false, self.freshCheckToken == nil {
+                    self.startFreshCheck(.notifyAdvance)
+                }
             })
         }
     }
@@ -720,6 +768,7 @@ final class DockPinManager: ObservableObject {
         cancelPermissionRechecks()
         cancelOptionChecks()
         invalidateFreshCheck()                                   // 자식 종료 + 늦은 결과 버림(AC9.8 c)
+        trustLatch = nil                                         // R9.6 7-4
         deps.locator.cancelAll()
         activation = .inactive(.off)
         phase = .idle

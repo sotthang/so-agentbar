@@ -406,24 +406,25 @@ final class DockPinEdgeRuleTests: XCTestCase {
     func test_VULN002_driving_nowAfterDeadline_clickPassesWithoutSuppression() {
         var s = DockPinGestureSuppression()
         XCTAssertEqual(decide(.leftMouseDown, snapshot: Fixture.drivingWithDeadline, now: Fixture.afterDeadline,
-                              suppression: &s), .pass)
+                              suppression: &s), .pass(signal: .userActivity), "NEW-1 — 버리지 않되 신호는 낸다")
         XCTAssertEqual(s.mask, 0, "시한이 지나면 2행(억제 추가)을 타지 않는다")
         XCTAssertEqual(decide(.leftMouseUp, snapshot: Fixture.drivingWithDeadline, now: Fixture.afterDeadline,
-                              suppression: &s), .pass)
+                              suppression: &s), .pass(signal: .userActivity))
     }
 
     func test_VULN002_driving_nowAfterDeadline_scrollPasses() {
         XCTAssertEqual(decideFresh(.scrollWheel, snapshot: Fixture.drivingWithDeadline, now: Fixture.afterDeadline),
-                       .pass)
+                       .pass(signal: .userActivity))
     }
 
     func test_VULN002_afterDeadline_triggerRowMove_behavesAsNotRelocating() {
         for snapshot in [Fixture.drivingWithDeadline, Fixture.relocatingNotDrivingWithDeadline] {
-            // 8행: 줄 안 이동은 신호 없이 버림 / 9행: 줄 밖은 신호 없이 통과 / 7행: Option 통과
+            // 8행: 줄 안 이동은 버림 / 9행: 줄 밖은 통과 / 7행: Option 통과
+            // NEW-1 — 원래 스냅숏이 되돌리는 중이므로 신호 칸이 비면 .userActivity를 싣는다(7행은 optionPass 유지)
             XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.inRightRow, snapshot: snapshot,
-                                       now: Fixture.afterDeadline), .drop)
+                                       now: Fixture.afterDeadline), .drop(signal: .userActivity))
             XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.outside, snapshot: snapshot,
-                                       now: Fixture.afterDeadline), .pass)
+                                       now: Fixture.afterDeadline), .pass(signal: .userActivity))
             XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.inRightRow, flags: .maskAlternate, snapshot: snapshot,
                                        now: Fixture.afterDeadline), .pass(signal: .optionPass(Fixture.rightID)))
         }
@@ -442,10 +443,11 @@ final class DockPinEdgeRuleTests: XCTestCase {
 
         // 메인이 멈춰 스냅숏이 driving 그대로인 채 시한이 지났다
         XCTAssertEqual(decide(.leftMouseDragged, at: Fixture.outside, snapshot: Fixture.drivingWithDeadline,
-                              now: Fixture.afterDeadline, suppression: &s), .pass, "억제된 Dragged가 통과")
+                              now: Fixture.afterDeadline, suppression: &s), .pass(signal: .userActivity),
+                       "억제된 Dragged가 통과(NEW-1 신호 포함)")
         XCTAssertFalse(s.contains(button: Button.left), "시한이 지난 Dragged가 억제를 푼다")
         XCTAssertEqual(decide(.leftMouseUp, snapshot: Fixture.drivingWithDeadline, now: Fixture.afterDeadline,
-                              suppression: &s), .pass, "Up 통과")
+                              suppression: &s), .pass(signal: .userActivity), "Up 통과(NEW-1 신호 포함)")
         XCTAssertEqual(s.mask, 0)
     }
 
@@ -455,7 +457,7 @@ final class DockPinEdgeRuleTests: XCTestCase {
                    suppression: &s)
         XCTAssertTrue(s.contains(button: Button.right))
         XCTAssertEqual(decide(.rightMouseUp, button: Button.right, snapshot: Fixture.drivingWithDeadline,
-                              now: Fixture.afterDeadline, suppression: &s), .pass)
+                              now: Fixture.afterDeadline, suppression: &s), .pass(signal: .userActivity))
         XCTAssertFalse(s.contains(button: Button.right))
     }
 
@@ -469,6 +471,73 @@ final class DockPinEdgeRuleTests: XCTestCase {
         _ = decide(.leftMouseDown, snapshot: Fixture.driving, now: far, suppression: &s)
         XCTAssertEqual(decide(.leftMouseUp, snapshot: Fixture.idle, now: far, suppression: &s), .drop,
                        "정상 종료 뒤 억제된 Up은 여전히 버린다(3행)")
+    }
+
+    // MARK: - (r6.6) NEW-1 시한 뒤에도 사용자 입력 신호는 낸다
+
+    func test_NEW1_driving_afterDeadline_untaggedClickScrollMoveDrag_passWithUserActivity() {
+        for type: CGEventType in [.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
+                                  .otherMouseDown, .otherMouseUp, .scrollWheel, .mouseMoved,
+                                  .leftMouseDragged, .rightMouseDragged, .otherMouseDragged] {
+            let button: Int64 = type == .rightMouseDown || type == .rightMouseUp || type == .rightMouseDragged
+                ? Button.right : (type == .otherMouseDown || type == .otherMouseUp || type == .otherMouseDragged
+                                  ? Button.middle : Button.left)
+            XCTAssertEqual(decideFresh(type, at: Fixture.outside, button: button,
+                                       snapshot: Fixture.drivingWithDeadline, now: Fixture.afterDeadline),
+                           .pass(signal: .userActivity), "type \(type.rawValue)")
+        }
+    }
+
+    func test_NEW1_driving_afterDeadline_buttonBeyond31_passesWithUserActivity() {
+        XCTAssertEqual(decideFresh(.otherMouseDown, button: Button.beyondMask, snapshot: Fixture.drivingWithDeadline,
+                                   now: Fixture.afterDeadline), .pass(signal: .userActivity))
+    }
+
+    func test_NEW1_afterDeadline_taggedEvents_passWithoutSignal() {
+        for snapshot in [Fixture.drivingWithDeadline, Fixture.relocatingNotDrivingWithDeadline] {
+            for type: CGEventType in [.leftMouseDown, .leftMouseUp, .scrollWheel, .mouseMoved, .leftMouseDragged] {
+                XCTAssertEqual(decideFresh(type, at: Fixture.inRightRow, userData: DockPinTuning.eventMarker,
+                                           snapshot: snapshot, now: Fixture.afterDeadline), .pass,
+                               "앱이 보낸 이벤트(1행)는 신호 없이 통과 — type \(type.rawValue)")
+            }
+        }
+    }
+
+    func test_NEW1_relocatingNotDriving_afterDeadline_clickAndScroll_unchanged_noSignal() {
+        // verifying 같은 비-driving 되돌리기에서 클릭·스크롤은 원래도 신호가 없었다(5행 driving=false)
+        XCTAssertEqual(decideFresh(.leftMouseDown, snapshot: Fixture.relocatingNotDrivingWithDeadline,
+                                   now: Fixture.afterDeadline), .pass)
+        XCTAssertEqual(decideFresh(.scrollWheel, snapshot: Fixture.relocatingNotDrivingWithDeadline,
+                                   now: Fixture.afterDeadline), .pass)
+    }
+
+    func test_NEW1_idleSnapshot_withDeadline_afterDeadline_noSignal() {
+        var idle = Fixture.idle
+        idle.relocationDeadline = Fixture.deadline
+        XCTAssertEqual(decideFresh(.leftMouseDown, snapshot: idle, now: Fixture.afterDeadline), .pass)
+        XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.outside, snapshot: idle, now: Fixture.afterDeadline), .pass)
+        XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.inRightRow, snapshot: idle, now: Fixture.afterDeadline),
+                       .drop)
+    }
+
+    func test_NEW1_beforeDeadline_unchanged() {
+        XCTAssertEqual(decideFresh(.leftMouseDown, snapshot: Fixture.drivingWithDeadline, now: Fixture.deadline),
+                       .drop(signal: .userActivity))
+        XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.outside, snapshot: Fixture.drivingWithDeadline,
+                                   now: Fixture.deadline), .pass(signal: .userActivity))
+        XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.inRightRow, snapshot: Fixture.drivingWithDeadline,
+                                   now: Fixture.deadline), .drop(signal: .userActivity))
+        XCTAssertEqual(decideFresh(.leftMouseDown, snapshot: Fixture.relocatingNotDrivingWithDeadline,
+                                   now: Fixture.deadline), .pass)
+    }
+
+    func test_NEW1_nilDeadline_unchanged() {
+        let far: TimeInterval = 1_000_000
+        XCTAssertEqual(decideFresh(.scrollWheel, snapshot: Fixture.driving, now: far), .drop(signal: .userActivity))
+        XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.outside, snapshot: Fixture.driving, now: far),
+                       .pass(signal: .userActivity))
+        XCTAssertEqual(decideFresh(.leftMouseDown, snapshot: Fixture.idle, now: far), .pass)
+        XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.inRightRow, snapshot: Fixture.idle, now: far), .drop)
     }
 
     // MARK: - R5.5 31 초과 버튼은 억제 규칙 미적용 (5행)

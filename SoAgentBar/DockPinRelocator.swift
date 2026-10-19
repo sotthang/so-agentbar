@@ -8,6 +8,7 @@ import Foundation
 //
 // 시간 기준: 15번째 이동(목표 줄 도달) 시각 reachedAt. 첫 이동은 start() 안에서 바로 보낸다(틱 0).
 // 늦게 온 조회 결과·시간 초과는 시도 세대(generation)로 버린다. 끝나면 대기 중 틱·시간 초과 예약을 취소한다.
+// (r6.6) NEW-1 — 틱 수와 별개로 시작 시각 기준 벽시계 상한(wallClockLimit)을 넘긴 틱은 이동 없이 .failed로 끝낸다.
 
 /// R8.3 — 한 번의 되돌리기 계획
 struct DockPinDrivePlan: Equatable, Sendable {
@@ -69,6 +70,8 @@ final class DockPinRelocator {
     private var saved: CGPoint = .zero
     private var baseline: UInt64 = 0
     private var reachedAt: TimeInterval = 0
+    /// (r6.6) NEW-1 — 벽시계 상한의 기준(매니저 스냅숏 시한과 같은 시각)
+    private var startAt: TimeInterval = 0
     private var holdTicks = 0
     private var completion: (@MainActor (DockPinDriveOutcome) -> Void)?
     private var tickToken: DockPinCancellable?
@@ -76,10 +79,17 @@ final class DockPinRelocator {
 
     /// 부동소수 누적 오차 흡수용
     private static let timeEpsilon: TimeInterval = 1e-9
+    /// (r6.6) NEW-1 — 시작 뒤 이 시간이 지나면 틱 수와 무관하게 .failed로 끝낸다. 탭 시한(guardWindow)보다
+    /// 여유만큼 먼저라 메인이 늦어도 탭이 입력을 막지 않게 된 뒤에는 이동을 보내지 않는다.
+    /// 정상 최악(도달 0.224 + 유지 2.0 + 틱 0.016 + 마지막 조회 1.2 = 3.44 s) 이하라 정상 경로에는 영향이 없다.
+    static let wallClockLimit: TimeInterval =
+        DockPinTuning.relocationGuardWindow - DockPinTuning.relocationDeadlineMargin
 
     /// completion은 정확히 1번. 커서를 못 읽으면 이벤트 없이 .aborted(.cursorUnavailable)
     /// 진행 중에 다시 부르면 무시한다(매니저는 진행 중에 start하지 않는다).
-    func start(_ plan: DockPinDrivePlan, completion: @escaping @MainActor (DockPinDriveOutcome) -> Void) {
+    /// startedAt = 벽시계 상한 기준(매니저는 스냅숏 시한과 같은 값을 넘긴다). nil이면 scheduler.now
+    func start(_ plan: DockPinDrivePlan, startedAt: TimeInterval? = nil,
+               completion: @escaping @MainActor (DockPinDriveOutcome) -> Void) {
         guard !isActive else { return }
         guard let cursor = poster.cursorLocation() else {      // R8.3-1 — 커서는 여기서 한 번만 읽는다
             completion(.aborted(.cursorUnavailable))
@@ -90,6 +100,7 @@ final class DockPinRelocator {
         self.plan = plan
         self.completion = completion
         saved = cursor
+        startAt = startedAt ?? scheduler.now
         baseline = userActivityCount()
         path = DockPinDrivePath.approach(to: plan.target)
         phase = .approaching(next: 0)
@@ -111,6 +122,10 @@ final class DockPinRelocator {
             return
         }
         let now = scheduler.now
+        if now - startAt > Self.wallClockLimit {               // NEW-1 — 메인 지연·App Nap. 시간 초과처럼 실패, 이동 없음
+            finish(.failed)
+            return
+        }
         switch phase {
         case .approaching(let index):
             poster.postTaggedMouseMove(to: path[index])

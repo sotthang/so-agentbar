@@ -90,6 +90,8 @@ enum DockPinEdgeRule {
     /// R5.4 표 1–9행 그대로(1a행 포함). 버튼 번호 > 31이면 1a·2·3행을 건너뛰고 5행.
     /// now = 탭 시계(uptime). 스냅숏 시한이 지났으면(VULN-002) 되돌리는 중이 아닌 것으로 판정하고,
     /// 억제된 버튼의 Dragged·Up은 통과시키며 억제를 푼다.
+    /// (r6.6) NEW-1 — 시한 뒤에도 원래 스냅숏 기준으로 신호를 냈을 사용자 입력이면, 신호 칸이 빈 판정에
+    /// .userActivity를 싣는다(버리기는 늘리지 않는다). 메인이 늦어 아직 이동을 보내는 실행기가 멈추게 한다(R8.6).
     static func decide(type: CGEventType, location: CGPoint, flags: CGEventFlags,
                        userData: Int64, buttonNumber: Int64,
                        snapshot: DockPinGuardSnapshot, now: TimeInterval,
@@ -100,6 +102,31 @@ enum DockPinEdgeRule {
         // VULN-002 — 할당 없는 비교
         var expired = false
         if let deadline = snapshot.relocationDeadline, now > deadline { expired = true }
+        let decision = decideUser(type: type, location: location, flags: flags, buttonNumber: buttonNumber,
+                                  snapshot: snapshot, expired: expired, suppression: &suppression)
+        if expired, decision.signal == nil, wouldSignalUserActivity(type: type, snapshot: snapshot) {
+            return DockPinTapDecision(action: decision.action, signal: .userActivity)
+        }
+        return decision
+    }
+
+    /// NEW-1 — 시한 전이었다면 .userActivity를 냈을 종류인가(버튼·스크롤은 driving, 이동·드래그는 relocating)
+    private static func wouldSignalUserActivity(type: CGEventType, snapshot: DockPinGuardSnapshot) -> Bool {
+        switch type {
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown,
+             .leftMouseUp, .rightMouseUp, .otherMouseUp, .scrollWheel:
+            return snapshot.isDriving
+        case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
+            return snapshot.isRelocating
+        default:
+            return false
+        }
+    }
+
+    /// 2–9행(사용자 이벤트)
+    private static func decideUser(type: CGEventType, location: CGPoint, flags: CGEventFlags, buttonNumber: Int64,
+                                   snapshot: DockPinGuardSnapshot, expired: Bool,
+                                   suppression: inout DockPinGestureSuppression) -> DockPinTapDecision {
         let driving = snapshot.isDriving && !expired
         let relocating = snapshot.isRelocating && !expired
         // contains/insert 는 0…31 밖이면 false/무시 → 31 초과 버튼은 1a·2·3행을 건너뛴다

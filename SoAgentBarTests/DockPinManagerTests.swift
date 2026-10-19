@@ -686,15 +686,16 @@ final class DockPinManagerTests: XCTestCase {
         XCTAssertEqual(deadline, startedAt + DockPinTuning.relocationGuardWindow, accuracy: 1e-9)
 
         // 메인이 멈춰 스냅숏이 그대로여도 탭 시계로 시한이 지나면 클릭·스크롤이 통과한다
+        // (r6.6) NEW-1 — 버리지는 않되 사용자 입력 신호는 낸다
         var suppression = DockPinGestureSuppression()
         let click = DockPinEdgeRule.decide(type: .leftMouseDown, location: CGPoint(x: 864, y: 1116), flags: [],
                                            userData: 0, buttonNumber: 0, snapshot: snapshot,
                                            now: deadline + 0.001, suppression: &suppression)
-        XCTAssertEqual(click, .pass)
+        XCTAssertEqual(click, .pass(signal: .userActivity))
         let scroll = DockPinEdgeRule.decide(type: .scrollWheel, location: CGPoint(x: 864, y: 1116), flags: [],
                                             userData: 0, buttonNumber: 0, snapshot: snapshot,
                                             now: deadline + 0.001, suppression: &suppression)
-        XCTAssertEqual(scroll, .pass)
+        XCTAssertEqual(scroll, .pass(signal: .userActivity))
     }
 
     func test_VULN002_manager_deadlineKeptThroughVerifying_clearedWhenDriveEnds() throws {
@@ -726,6 +727,81 @@ final class DockPinManagerTests: XCTestCase {
         XCTAssertEqual(h.manager.status, .waiting(.userActive, displayName: Fixture.builtIn.name))
         XCTAssertEqual(h.lastSnapshot?.isDriving, false)
         XCTAssertNil(h.lastSnapshot?.relocationDeadline)
+    }
+
+    // MARK: - (r6.6) NEW-1 시한 뒤 입력도 되돌리기를 멈춘다 / 실행기 벽시계 상한
+
+    /// 탭 스레드처럼: 마지막 스냅숏으로 판정해 .userActivity 신호면 가짜 탭 카운터를 올린다
+    private func feedTap(_ h: Harness, _ type: CGEventType, at location: CGPoint, now: TimeInterval) -> DockPinTapDecision? {
+        guard let snapshot = h.lastSnapshot else { return nil }
+        var suppression = DockPinGestureSuppression()
+        let decision = DockPinEdgeRule.decide(type: type, location: location, flags: [], userData: 0, buttonNumber: 0,
+                                              snapshot: snapshot, now: now, suppression: &suppression)
+        if decision.signal == .userActivity { h.fakes.tap.userActivityCount += 1 }
+        return decision
+    }
+
+    func test_NEW1_manager_userClickAfterDeadline_stillAbortsDriveAtNextTick() throws {
+        let h = drivingHarness("NEW1_click")
+        let deadline = try XCTUnwrap(h.lastSnapshot?.relocationDeadline)
+        h.advance(0.1)
+        let movesBefore = h.moves.count
+
+        // 메인이 멈춘 사이 시한이 지났고, 그때 사용자가 클릭했다(스냅숏은 driving 그대로)
+        h.fakes.scheduler.now = deadline + 0.01
+        let decision = feedTap(h, .leftMouseDown, at: CGPoint(x: 864, y: 1116), now: deadline + 0.01)
+        XCTAssertEqual(decision, .pass(signal: .userActivity), "클릭은 통과하되 신호를 낸다")
+
+        h.advance(0)    // 메인이 깨어나 밀린 틱을 돈다(밀린 다른 타이머도 함께 돌 수 있다)
+        XCTAssertTrue(h.statusHistory.contains(.waiting(.userActive, displayName: Fixture.builtIn.name)),
+                      "R8.6 — 시한 뒤 입력도 사용자 활동 중단")
+        XCTAssertGreaterThan(h.moves.count, movesBefore)
+        if h.moves.count > movesBefore {
+            XCTAssertEqual(h.moves[movesBefore], Fixture.cursorOnBuiltIn, "밀린 틱은 이동 없이 바로 복원")
+        }
+        XCTAssertEqual(h.retryDelays, [], "사용자 활동 중단은 실패로 세지 않는다(상한 실패가 아니다)")
+    }
+
+    func test_NEW1_manager_userMoveAfterDeadline_stillAbortsDrive() throws {
+        let h = drivingHarness("NEW1_move")
+        let deadline = try XCTUnwrap(h.lastSnapshot?.relocationDeadline)
+        h.advance(0.1)
+        h.fakes.scheduler.now = deadline + 0.01
+        XCTAssertEqual(feedTap(h, .mouseMoved, at: Fixture.cursorOnBuiltIn, now: deadline + 0.01),
+                       .pass(signal: .userActivity))
+        let movesBefore = h.moves.count
+        h.advance(0)
+        XCTAssertTrue(h.statusHistory.contains(.waiting(.userActive, displayName: Fixture.builtIn.name)))
+        if h.moves.count > movesBefore { XCTAssertEqual(h.moves[movesBefore], Fixture.cursorOnBuiltIn) }
+        XCTAssertEqual(h.retryDelays, [])
+    }
+
+    func test_NEW1_manager_relocatorLimit_sharesSnapshotDeadlineBasis_failsBeforeDeadline() throws {
+        let h = drivingHarness("NEW1_limit")
+        let deadline = try XCTUnwrap(h.lastSnapshot?.relocationDeadline)
+        h.advance(0.1)
+        let movesBefore = h.moves.count
+
+        // 입력 없이 메인만 늦었다 — 실행기 상한(시한 − 여유)을 넘긴 뒤 틱
+        h.fakes.scheduler.now = deadline - DockPinTuning.relocationDeadlineMargin + 0.01
+        h.advance(0)
+
+        XCTAssertEqual(h.retryDelays, [DockPinTuning.retryDelays[0]], "시간 초과처럼 실패 1회 → 재시도 예약")
+        XCTAssertEqual(h.moves.count, movesBefore + 1, "더 보낸 이동은 복원 1번뿐")
+        XCTAssertEqual(h.moves.last, Fixture.cursorOnBuiltIn)
+        XCTAssertEqual(h.lastSnapshot?.isRelocating, false)
+        XCTAssertNil(h.lastSnapshot?.relocationDeadline)
+    }
+
+    func test_NEW1_manager_atRelocatorLimitMinusEpsilon_driveContinues() throws {
+        let h = drivingHarness("NEW1_limit_edge")
+        let deadline = try XCTUnwrap(h.lastSnapshot?.relocationDeadline)
+        h.silentModes = [.final]    // 유지 구간이 끝나 마지막 조회를 요청하되 응답은 없다
+        h.advance(0.1)
+        h.fakes.scheduler.now = deadline - DockPinTuning.relocationDeadlineMargin - 0.01
+        h.advance(0)
+        XCTAssertEqual(h.manager.status, .relocating(displayName: Fixture.builtIn.name), "상한 전에는 계속")
+        XCTAssertEqual(h.retryDelays, [])
     }
 
     func test_AC8_3_manager_dockReturnsDuringDrive_verifiesThenPinned_restoresLast() {

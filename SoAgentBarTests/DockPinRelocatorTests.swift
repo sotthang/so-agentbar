@@ -714,4 +714,111 @@ final class DockPinRelocatorTests: XCTestCase {
         XCTAssertEqual(h.outcomes, [.failed])
         XCTAssertFalse(h.relocator.isActive)
     }
+    // MARK: - (r6.6) NEW-1 실행기 자체 벽시계 상한 (탭 시한보다 먼저 끝난다)
+
+    /// 시작 + relocationGuardWindow − relocationDeadlineMargin
+    private static let wallClockLimit = DockPinTuning.relocationGuardWindow - DockPinTuning.relocationDeadlineMargin
+
+    func test_NEW1_tuning_wallClockLimit_endsBeforeTapDeadline_andAfterNormalWorstCase() {
+        XCTAssertLessThan(Self.wallClockLimit, DockPinTuning.relocationGuardWindow)
+        // 정상 최악: 도달 0.224 + 유지 2.0(+틱 1) + 마지막 조회 1.2 ≤ 상한
+        XCTAssertLessThanOrEqual(0.224 + DockPinTuning.relocationTimeout + Fixture.tick + DockPinTuning.finalScanTimeout,
+                                 Self.wallClockLimit + Fixture.eps)
+    }
+
+    func test_NEW1_mainDelayedDuringApproach_pastLimit_failsWithoutFurtherMoves_restoresOnce() {
+        let h = Harness()
+        h.start()
+        h.ticks(3)
+        let movesBefore = h.poster.moves.count
+        XCTAssertEqual(movesBefore, 4, "사전 조건: 다가가기 중")
+        XCTAssertTrue(h.outcomes.isEmpty)
+
+        // 메인 지연(App Nap 등) — 다음 틱이 상한을 넘긴 뒤에야 돈다
+        h.scheduler.now = h.startedAt + Self.wallClockLimit + 0.01
+        h.advance(0)
+
+        XCTAssertEqual(h.outcomes, [.failed], "상한을 넘기면 시간 초과처럼 .failed")
+        XCTAssertEqual(h.poster.moves.count, movesBefore + 1, "더 보낸 이동은 복원 1번뿐")
+        XCTAssertEqual(h.poster.moves.last, Fixture.saved)
+        XCTAssertEqual(h.restoreArgs, [Fixture.saved], "복원 1번(D2)")
+        XCTAssertFalse(h.relocator.isActive)
+        XCTAssertEqual(h.scheduler.pendingCount(.driveTick), 0)
+
+        h.advance(5)
+        XCTAssertEqual(h.outcomes.count, 1, "completion 1번")
+        XCTAssertEqual(h.poster.moves.count, movesBefore + 1, "끝난 뒤 이동 없음")
+    }
+
+    func test_NEW1_mainDelayedDuringHold_pastLimit_failsWithoutHoldMoveOrQuickScan() {
+        let h = Harness()
+        h.start()
+        h.advance(1.0)
+        XCTAssertNotNil(h.reachedAt, "사전 조건: 유지 구간")
+        let movesBefore = h.poster.moves.count
+        let quickBefore = h.quickTimes.count
+
+        h.scheduler.now = h.startedAt + Self.wallClockLimit + 0.5
+        h.advance(0)
+
+        XCTAssertEqual(h.outcomes, [.failed])
+        XCTAssertEqual(h.poster.moves.count, movesBefore + 1, "유지 이동 없이 복원만")
+        XCTAssertEqual(h.poster.moves.last, Fixture.saved)
+        XCTAssertEqual(h.quickTimes.count, quickBefore, "단일 조회도 하지 않는다")
+        XCTAssertEqual(h.finalRequestCount, 0, "마지막 조회도 하지 않는다")
+        XCTAssertEqual(h.restoreArgs.count, 1)
+        XCTAssertEqual(h.scheduler.pendingCount(.driveTick), 0)
+        XCTAssertEqual(h.scheduler.pendingCount(.finalScanTimeout), 0)
+    }
+
+    func test_NEW1_mainDelayedDuringFinalWait_pastLimit_failsAndCancelsTimeout() {
+        let h = Harness()
+        h.start()
+        h.advance(2.6)
+        XCTAssertEqual(h.finalRequestCount, 1, "사전 조건: 마지막 조회 대기")
+        let movesBefore = h.poster.moves.count
+
+        h.scheduler.now = h.startedAt + Self.wallClockLimit + 0.01
+        h.advance(0)
+
+        XCTAssertEqual(h.outcomes, [.failed])
+        XCTAssertEqual(h.poster.moves.count, movesBefore + 1)
+        XCTAssertEqual(h.scheduler.pendingCount(.finalScanTimeout), 0)
+        h.locator.completePending(with: Fixture.onAnchor)
+        XCTAssertEqual(h.outcomes, [.failed], "늦게 온 마지막 조회 결과는 버린다")
+    }
+
+    func test_NEW1_userActivityBeatsWallClockLimit() {
+        let h = Harness()
+        h.start()
+        h.ticks(3)
+        h.activity += 1
+        h.scheduler.now = h.startedAt + Self.wallClockLimit + 0.01
+        h.advance(0)
+        XCTAssertEqual(h.outcomes, [.aborted(.userActivity)], "R8.6 — 활동 확인이 맨 먼저")
+    }
+
+    func test_NEW1_atLimitExactly_stillRuns() {
+        let h = Harness()
+        h.start()
+        h.ticks(3)
+        let movesBefore = h.poster.moves.count
+        h.scheduler.now = h.startedAt + Self.wallClockLimit - Fixture.eps
+        h.advance(0)
+        XCTAssertTrue(h.outcomes.isEmpty, "상한 이하에서는 계속")
+        XCTAssertEqual(h.poster.moves.count, movesBefore + 1, "다가가기 다음 점")
+    }
+
+    func test_NEW1_explicitStartedAt_isTheLimitBasis() {
+        let h = Harness()
+        let basis = h.scheduler.now - 1.0    // 매니저가 넘긴 시작 시각(스냅숏 시한 기준)
+        var outcomes: [DockPinDriveOutcome] = []
+        h.relocator.start(Fixture.plan, startedAt: basis) { outcomes.append($0) }
+        h.ticks(1)
+        XCTAssertTrue(outcomes.isEmpty)
+
+        h.scheduler.now = basis + Self.wallClockLimit + 0.01    // 시작 뒤 실제로는 ≈ 2.45 s
+        h.advance(0)
+        XCTAssertEqual(outcomes, [.failed], "상한은 넘겨받은 시작 시각 기준")
+    }
 }

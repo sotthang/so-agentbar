@@ -747,9 +747,12 @@ final class DockPinManager: ObservableObject {
     private func startDrive() {
         guard let layout, let point = layout.relocationTarget else { return }
         phase = .driving
-        relocationDeadline = deps.scheduler.now + DockPinTuning.relocationGuardWindow   // 스케줄러 시계 == 탭 시계(V5)
+        let startedAt = deps.scheduler.now
+        relocationDeadline = startedAt + DockPinTuning.relocationGuardWindow   // 스케줄러 시계 == 탭 시계(V5)
         publish()
-        relocator.start(DockPinDrivePlan(target: point, anchorID: layout.anchor.display.id, displays: layout.displays)) {
+        // (r6.6) NEW-1 — 실행기 벽시계 상한도 같은 시작 시각 기준(시한 − 여유)
+        relocator.start(DockPinDrivePlan(target: point, anchorID: layout.anchor.display.id, displays: layout.displays),
+                        startedAt: startedAt) {
             [weak self] outcome in self?.handleDriveOutcome(outcome)
         }
     }

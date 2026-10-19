@@ -2550,6 +2550,71 @@ final class DockPinManagerTests: XCTestCase {
         XCTAssertEqual(h.requestCount(.event), events + 2, "창이 지나면 다시 1회")
     }
 
+    // MARK: - NEW-2 (r6.7) — 대기 중인 settle에 계기를 합친다
+
+    private func sessionSettleFires(_ h: Harness) -> Int {
+        h.fakes.scheduler.firedKinds.filter { $0 == .sessionSettle }.count
+    }
+
+    /// 깨어남 직후(1 s 안) 위조 해제가 와도 깨어남은 이벤트 계기로 남는다 — 원래 깨어남+1 s에 오버라이드 해제
+    func test_NEW2_wakeThenSpoofedUnlock_staysEventTrigger_atOriginalDeadline() {
+        let h = overrideHarness("NEW2_wake_spoof")
+        let events = h.requestCount(.event)
+        h.fakes.systemEvents.send(.didWake)
+        h.advance(0.5)
+        h.fakes.systemEvents.send(.screenUnlocked)        // 위조 — 세션은 잠긴 적 없음
+        h.advance(0.4)                                     // 깨어남+0.9
+        XCTAssertEqual(h.requestCount(.event), events, "1 s 전에는 확인하지 않는다")
+        h.advance(0.2)                                     // 깨어남+1.1 (위조 해제+0.6)
+        XCTAssertEqual(h.requestCount(.event), events + 1, "깨어남+1 s에 이벤트 계기 조회 1회")
+        XCTAssertNotEqual(h.manager.status, .movedByUser(displayName: Fixture.sidecar.name), "오버라이드 해제")
+        XCTAssertEqual(h.moves.first, Fixture.firstApproach, "되돌린다")
+    }
+
+    /// 깨어남 + 위조 해제 합류 settle도 실패 횟수를 초기화한다(.failed(4) → 다시 시도)
+    func test_NEW2_wakeThenSpoofedUnlock_resetsFailureCount() {
+        let h = failedFourTimesHarness("NEW2_wake_spoof_failed")
+        let before = h.moves.count
+        h.fakes.systemEvents.send(.didWake)
+        h.advance(0.5)
+        h.fakes.systemEvents.send(.screenUnlocked)        // 위조
+        h.advance(0.6)                                     // 깨어남+1.1
+        XCTAssertGreaterThan(h.moves.count, before, "실패 횟수 초기화 → 다시 되돌리기")
+        XCTAssertNotEqual(h.manager.status, .failed(attempts: 4))
+    }
+
+    /// 0.5 s마다 반복되는 위조 해제가 깨어남 settle을 미루지 못한다 — 깨어남+1 s에 1번 실행
+    func test_NEW2_repeatedSpoofedUnlocks_cannotPostponeWakeSettle() {
+        let h = overrideHarness("NEW2_wake_postpone")
+        let events = h.requestCount(.event)
+        let settles = sessionSettleFires(h)
+        h.fakes.systemEvents.send(.didWake)
+        h.advance(0.5)
+        h.fakes.systemEvents.send(.screenUnlocked)        // 깨어남+0.5
+        h.advance(0.45)
+        h.fakes.systemEvents.send(.screenUnlocked)        // 깨어남+0.95
+        h.advance(0.1)                                     // 깨어남+1.05
+        XCTAssertEqual(sessionSettleFires(h), settles + 1, "깨어남+1 s에 settle 1번")
+        XCTAssertEqual(h.requestCount(.event), events + 1, "이벤트 계기 조회 1회")
+        XCTAssertNotEqual(h.manager.status, .movedByUser(displayName: Fixture.sidecar.name), "오버라이드 해제")
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.sessionSettle), 0, "남은 settle 없음")
+    }
+
+    /// 위조 해제만 연달아 오면 합쳐도 이벤트 계기가 아니다(가장 이른 마감에 1번, 다시 읽기만)
+    func test_NEW2_spoofedUnlocksOnly_mergedSettle_staysPlainRecheck() {
+        let h = overrideHarness("NEW2_spoof_only")
+        let events = h.requestCount(.event)
+        let settles = sessionSettleFires(h)
+        h.fakes.systemEvents.send(.screenUnlocked)
+        h.advance(0.5)
+        h.fakes.systemEvents.send(.screenUnlocked)
+        h.advance(0.6)                                     // 첫 해제+1.1
+        XCTAssertEqual(sessionSettleFires(h), settles + 1, "첫 해제+1 s에 settle 1번")
+        XCTAssertEqual(h.requestCount(.event), events, "이벤트 계기 조회 0회")
+        XCTAssertEqual(h.manager.status, .movedByUser(displayName: Fixture.sidecar.name), "오버라이드 유지")
+        XCTAssertTrue(h.moves.isEmpty)
+    }
+
     /// 세션이 잠기지 않았는데 온 잠금 알림은 되돌리기를 멈추지 않는다
     func test_VULN003_spoofedLockWhileDriving_noAbort() {
         let h = drivingHarness("VULN003_lock")

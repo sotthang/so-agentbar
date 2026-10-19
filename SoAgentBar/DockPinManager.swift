@@ -69,6 +69,7 @@ final class DockPinManager: ObservableObject {
     private var debounceToken: DockPinCancellable?
     private var waitRecheckToken: DockPinCancellable?
     private var settleToken: DockPinCancellable?
+    private var settleIntent = SettleIntent()               // (r6.7) NEW-2 — 대기 중인 settle에 합쳐진 계기
     private var permissionRecheckTokens: [DockPinCancellable] = []
     private var optionCheckTokens: [DockPinCancellable] = []
     // (r5·r6) R9.6 새 프로세스 확인 — 동시에 1개. 시한·정리 때 세대를 올리고 두 토큰을 cancel·nil(arch §12 I13)
@@ -576,15 +577,29 @@ final class DockPinManager: ObservableObject {
         evaluateRelocation(.poll)
     }
 
+    /// 대기 중인 settle 하나에 합쳐진 계기들. 잠금 해제가 아닌 이벤트 계기(깨어남)가 하나라도 있으면 그대로 이벤트 계기다
+    private struct SettleIntent {
+        var eventTrigger = false          // 깨어남 등 잠금 해제가 아닌 이벤트 계기
+        var unlockTrigger = false         // 잠금 해제발 — settle 때 실제 해제인지 판정
+    }
+
     /// R10.2/R10.3 — 1 s 뒤 다시 읽고, 이벤트 계기면 오버라이드·실패 횟수를 초기화한다.
     /// (r6.3) VULN-003 — 잠금 해제발은 실제 잠김 → 해제가 확인되고 상한 창 밖일 때만 이벤트 계기다. 아니면 다시 읽기만 한다
+    /// (r6.7) NEW-2 — 이미 대기 중이면 다시 예약하지 않고(가장 이른 마감 유지) 계기만 합친다
     private func scheduleSettle(isEventTrigger: Bool, fromUnlock: Bool = false) {
-        cancel(&settleToken)
+        if settleToken == nil { settleIntent = SettleIntent() }
+        if isEventTrigger {
+            if fromUnlock { settleIntent.unlockTrigger = true } else { settleIntent.eventTrigger = true }
+        }
+        guard settleToken == nil else { return }
         settleToken = deps.scheduler.schedule(after: DockPinTuning.settleAfterSessionChange, kind: .sessionSettle) { [weak self] in
             guard let self else { return }
             self.settleToken = nil
+            let intent = self.settleIntent
+            self.settleIntent = SettleIntent()
             self.readAll()
-            let isEvent = isEventTrigger && (!fromUnlock || self.consumeGenuineUnlock())
+            let genuineUnlock = intent.unlockTrigger && self.consumeGenuineUnlock()
+            let isEvent = intent.eventTrigger || genuineUnlock
             self.reconcile(scanOnActivation: !isEvent)
             guard isEvent, self.activation == .active, !self.phase.isRelocating else { return }
             self.releaseOverrideAndRecheck()

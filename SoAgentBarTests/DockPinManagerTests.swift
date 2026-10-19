@@ -1368,6 +1368,330 @@ final class DockPinManagerTests: XCTestCase {
         XCTAssertTrue(kinds.contains(.repeating(.prefsPoll)), "prefsPoll 경로에서 프로브: \(kinds)")
     }
 
+    // MARK: AC9.8 a–c · AC9.9 · AC12.4 (r5·r6, 커밋 11e) — 새 프로세스 확인: 주기·시한·동시성·세대
+
+    // 11e 범위: freshTrustCheck 5초 반복 타이머 → permission.freshTrustCheck 1회, 2초 시한(.freshTrustTimeout),
+    // 한 번에 하나, 정리 때 세대 올림 + 토큰 cancel·nil(I13), N20 로그. applyFresh는 세대 확인과 로그만 하고
+    // H(hasPermission)를 바꾸지 않는다(래치·적용은 11f). 그래서 아래 "결과가 상태를 바꾸지 않는다" 단정은 11f에서 고친다.
+    // 가짜 확인은 기본 무응답(보류)이다. 활성화 = t0, 첫 확인 = t0+5, 그 시한 = t0+7, 다음 확인 = t0+10.
+
+    /// AC9.9 — .active + 탭 실행 중: 5초마다 정확히 1회, 그 전에는 0회
+    func test_AC9_9_active_freshCheckFiresEvery5s_exactlyOncePerTick() {
+        let h = harness("AC9_9_active")
+        h.start()
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name), "사전 조건")
+        XCTAssertEqual(h.fakes.permission.freshCount, 0, "시작 순간에는 확인하지 않는다(주기 타이머만)")
+        h.advance(4.9)
+        XCTAssertEqual(h.fakes.permission.freshCount, 0, "5초 전에는 0회")
+        h.advance(0.1)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "t0+5에 1회")
+        XCTAssertTrue(h.fakes.permission.isFreshPending, "확인이 진행 중")
+        h.fakes.permission.completeFresh(true)
+        XCTAssertFalse(h.fakes.permission.isFreshPending)
+        h.advance(4.9)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "다음 주기 전")
+        h.advance(0.1)
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "t0+10에 1회 더(응답 뒤 토큰이 치워졌다)")
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.repeating(.freshTrustCheck)), 1, "반복 타이머는 종류당 1개")
+    }
+
+    /// AC9.9 — 권한 없음 + 화면 1대(.needsPermission)에서도 돈다(R4.4 예외)
+    func test_AC9_9_needsPermissionSingleDisplay_freshCheckRuns() {
+        let h = harness("AC9_9_np1")
+        h.fakes.permission.trusted = false
+        h.fakes.displays.displays = [Fixture.builtIn]
+        h.start()
+        XCTAssertEqual(h.manager.status, .needsPermission, "사전 조건")
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "t0+5에 1회")
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "10초 동안 2회(첫 확인은 t0+7 시한으로 끝났다)")
+        XCTAssertEqual(h.fakes.permission.freshCancelCount, 1, "응답 없는 첫 확인은 시한에 취소")
+    }
+
+    /// AC9.9 — 꺼짐·.singleDisplay(권한 있음)·.dockNotBottom·.spacesOff에서는 0회. 양성 짝: 같은 하네스로 켜거나 조건을 풀면 돈다
+    func test_AC9_9_disabled_zeroFreshChecks_thenEnabled_runs() {
+        let h = harness("AC9_9_off", enabled: false)
+        h.start()
+        h.advance(10)
+        XCTAssertEqual(h.fakes.permission.freshCount, 0, "isEnabled == false → 0")
+        XCTAssertEqual(h.manager.status, .off)
+        h.manager.setEnabled(true)
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "양성 짝: 켜면 5초 뒤 1회")
+    }
+
+    func test_AC9_9_singleDisplayWithPermission_zeroFreshChecks_thenSecondDisplay_runs() {
+        let h = harness("AC9_9_single")
+        h.fakes.displays.displays = [Fixture.builtIn]
+        h.start()
+        XCTAssertEqual(h.manager.status, .inactive(.singleDisplay), "사전 조건")
+        h.advance(10)
+        XCTAssertEqual(h.fakes.permission.freshCount, 0, ".singleDisplay(권한 있음) → 0")
+        h.fakes.displays.displays = DockPinFixtures.thisMac
+        h.fakes.displayChanges.send(.reconfigured)
+        h.advance(0.5)
+        XCTAssertTrue(h.fakes.tap.isRunning, "사전 조건: 화면 2대 → 탭 실행")
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "양성 짝: 탭 실행 중이면 5초 뒤 1회")
+    }
+
+    func test_AC9_9_dockNotBottom_zeroFreshChecks_thenBottom_runs() {
+        let h = harness("AC9_9_left")
+        h.fakes.dockPreferences.orientationValue = .left
+        h.start()
+        XCTAssertEqual(h.manager.status, .inactive(.dockNotBottom(.left)), "사전 조건")
+        h.advance(10)
+        XCTAssertEqual(h.fakes.permission.freshCount, 0, ".dockNotBottom → 0")
+        h.fakes.dockPreferences.orientationValue = .bottom
+        h.advance(3)                                          // prefsPoll → 활성(t0+12)
+        XCTAssertTrue(h.fakes.tap.isRunning, "사전 조건: 아래쪽 → 탭 실행")
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "양성 짝: 활성 뒤 5초에 1회")
+    }
+
+    func test_AC9_9_spacesOff_zeroFreshChecks() {
+        let h = harness("AC9_9_spaces")
+        h.fakes.dockPreferences.separateSpaces = false
+        h.start()
+        XCTAssertEqual(h.manager.status, .inactive(.spacesOff), "사전 조건")
+        h.advance(10)
+        XCTAssertEqual(h.fakes.permission.freshCount, 0, ".spacesOff → 0")
+    }
+
+    /// AC9.9 — 탭 재시도 중(.active + .retrying)에는 돌지 않는다
+    func test_AC9_9_tapRetrying_zeroFreshChecks_thenRunning_runs() {
+        let h = harness("AC9_9_retry")
+        h.fakes.tap.startSucceeds = false
+        h.start()
+        XCTAssertEqual(h.fakes.scheduler.pendingRepeatingKinds, [.permissionPoll, .tapRetry], "사전 조건: 재시도 중")
+        h.advance(0.9)
+        h.fakes.tap.startSucceeds = true
+        h.advance(0.1)                                        // tapRetry 1초 → 실행 중(t0+1)
+        XCTAssertTrue(h.fakes.tap.isRunning, "사전 조건")
+        XCTAssertEqual(h.fakes.permission.freshCount, 0, "재시도 중에는 0")
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "양성 짝: 실행 중이 되고 5초 뒤 1회")
+    }
+
+    /// AC9.8(a) — 무응답이면 2.0초 뒤 취소 1회, start/stop 0회, 상태 그대로(L = nil)
+    func test_AC9_8a_noResponse_timeoutAt2s_cancelsOnce_noStateChange() {
+        let h = harness("AC9_8a")
+        h.start()
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "사전 조건: 확인 시작")
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.freshTrustTimeout), 1, "시한 1개 예약")
+        XCTAssertEqual(h.fakes.scheduler.timeUntilNext(.freshTrustTimeout) ?? -1, DockPinTuning.freshTrustCheckTimeout,
+                       accuracy: 1e-9, "시한 2.0초")
+        let starts = h.fakes.tap.startCount, stops = h.fakes.tap.stopCount
+        let status = h.manager.status
+        h.advance(1.9)
+        XCTAssertEqual(h.fakes.permission.freshCancelCount, 0, "2초 전에는 취소 없음")
+        XCTAssertTrue(h.fakes.permission.isFreshPending)
+        h.advance(0.1)
+        XCTAssertEqual(h.fakes.permission.freshCancelCount, 1, "2.0초에 취소 1회")
+        XCTAssertFalse(h.fakes.permission.isFreshPending)
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.freshTrustTimeout), 0, "시한 예약이 남지 않는다")
+        XCTAssertEqual(h.fakes.tap.startCount, starts, "start 0회")
+        XCTAssertEqual(h.fakes.tap.stopCount, stops, "stop 0회")
+        XCTAssertEqual(h.manager.status, status, "상태 그대로")
+    }
+
+    /// AC9.8(a) — 시한 뒤 늦게 온 결과는 버린다. I13: 시한이 토큰을 치웠으므로 다음 주기 확인은 정상 시작
+    func test_AC9_8a_resultAfterTimeoutIgnored_nextTickStartsNewCheck() {
+        let h = harness("AC9_8a_late")
+        h.start()
+        h.advance(7)                                          // t0+5 시작, t0+7 시한
+        XCTAssertEqual(h.fakes.permission.freshCancelCount, 1, "사전 조건: 시한 취소")
+        let starts = h.fakes.tap.startCount, stops = h.fakes.tap.stopCount
+        h.fakes.permission.completeFresh(false)
+        XCTAssertEqual(h.fakes.tap.stopCount, stops, "늦은 결과 → stop 0회")
+        XCTAssertEqual(h.fakes.tap.startCount, starts)
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name), "상태 그대로")
+        h.advance(3)
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "t0+10에 새 확인(시한이 토큰을 nil로 만들었다, I13)")
+        XCTAssertTrue(h.fakes.permission.isFreshPending)
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.freshTrustTimeout), 1, "새 시한 1개")
+    }
+
+    /// AC9.8(a) — 결과 nil도 변화 없음. 응답하면 시한 예약이 치워지고 확인을 취소하지 않는다
+    func test_AC9_8a_resultNil_noStateChange_timeoutCleared() {
+        let h = harness("AC9_8a_nil")
+        h.start()
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "사전 조건")
+        let starts = h.fakes.tap.startCount, stops = h.fakes.tap.stopCount
+        h.fakes.permission.completeFresh(nil)
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.freshTrustTimeout), 0, "응답 → 시한 cancel")
+        h.advance(2)
+        XCTAssertEqual(h.fakes.permission.freshCancelCount, 0, "응답한 확인은 취소하지 않는다")
+        XCTAssertEqual(h.fakes.tap.startCount, starts)
+        XCTAssertEqual(h.fakes.tap.stopCount, stops)
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+        h.advance(3)
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "다음 주기 확인")
+    }
+
+    /// 11e: 결과가 프로세스 안 판정과 달라도 H를 바꾸지 않는다(적용은 11f). 활성 + r = false
+    func test_11e_active_freshFalse_whileInProcessTrue_statusUnchanged_noStop() {
+        let h = harness("11e_active_false")
+        h.start()
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "사전 조건")
+        let stops = h.fakes.tap.stopCount
+        h.fakes.permission.completeFresh(false)
+        XCTAssertEqual(h.fakes.tap.stopCount, stops, "11e: stop 0회")
+        XCTAssertTrue(h.fakes.tap.isRunning)
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name), "11e: 상태 그대로")
+        h.advance(1)                                          // 다음 폴링 틱(t = true)
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+    }
+
+    /// 11e: .needsPermission + r = true(t = false)도 H 그대로
+    func test_11e_needsPermission_freshTrue_whileInProcessFalse_statusUnchanged_noStart() {
+        let h = harness("11e_np_true")
+        h.fakes.permission.trusted = false
+        h.start()
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "사전 조건")
+        h.fakes.permission.completeFresh(true)
+        XCTAssertEqual(h.fakes.tap.startCount, 0, "11e: start 0회")
+        XCTAssertEqual(h.manager.status, .needsPermission, "11e: 상태 그대로")
+    }
+
+    /// AC9.8(b) — 한 번에 하나. 새 확인이 시작될 때 이전 확인이 끝나 있어야 한다(20초, 무응답·응답 섞음)
+    func test_AC9_8b_atMostOneFreshCheckInFlight() {
+        let h = harness("AC9_8b")
+        h.start()
+        var overlaps = 0
+        h.fakes.permission.onFresh = { [unowned h] in
+            if h.fakes.permission.isFreshPending { overlaps += 1 }
+        }
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "사전 조건")
+        h.advance(5)                                          // 무응답 → t0+7 시한 → t0+10 새 확인
+        h.fakes.permission.completeFresh(true)
+        h.advance(10)
+        XCTAssertEqual(h.fakes.permission.freshCount, 4, "t0+5, 10, 15, 20")
+        XCTAssertEqual(overlaps, 0, "진행 중인 확인이 있는 채로 새 확인을 시작하지 않는다")
+        XCTAssertLessThanOrEqual(h.fakes.scheduler.pendingCount(.freshTrustTimeout), 1, "시한 예약도 1개 이하")
+    }
+
+    /// AC9.8(c) — 진행 중 setEnabled(false): 확인·시한 cancel, 늦은 결과는 아무것도 바꾸지 않는다
+    func test_AC9_8c_disableWhileInFlight_cancelsCheckAndTimeout_lateResultIgnored() {
+        let h = harness("AC9_8c")
+        h.start()
+        h.advance(5)
+        XCTAssertTrue(h.fakes.permission.isFreshPending, "사전 조건")
+        h.manager.setEnabled(false)
+        XCTAssertEqual(h.fakes.permission.freshCancelCount, 1, "정리 → 확인 cancel(자식 종료)")
+        XCTAssertFalse(h.fakes.permission.isFreshPending)
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.freshTrustTimeout), 0, "시한 예약 cancel")
+        let starts = h.fakes.tap.startCount, stops = h.fakes.tap.stopCount
+        h.fakes.permission.completeFresh(true)
+        XCTAssertEqual(h.fakes.tap.startCount, starts, "늦은 결과 → 아무것도 안 바뀐다")
+        XCTAssertEqual(h.fakes.tap.stopCount, stops)
+        XCTAssertEqual(h.manager.status, .off)
+        h.advance(10)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "꺼진 뒤 새 확인 0회")
+        XCTAssertEqual(h.fakes.scheduler.totalPendingCount, 0, "남은 예약 0")
+    }
+
+    /// AC9.8(c) + I13 — 정리가 토큰을 nil로 만들어서, 다시 켜면 주기 확인이 정상 시작된다(건너뛰기 고착 없음)
+    func test_AC9_8c_disableWhileInFlight_thenReEnable_freshChecksResume() {
+        let h = harness("AC9_8c_reenable")
+        h.start()
+        h.advance(5)
+        XCTAssertTrue(h.fakes.permission.isFreshPending, "사전 조건")
+        h.manager.setEnabled(false)
+        h.manager.setEnabled(true)
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "다시 켜고 5초 뒤 새 확인")
+        XCTAssertTrue(h.fakes.permission.isFreshPending)
+        h.fakes.permission.completeFresh(false)
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name), "11e: 결과는 상태를 바꾸지 않는다")
+    }
+
+    /// R12 shutdown도 같은 정리: 확인·시한 cancel, 늦은 결과 무시
+    func test_AC9_8c_shutdownWhileInFlight_cancelsCheckAndTimeout() {
+        let h = harness("AC9_8c_shutdown")
+        h.start()
+        h.advance(5)
+        XCTAssertTrue(h.fakes.permission.isFreshPending, "사전 조건")
+        h.manager.shutdown()
+        XCTAssertEqual(h.fakes.permission.freshCancelCount, 1)
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.freshTrustTimeout), 0)
+        h.fakes.permission.completeFresh(false)
+        h.advance(10)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1)
+        XCTAssertEqual(h.fakes.scheduler.totalPendingCount, 0)
+        XCTAssertEqual(h.manager.status, .off)
+    }
+
+    /// 진행 중 화면 1대(권한 있음)로 전환: 주기 확인이 멈추고, 늦은 결과는 아무것도 바꾸지 않는다.
+    /// (arch I12: reconcile은 확인을 취소하지 않을 수 있다 — 그래서 취소 시점은 단정하지 않고, 시한이 지난 뒤
+    /// 진행 중 확인·시한 예약이 남지 않는다는 것만 단정한다)
+    func test_11e_singleDisplayTransitionWhileInFlight_noMoreChecks_lateResultIgnored() {
+        let h = harness("11e_toSingle")
+        h.start()
+        h.advance(5)
+        XCTAssertTrue(h.fakes.permission.isFreshPending, "사전 조건")
+        h.fakes.displays.displays = [Fixture.builtIn]
+        h.fakes.displayChanges.send(.reconfigured)
+        h.advance(0.5)                                        // t0+5.5
+        XCTAssertEqual(h.manager.status, .inactive(.singleDisplay), "사전 조건")
+        XCTAssertEqual(h.fakes.scheduler.pendingRepeatingKinds, [], "반복 타이머 0개")
+        let starts = h.fakes.tap.startCount, stops = h.fakes.tap.stopCount
+        h.fakes.permission.completeFresh(false)
+        XCTAssertEqual(h.fakes.tap.startCount, starts, "늦은 결과 → 변화 없음")
+        XCTAssertEqual(h.fakes.tap.stopCount, stops)
+        XCTAssertEqual(h.manager.status, .inactive(.singleDisplay))
+        h.advance(10)
+        XCTAssertEqual(h.fakes.permission.freshCount, 1, "화면 1대(권한 있음) 동안 새 확인 0회")
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.freshTrustTimeout), 0, "시한 예약이 남지 않는다")
+        XCTAssertEqual(h.fakes.scheduler.totalPendingCount, 0, "화면 1대 → 예약 0개")
+    }
+
+    /// 무응답 상태로 화면 1대 전환 → 시한이 지나면 진행 중 확인이 남지 않고, 다시 2대가 되면 확인이 재개된다(I13)
+    func test_11e_singleDisplayTransitionNoResponse_thenDual_freshChecksResume() {
+        let h = harness("11e_toSingleBack")
+        h.start()
+        h.advance(5)
+        XCTAssertTrue(h.fakes.permission.isFreshPending, "사전 조건")
+        h.fakes.displays.displays = [Fixture.builtIn]
+        h.fakes.displayChanges.send(.reconfigured)
+        h.advance(0.5)
+        XCTAssertEqual(h.manager.status, .inactive(.singleDisplay), "사전 조건")
+        h.advance(5)                                          // t0+10.5 — 시한(t0+7) 지남
+        XCTAssertFalse(h.fakes.permission.isFreshPending, "진행 중 확인이 남지 않는다")
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.freshTrustTimeout), 0)
+        h.fakes.displays.displays = DockPinFixtures.thisMac
+        h.fakes.displayChanges.send(.reconfigured)
+        h.advance(0.5)                                        // t0+11 활성
+        XCTAssertTrue(h.fakes.tap.isRunning, "사전 조건")
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, 2, "다시 활성 → 5초 뒤 새 확인")
+    }
+
+    /// AC12.4 — 무동작 매니저: 새 프로세스 확인 0회(10초 진행 포함). 양성 짝: 같은 설정의 일반 매니저는 돈다
+    func test_AC12_4_inertManager_zeroFreshChecks() {
+        let h = harness("AC12_4_fresh", enabled: true, isInert: true)
+        h.manager.startIfEnabled()
+        h.manager.setEnabled(true)
+        h.manager.moveBackNow()
+        h.advance(10)
+        h.manager.shutdown()
+        h.advance(10)
+        XCTAssertEqual(h.fakes.permission.freshCount, 0, "무동작 → 새 프로세스 확인 0회")
+        XCTAssertEqual(h.fakes.permission.freshCancelCount, 0)
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.freshTrustTimeout), 0)
+
+        let live = harness("AC12_4_fresh_live", enabled: true)
+        live.start()
+        live.advance(10)
+        XCTAssertGreaterThanOrEqual(live.fakes.permission.freshCount, 1, "양성 짝: 일반 매니저는 10초에 1회 이상")
+    }
+
     // MARK: - AC10 세션
 
     func test_AC10_1_lockedAtStart_noEvents_waitingLocked_unlockResumes() {

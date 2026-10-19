@@ -1,6 +1,7 @@
 import Combine
 import CoreGraphics
 import Foundation
+import os
 
 // SPEC-004 Dock Pin — 조정자 (arch §2.10, §3)
 // @MainActor ObservableObject. 설정 소유(R1), 활성화·자동 on/off(R4), 탭 수명(R5.8–5.11), Option 존중(R7),
@@ -66,6 +67,13 @@ final class DockPinManager: ObservableObject {
     private var settleToken: DockPinCancellable?
     private var permissionRecheckTokens: [DockPinCancellable] = []
     private var optionCheckTokens: [DockPinCancellable] = []
+    // (r5·r6) R9.6 새 프로세스 확인 — 동시에 1개. 시한·정리 때 세대를 올리고 두 토큰을 cancel·nil(arch §12 I13)
+    private var freshCheckToken: DockPinCancellable?        // != nil ⇔ 진행 중
+    private var freshTimeoutToken: DockPinCancellable?
+    private var freshGeneration = 0
+
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.sotthang.soagentbar",
+                                       category: "DockPin")
 
     private lazy var relocator = DockPinRelocator(
         poster: deps.poster, locator: deps.locator, scheduler: deps.scheduler,
@@ -317,7 +325,8 @@ final class DockPinManager: ObservableObject {
             reconcile()
         case .tapWatchdog: _ = deps.tap.reenableIfNeeded()       // R5.8
         case .tapRetry: retryTap()
-        case .freshTrustCheck: break                             // R9.6 — 실행은 11e에서 붙인다
+        case .freshTrustCheck:                                   // R9.6, AC9.8 b — 진행 중이면 이번 회차 건너뜀
+            if freshCheckToken == nil { startFreshCheck(.periodic) }
         }
         guard isEnabled, !isShutDown, repeating[kind] == nil,
               DockPinPolicy.requiredTimers(activation: activation, tapState: tapState).contains(kind) else { return }
@@ -358,6 +367,53 @@ final class DockPinManager: ObservableObject {
         } else if !hasPermission && trusted {
             hasPermission = true
             reconcile()
+        }
+    }
+
+    // MARK: - 새 프로세스 확인 (R9.6, arch §3.3)
+
+    /// 주기·주기 밖 공통. 동시에 1개. 시한(2 s)이 지나면 확인을 취소하고 결과 nil로 처리한다(AC9.8 a)
+    private func startFreshCheck(_ origin: DockPinFreshCheckOrigin) {
+        guard freshCheckToken == nil else { return }
+        freshGeneration += 1
+        let generation = freshGeneration
+        freshTimeoutToken = deps.scheduler.schedule(after: DockPinTuning.freshTrustCheckTimeout,
+                                                    kind: .freshTrustTimeout) { [weak self] in
+            guard let self else { return }
+            self.freshTimeoutToken = nil
+            self.invalidateFreshCheck()
+            self.applyFresh(nil, reason: "timeout", origin: origin)
+        }
+        let token = deps.permission.freshTrustCheck { [weak self] result in
+            guard let self, generation == self.freshGeneration else { return }
+            self.cancel(&self.freshTimeoutToken)
+            self.freshCheckToken = nil
+            let reason = result == nil ? self.deps.permission.lastFreshFailure.map { "\($0)" } ?? "-" : "-"
+            self.applyFresh(result, reason: reason, origin: origin)
+        }
+        // completion이 동기로 왔으면 시한 토큰이 이미 치워졌다 — 그때는 대입하지 않는다
+        if generation == freshGeneration, freshTimeoutToken != nil { freshCheckToken = token }
+    }
+
+    /// 세대 규칙(arch §3.3, §12 I13) — 진행 중 확인·시한을 cancel하고 두 토큰을 nil로 만든 뒤 세대를 올린다
+    private func invalidateFreshCheck() {
+        cancel(&freshCheckToken)
+        cancel(&freshTimeoutToken)
+        freshGeneration += 1
+    }
+
+    /// R9.6 7-2 — 11e: 가드와 로그(N20)만. H는 바꾸지 않는다(적용은 11f)
+    private func applyFresh(_ result: Bool?, reason: String, origin: DockPinFreshCheckOrigin) {
+        let r = result.map { $0 ? "1" : "0" } ?? "nil(\(reason))"
+        let t = hasPermission ? "1" : "0"
+        guard isEnabled, !isShutDown,
+              DockPinPolicy.requiredTimers(activation: activation, tapState: tapState).contains(.freshTrustCheck) else {
+            Self.logger.debug("fresh r=\(r, privacy: .public) dropped (not required)")           // arch §12 I12
+            return
+        }
+        Self.logger.debug("fresh r=\(r, privacy: .public) t=\(t, privacy: .public) origin=\("\(origin)", privacy: .public)")
+        if let result, result != hasPermission {
+            Self.logger.debug("fresh-mismatch r=\(r, privacy: .public) t=\(t, privacy: .public)")
         }
     }
 
@@ -663,6 +719,7 @@ final class DockPinManager: ObservableObject {
         cancel(&settleToken)
         cancelPermissionRechecks()
         cancelOptionChecks()
+        invalidateFreshCheck()                                   // 자식 종료 + 늦은 결과 버림(AC9.8 c)
         deps.locator.cancelAll()
         activation = .inactive(.off)
         phase = .idle

@@ -76,6 +76,11 @@ final class DockPinManager: ObservableObject {
     // (r6) R9.6 7번 — 래치 L. 새 프로세스 결과가 프로세스 안 판정과 달랐던 값(7-2).
     // 7-4: reconcile 뒤 requiredTimers에 freshTrustCheck가 없거나 정리하면 nil. 권한 알림으로는 바뀌지 않는다
     private var trustLatch: Bool?
+    // (r6.3) VULN-003 — 분산 잠금 알림은 누구나 보낼 수 있다. 세션을 직접 읽어 본 잠김만 믿는다
+    /// 세션 읽기로 잠김을 본 뒤 아직 실제 해제로 소비하지 않았다
+    private var observedLocked = false
+    /// 마지막으로 이벤트 계기로 인정한 잠금 해제 시각(minEventTriggerInterval 상한)
+    private var lastUnlockTriggerAt: TimeInterval?
 
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.sotthang.soagentbar",
                                        category: "DockPin")
@@ -201,6 +206,7 @@ final class DockPinManager: ObservableObject {
 
     private func refreshSessionState() {
         session.locked = deps.session.isScreenLocked()
+        if session.locked { observedLocked = true }
         session.onConsole = deps.session.isOnConsole()
     }
 
@@ -504,12 +510,12 @@ final class DockPinManager: ObservableObject {
         case .didWake, .screensDidWake:
             session.asleep = false
             scheduleSettle(isEventTrigger: true)
-        case .screenLocked:
-            session.locked = true
+        case .screenLocked:                                       // VULN-003 — 세션이 실제로 잠겼을 때만 멈춘다
+            refreshSessionState()
+            guard session.locked else { return }
             interruptDrive(.locked)
-        case .screenUnlocked:
-            session.locked = false
-            scheduleSettle(isEventTrigger: true)
+        case .screenUnlocked:                                     // VULN-003 — 실제 잠김 → 해제인지는 settle 때 판정
+            scheduleSettle(isEventTrigger: true, fromUnlock: true)
         case .sessionResignedActive:
             session.onConsole = false
             interruptDrive(.sessionInactive)
@@ -535,17 +541,30 @@ final class DockPinManager: ObservableObject {
         evaluateRelocation(.poll)
     }
 
-    /// R10.2/R10.3 — 1 s 뒤 다시 읽고, 이벤트 계기면 오버라이드·실패 횟수를 초기화한다
-    private func scheduleSettle(isEventTrigger: Bool) {
+    /// R10.2/R10.3 — 1 s 뒤 다시 읽고, 이벤트 계기면 오버라이드·실패 횟수를 초기화한다.
+    /// (r6.3) VULN-003 — 잠금 해제발은 실제 잠김 → 해제가 확인되고 상한 창 밖일 때만 이벤트 계기다. 아니면 다시 읽기만 한다
+    private func scheduleSettle(isEventTrigger: Bool, fromUnlock: Bool = false) {
         cancel(&settleToken)
         settleToken = deps.scheduler.schedule(after: DockPinTuning.settleAfterSessionChange, kind: .sessionSettle) { [weak self] in
             guard let self else { return }
             self.settleToken = nil
             self.readAll()
-            self.reconcile(scanOnActivation: !isEventTrigger)
-            guard isEventTrigger, self.activation == .active, !self.phase.isRelocating else { return }
+            let isEvent = isEventTrigger && (!fromUnlock || self.consumeGenuineUnlock())
+            self.reconcile(scanOnActivation: !isEvent)
+            guard isEvent, self.activation == .active, !self.phase.isRelocating else { return }
             self.releaseOverrideAndRecheck()
         }
+    }
+
+    /// VULN-003 — 세션 읽기로 잠김을 본 적이 있고 지금은 풀렸으면 그 잠김을 소비한다.
+    /// 소비한 해제도 직전 인정 해제로부터 minEventTriggerInterval 안이면 이벤트 계기가 아니다
+    private func consumeGenuineUnlock() -> Bool {
+        guard observedLocked, !session.locked else { return false }
+        observedLocked = false
+        let now = deps.scheduler.now
+        if let last = lastUnlockTriggerAt, now - last < DockPinTuning.minEventTriggerInterval { return false }
+        lastUnlockTriggerAt = now
+        return true
     }
 
     // MARK: - Option 통과 (R7)
@@ -786,6 +805,8 @@ final class DockPinManager: ObservableObject {
         optionPasses = [:]
         optionPassFloor = [:]
         session.asleep = false
+        observedLocked = false
+        lastUnlockTriggerAt = nil
     }
 
     private func cancel(_ token: inout DockPinCancellable?) {

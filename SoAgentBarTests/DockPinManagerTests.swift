@@ -2289,6 +2289,118 @@ final class DockPinManagerTests: XCTestCase {
         XCTAssertEqual(h.manager.status, .waiting(.notOnConsole, displayName: Fixture.builtIn.name))
     }
 
+    // MARK: - VULN-003 (r6.3) — 분산 잠금 알림 위조 방어
+
+    /// 실제로 잠긴 적 없이 온 잠금 해제 알림은 오버라이드를 풀지 않는다
+    func test_VULN003_spoofedUnlock_withoutRealLock_keepsOverride() {
+        let h = overrideHarness("VULN003_unlock_override")
+        let events = h.requestCount(.event)
+        h.fakes.systemEvents.send(.screenUnlocked)        // 세션은 계속 잠기지 않음
+        h.advance(1.1)
+        XCTAssertEqual(h.manager.status, .movedByUser(displayName: Fixture.sidecar.name), "오버라이드 유지")
+        XCTAssertTrue(h.moves.isEmpty, "되돌리기 0회")
+        XCTAssertEqual(h.requestCount(.event), events, "이벤트 계기 조회 0회")
+    }
+
+    /// 위조 해제는 실패 횟수·예약된 재시도를 건드리지 않는다
+    func test_VULN003_spoofedUnlock_keepsFailureCountAndScheduledRetry() {
+        let h = drivingHarness("VULN003_unlock_retry")
+        h.advance(1.5)
+        h.fakes.systemEvents.send(.screenUnlocked)        // settle t0+2.5 — 1차 실패(t0+2.224) 뒤 재시도 대기 중
+        h.advance(1.0)
+        XCTAssertEqual(h.pendingRetries, 1, "예약된 재시도 그대로")
+        XCTAssertEqual(h.retryDelays, [1])
+        h.advance(3.2)                                     // 재시도 t0+3.224 → 2차 실패
+        XCTAssertEqual(h.retryDelays, [1, 3], "실패 횟수 1 유지 → 2차 실패 뒤 3초")
+    }
+
+    /// 위조 해제를 반복해도 .failed(4) 상한이 풀리지 않는다
+    func test_VULN003_repeatedSpoofedUnlocks_failedStaysFailed() {
+        let h = failedFourTimesHarness("VULN003_unlock_failed")
+        let before = h.moves.count
+        for _ in 0..<5 {
+            h.fakes.systemEvents.send(.screenUnlocked)
+            h.advance(1.1)
+        }
+        XCTAssertEqual(h.moves.count, before, "커서 이동 0회")
+        XCTAssertEqual(h.manager.status, .failed(attempts: 4))
+        XCTAssertEqual(h.retryDelays, [1, 3, 10])
+    }
+
+    /// 실제 잠금 → 해제는 기존 동작(오버라이드 해제 + 되돌리기)
+    func test_VULN003_realLockThenUnlock_releasesOverride() {
+        let h = overrideHarness("VULN003_real_unlock")
+        h.fakes.session.locked = true
+        h.fakes.systemEvents.send(.screenLocked)
+        h.advance(0.5)
+        h.fakes.session.locked = false
+        h.fakes.systemEvents.send(.screenUnlocked)
+        h.advance(1.1)
+        XCTAssertNotEqual(h.manager.status, .movedByUser(displayName: Fixture.sidecar.name), "오버라이드 해제")
+        XCTAssertEqual(h.moves.first, Fixture.firstApproach, "되돌린다")
+    }
+
+    /// 잠금 알림 없이 주기 읽기로만 잠김을 본 경우에도 실제 해제로 인정한다
+    func test_VULN003_lockObservedByPeriodicRead_unlockIsGenuine() {
+        let h = failedFourTimesHarness("VULN003_poll_lock")
+        h.fakes.session.locked = true
+        h.advance(3.1)                                     // dockPoll이 세션을 읽는다
+        h.fakes.session.locked = false
+        let before = h.moves.count
+        h.fakes.systemEvents.send(.screenUnlocked)
+        h.advance(1.1)
+        XCTAssertGreaterThan(h.moves.count, before, "실제 해제 → 이벤트 계기로 다시 시도")
+    }
+
+    /// 해제 알림 처리 시점에 아직 잠겨 있으면 이벤트 계기가 아니다
+    func test_VULN003_unlockWhileStillLocked_notEventTrigger() {
+        let h = overrideHarness("VULN003_still_locked")
+        h.fakes.session.locked = true
+        h.fakes.systemEvents.send(.screenLocked)
+        h.fakes.systemEvents.send(.screenUnlocked)        // 위조 — 세션은 여전히 잠김
+        h.advance(1.1)
+        XCTAssertTrue(h.moves.isEmpty)
+        XCTAssertNotEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+        h.fakes.session.locked = false                     // 이후 실제 해제는 정상 처리
+        h.fakes.systemEvents.send(.screenUnlocked)
+        h.advance(1.1)
+        XCTAssertEqual(h.moves.first, Fixture.firstApproach, "실제 해제 → 되돌린다")
+    }
+
+    /// 잠금 해제 계기는 minEventTriggerInterval 안에 1회만 효과가 있다
+    func test_VULN003_unlockTriggers_rateLimited() {
+        let h = harness("VULN003_rate")
+        h.start()
+        func cycle() {
+            h.fakes.session.locked = true
+            h.fakes.systemEvents.send(.screenLocked)
+            h.fakes.session.locked = false
+            h.fakes.systemEvents.send(.screenUnlocked)
+            h.advance(1.1)
+        }
+        let events = h.requestCount(.event)
+        cycle()
+        XCTAssertEqual(h.requestCount(.event), events + 1, "첫 해제 → 이벤트 조회 1회")
+        cycle()
+        cycle()
+        XCTAssertEqual(h.requestCount(.event), events + 1, "창 안의 해제는 효과 없음")
+        h.advance(DockPinTuning.minEventTriggerInterval)
+        cycle()
+        XCTAssertEqual(h.requestCount(.event), events + 2, "창이 지나면 다시 1회")
+    }
+
+    /// 세션이 잠기지 않았는데 온 잠금 알림은 되돌리기를 멈추지 않는다
+    func test_VULN003_spoofedLockWhileDriving_noAbort() {
+        let h = drivingHarness("VULN003_lock")
+        h.advance(0.1)
+        let before = h.moves.count
+        h.fakes.systemEvents.send(.screenLocked)          // 세션은 잠기지 않음
+        h.advance(0.1)
+        XCTAssertFalse(h.moves.dropFirst(before).contains(Fixture.cursorOnBuiltIn), "복원 이동 없음")
+        XCTAssertGreaterThan(h.moves.count, before, "다가가기 계속")
+        XCTAssertEqual(h.manager.status, .relocating(displayName: Fixture.builtIn.name))
+    }
+
     // MARK: - AC12 종료·테스트 호스트
 
     func test_AC12_1_shutdownWhileDriving_restoreThenTapThenCallbackThenObservers() {

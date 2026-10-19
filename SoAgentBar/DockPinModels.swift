@@ -200,6 +200,7 @@ enum DockPinTuning {
     static let retryDelays: [TimeInterval] = [1, 3, 10]         // s — 참고 구현과 같음
     static let maxAttempts = 4                                  // 회 — 참고 구현과 같음
     static let settleAfterSessionChange: TimeInterval = 1       // s — 깨어남·잠금 해제 직후
+    static let minEventTriggerInterval: TimeInterval = 10       // s — (r6.3) VULN-003. 잠금 해제 계기 상한(위조 알림이 백오프·4회 상한을 무력화하지 못하게)
     static let eventMarker: Int64 = 0x534F_4450                 // 'SODP' — 앱이 보낸 이벤트 표식(F8)
     static let tapStartTimeout: TimeInterval = 1.0              // s — Architect 추가: 탭 스레드 시작 대기 상한(arch §2.7)
     static let tapStopTimeout: TimeInterval = 1.0               // s — Architect 추가: 탭 스레드 종료 대기 상한

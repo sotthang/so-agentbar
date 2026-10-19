@@ -862,6 +862,91 @@ final class DockPinManagerTests: XCTestCase {
         XCTAssertEqual(h.retryDelays, [1], "중단이 횟수에 들어가지 않았으므로 첫 실패 뒤 1초(3초 아님)")
     }
 
+    // MARK: - r6.4 (VULN-004) 사용자 입력 중단 연속 → 필요한 유휴 시간 0.5 → 2 → 5 → 15 s(상한)
+
+    /// 되돌리는 중에 사용자 입력으로 중단시킨다(사전 조건 단정 포함)
+    private func abortByUserActivity(_ h: Harness, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(h.manager.status, .relocating(displayName: Fixture.builtIn.name),
+                       "사전 조건: 되돌리는 중", file: file, line: line)
+        h.fakes.tap.userActivityCount += 1
+        h.advance(Fixture.tick)
+        XCTAssertEqual(h.manager.status, .waiting(.userActive, displayName: Fixture.builtIn.name),
+                       "사전 조건: 입력으로 중단", file: file, line: line)
+    }
+
+    /// 유휴가 required 바로 밑이면 기다리고, required가 되면 다시 시도한다
+    private func assertRequiresIdle(_ h: Harness, _ required: TimeInterval,
+                                    file: StaticString = #filePath, line: UInt = #line) {
+        let before = h.moves.count
+        h.fakes.session.idle = required - 0.1
+        h.advance(DockPinTuning.waitRecheckInterval)
+        XCTAssertEqual(h.moves.count, before, "유휴 \(required - 0.1) s면 아직 기다린다", file: file, line: line)
+        XCTAssertEqual(h.manager.status, .waiting(.userActive, displayName: Fixture.builtIn.name), file: file, line: line)
+        h.fakes.session.idle = required
+        h.advance(DockPinTuning.waitRecheckInterval)
+        XCTAssertGreaterThan(h.moves.count, before, "유휴 \(required) s면 다시 시도", file: file, line: line)
+        XCTAssertEqual(h.manager.status, .relocating(displayName: Fixture.builtIn.name), file: file, line: line)
+    }
+
+    func test_VULN004_consecutiveUserActivityAborts_escalateRequiredIdle_2_5_15_cap() {
+        let h = drivingHarness("VULN004_escalate")
+        for required in [2.0, 5, 15, 15] as [TimeInterval] {
+            abortByUserActivity(h)
+            assertRequiresIdle(h, required)
+        }
+        XCTAssertEqual(h.retryDelays, [], "입력 중단은 실패 횟수에 들어가지 않는다(AC8.5)")
+    }
+
+    func test_VULN004_dockConfirmedOnAnchor_resetsRequiredIdle() {
+        let h = drivingHarness("VULN004_anchor")
+        abortByUserActivity(h)
+        assertRequiresIdle(h, 2)
+        abortByUserActivity(h)
+        assertRequiresIdle(h, 5)
+        h.dockOn = Fixture.builtIn.id                      // 이번 되돌리기는 성공
+        h.advance(0.8)                                     // 목표 줄 도달(0.224) 뒤 확인 조회
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name), "사전 조건: 고정 화면에서 확인")
+
+        h.dockOn = Fixture.sidecar.id                      // 다시 다른 화면으로 넘어감
+        h.fakes.session.idle = 0.6
+        let before = h.moves.count
+        h.advance(3.1)                                     // dockPoll이 Sidecar를 본다
+        XCTAssertGreaterThan(h.moves.count, before, "고정 확인으로 횟수 0 → P3(0.5 s)면 다시 시도")
+        XCTAssertEqual(h.moves.dropFirst(before).first, Fixture.firstApproach, "새 되돌리기의 다가가기 첫 점")
+    }
+
+    func test_VULN004_moveBackNow_resetsRequiredIdle() {
+        let h = drivingHarness("VULN004_moveBack")
+        abortByUserActivity(h)
+        assertRequiresIdle(h, 2)
+        abortByUserActivity(h)
+        assertRequiresIdle(h, 5)
+        abortByUserActivity(h)                             // 이제 15 s 필요
+        h.fakes.session.idle = 0.6
+        h.advance(DockPinTuning.waitRecheckInterval)
+        let before = h.moves.count
+        XCTAssertEqual(h.manager.status, .waiting(.userActive, displayName: Fixture.builtIn.name), "사전 조건: 기다리는 중")
+        h.manager.moveBackNow()
+        XCTAssertGreaterThan(h.moves.count, before, "지금 되돌리기(이벤트 계기) → 횟수 0 → 0.6 s 유휴로 시작")
+        XCTAssertEqual(h.manager.status, .relocating(displayName: Fixture.builtIn.name))
+    }
+
+    func test_VULN004_displayConfigChange_resetsRequiredIdle() {
+        let h = drivingHarness("VULN004_config")
+        abortByUserActivity(h)
+        assertRequiresIdle(h, 2)
+        abortByUserActivity(h)                             // 이제 5 s 필요
+        h.fakes.session.idle = 0.6
+        h.advance(DockPinTuning.waitRecheckInterval)
+        let before = h.moves.count
+        XCTAssertEqual(h.moves.count, before)
+        h.fakes.displays.displays = DockPinFixtures.threeWithSidecar
+        h.fakes.displayChanges.send(.screenParametersChanged)
+        h.advance(0.5)
+        XCTAssertGreaterThan(h.moves.count, before, "구성 변경(이벤트 계기) → 횟수 0 → 0.6 s 유휴로 시작")
+        XCTAssertEqual(h.manager.status, .relocating(displayName: Fixture.builtIn.name))
+    }
+
     func test_AC8_6_retrySchedule_1_3_10_thenFailed4_noMoreSchedules() {
         let h = drivingHarness("AC8_6")
         h.advance(2.3)

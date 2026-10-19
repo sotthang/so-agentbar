@@ -197,6 +197,9 @@ enum DockPinTuning {
     static let suppressibleButtonCount = 32                     // 개(0…31) — 제스처 억제 UInt32 비트마스크(R5.5)
     static let idleBeforeRelocation: TimeInterval = 0.5         // s — P3
     static let waitRecheckInterval: TimeInterval = 0.5          // s — .wait 재판정
+    /// (r6.4) VULN-004 — 연속 사용자 입력 중단 횟수(0, 1, 2, ≥3)별 되돌리기 전 필요한 유휴. 첫 칸 = P3.
+    /// 다른 화면에 머문 Dock을 되돌리다 입력으로 멈출 때마다 기준이 늘어 첫 클릭을 거듭 버리지 않는다
+    static let userActivityBackoff: [TimeInterval] = [idleBeforeRelocation, 2, 5, 15] // s
     static let retryDelays: [TimeInterval] = [1, 3, 10]         // s — 참고 구현과 같음
     static let maxAttempts = 4                                  // 회 — 참고 구현과 같음
     static let settleAfterSessionChange: TimeInterval = 1       // s — 깨어남·잠금 해제 직후

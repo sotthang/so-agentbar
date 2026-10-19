@@ -529,6 +529,29 @@ final class DockPinPolicyTests: XCTestCase {
         XCTAssertEqual(decide { $0.retryScheduled = true; $0.trigger = .retryTimer }, .go)
     }
 
+    // MARK: - r6.4 (VULN-004) 사용자 입력 중단 연속 횟수 → 필요한 유휴 시간 (R8.2 6행)
+
+    func test_VULN004_requiredIdle_escalates_0_5_2_5_15_thenCapped() {
+        XCTAssertEqual(DockPinPolicy.requiredIdleBeforeRelocation(afterUserActivityAborts: 0), 0.5, "중단 없음 → P3 그대로")
+        XCTAssertEqual(DockPinPolicy.requiredIdleBeforeRelocation(afterUserActivityAborts: 1), 2)
+        XCTAssertEqual(DockPinPolicy.requiredIdleBeforeRelocation(afterUserActivityAborts: 2), 5)
+        XCTAssertEqual(DockPinPolicy.requiredIdleBeforeRelocation(afterUserActivityAborts: 3), 15)
+        XCTAssertEqual(DockPinPolicy.requiredIdleBeforeRelocation(afterUserActivityAborts: 4), 15, "상한")
+        XCTAssertEqual(DockPinPolicy.requiredIdleBeforeRelocation(afterUserActivityAborts: 100), 15, "상한")
+        XCTAssertEqual(DockPinPolicy.requiredIdleBeforeRelocation(afterUserActivityAborts: -1), 0.5, "음수는 0으로 본다")
+    }
+
+    func test_VULN004_relocationDecision_usesRequiredIdleInput() {
+        XCTAssertEqual(decide { $0.requiredIdle = 2; $0.secondsSinceInput = 1.99 }, .wait(.userActive))
+        XCTAssertEqual(decide { $0.requiredIdle = 2; $0.secondsSinceInput = 2 }, .go)
+        XCTAssertEqual(decide { $0.requiredIdle = 15; $0.secondsSinceInput = 14.9 }, .wait(.userActive))
+        XCTAssertEqual(decide { $0.requiredIdle = 15; $0.secondsSinceInput = 15 }, .go)
+    }
+
+    func test_VULN004_relocationInputs_requiredIdleDefaultsToP3() {
+        XCTAssertEqual(goInputs().requiredIdle, DockPinTuning.idleBeforeRelocation, "기본값은 P3(0.5 s)")
+    }
+
     // MARK: - AC8.6 일정 함수 relocationRetryDelay (R8.7)
 
     func test_AC8_6_relocationRetryDelay_1_3_10_thenNil() {
@@ -1169,6 +1192,11 @@ final class DockPinPolicyTests: XCTestCase {
 
     func test_tuning_dockProbeTimeout_quarterSecond() {
         XCTAssertEqual(DockPinTuning.dockProbeTimeout, 0.25, "R9.1 2번, C13")
+    }
+
+    func test_tuning_userActivityBackoff_0_5_2_5_15_startsAtP3() {
+        XCTAssertEqual(DockPinTuning.userActivityBackoff, [0.5, 2, 5, 15], "r6.4 VULN-004")
+        XCTAssertEqual(DockPinTuning.userActivityBackoff.first, DockPinTuning.idleBeforeRelocation, "첫 칸은 P3와 같다")
     }
 
     func test_tuning_freshTrustTimeoutShorterThanInterval() {

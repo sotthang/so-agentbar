@@ -21,6 +21,8 @@ struct DockPinRelocationInputs: Equatable, Sendable {
     var session: DockPinSessionState
     var anyButtonDown: Bool
     var secondsSinceInput: TimeInterval
+    /// (r6.4) VULN-004 — 6행 유휴 기준. 사용자 입력 중단이 이어질수록 늘어난다(requiredIdleBeforeRelocation)
+    var requiredIdle: TimeInterval = DockPinTuning.idleBeforeRelocation
 }
 
 /// R11.7 — 상태 판정 입력
@@ -181,8 +183,14 @@ enum DockPinPolicy {
         if inputs.session.locked { return .wait(.locked) }
         if !inputs.session.onConsole { return .wait(.notOnConsole) }
         if inputs.anyButtonDown { return .wait(.buttonDown) }
-        if inputs.secondsSinceInput < DockPinTuning.idleBeforeRelocation { return .wait(.userActive) }
+        if inputs.secondsSinceInput < inputs.requiredIdle { return .wait(.userActive) }
         return .go
+    }
+
+    /// (r6.4) VULN-004 — 연속 사용자 입력 중단 0→0.5, 1→2, 2→5, ≥3→15 s(상한)
+    static func requiredIdleBeforeRelocation(afterUserActivityAborts n: Int) -> TimeInterval {
+        let steps = DockPinTuning.userActivityBackoff
+        return steps[min(max(n, 0), steps.count - 1)]
     }
 
     /// 1→1, 2→3, 3→10, ≥4→nil

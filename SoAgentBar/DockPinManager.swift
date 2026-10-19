@@ -59,6 +59,8 @@ final class DockPinManager: ObservableObject {
     /// (r6.2) VULN-002 — 되돌리기 시작 때 정한 탭 시계 시한. 스냅숏에는 phase.isRelocating일 때만 싣는다
     private var relocationDeadline: TimeInterval?
     private var failureCount = 0
+    /// (r6.4) VULN-004 — 연속 사용자 입력 중단 횟수. 실패 횟수와 따로 센다(AC8.5). 고정 확인·이벤트 계기에서 0
+    private var userActivityAbortCount = 0
     private var tapState: DockPinTapState = .none
 
     // 타이머
@@ -233,6 +235,7 @@ final class DockPinManager: ObservableObject {
             if deps.tap.isRunning { deps.tap.stop() }           // R9.3 — 탭 제거가 먼저
             abortDrive(.deactivated)
             failureCount = 0
+            userActivityAbortCount = 0
             cancel(&retryToken)
             cancel(&waitRecheckToken)
             tapState = .none
@@ -646,6 +649,7 @@ final class DockPinManager: ObservableObject {
     private func eventTrigger() {
         guard activation == .active, tapState == .running else { return }
         failureCount = 0
+        userActivityAbortCount = 0
         cancel(&retryToken)
         if phase.isFailed { phase = .idle }
         locateAndEvaluate(.event, trigger: .event)
@@ -658,6 +662,7 @@ final class DockPinManager: ObservableObject {
             if id == anchorID {
                 lastConfirmedOnAnchorAt = deps.scheduler.now
                 overrideDisplayID = nil
+                userActivityAbortCount = 0
                 if phase.isFailed || retryToken != nil {         // R8.7, AC8.12
                     phase = .idle
                     failureCount = 0
@@ -684,7 +689,8 @@ final class DockPinManager: ObservableObject {
             isUserOverride: overrideDisplayID != nil,
             hasRelocationTarget: layout?.relocationTarget != nil, session: session,
             anyButtonDown: deps.session.isAnyButtonDown(),
-            secondsSinceInput: deps.session.secondsSinceLastInput()))
+            secondsSinceInput: deps.session.secondsSinceLastInput(),
+            requiredIdle: DockPinPolicy.requiredIdleBeforeRelocation(afterUserActivityAborts: userActivityAbortCount)))
         switch decision {
         case .go:
             startDrive()
@@ -724,7 +730,8 @@ final class DockPinManager: ObservableObject {
             locate(.quick) { [weak self] result in self?.onVerify(result) }
         case .failed:
             handleFailure()
-        case .aborted(.userActivity):                            // AC8.5 — 횟수 그대로
+        case .aborted(.userActivity):                            // AC8.5 — 실패 횟수 그대로
+            userActivityAbortCount += 1                          // (r6.4) VULN-004 — 다음 유휴 기준을 늘린다
             phase = .waiting(.userActive)
             scheduleWaitRecheck()
             publish()
@@ -798,6 +805,7 @@ final class DockPinManager: ObservableObject {
         placement = nil
         overrideDisplayID = nil
         failureCount = 0
+        userActivityAbortCount = 0
         tapState = .none
         lastFingerprint = nil
         lastPushedSnapshot = nil

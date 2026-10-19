@@ -42,7 +42,12 @@ enum DockPinDisplaySignal: Equatable, Sendable {
 }
 
 @MainActor protocol DockPinPermissionProviding: AnyObject {
-    func isTrusted() -> Bool                    // AXIsProcessTrusted
+    func isTrusted() -> Bool                    // AXIsProcessTrusted (R9.1 1번)
+    /// (r5) R9.1 2번 — AXUIElementCreateApplication(pid) + AXUIElementCopyAttributeValue(kAXRoleAttribute).
+    /// (r6, C13) 호출 전에 그 앱 요소에 메시징 시한 DockPinTuning.dockProbeTimeout(0.25초)을 건다.
+    /// 결과 오류 코드 → DockPinPolicy.dockProbeTrusted(axError:): kAXErrorAPIDisabled만 false,
+    /// 성공·kAXErrorCannotComplete(시한 초과)·그 밖 → true. 메인에서 동기.
+    func dockProbeTrusted(dockPID: pid_t) -> Bool
     func requestTrustPrompt()                   // AXIsProcessTrustedWithOptions(prompt: true)
     func openPrivacySettings()                  // x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility
 }
@@ -289,6 +294,15 @@ final class DockPinLiveWorkItem: DockPinCancellable {
 @MainActor final class DockPinLivePermission: DockPinPermissionProviding {
     func isTrusted() -> Bool {
         AXIsProcessTrusted()
+    }
+
+    /// R9.1 2번 — 앱 요소 생성 → 메시징 시한(C13) → role 속성 읽기 → 오류 코드 판정(kAXErrorAPIDisabled만 false)
+    func dockProbeTrusted(dockPID: pid_t) -> Bool {
+        let dockApp = AXUIElementCreateApplication(dockPID)
+        AXUIElementSetMessagingTimeout(dockApp, DockPinTuning.dockProbeTimeout)
+        var value: CFTypeRef?
+        let error = AXUIElementCopyAttributeValue(dockApp, kAXRoleAttribute as CFString, &value)
+        return DockPinPolicy.dockProbeTrusted(axError: error.rawValue)
     }
 
     func requestTrustPrompt() {

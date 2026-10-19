@@ -7,7 +7,7 @@ import CoreGraphics
 //
 // SPEC-004 커밋 8 — DockPinManager(arch §2.10, §3) 단위 테스트.
 // 커버 AC: AC1.1–1.6, AC4.2–4.4, AC4.6, AC4.8, AC4.9, AC4.10(a–c), AC5.11(매니저), AC7.5, AC8.3(매니저 경로),
-//          AC8.4c(매니저부), AC8.5–8.8, AC8.9(매니저부), AC8.10(매니저 스냅숏), AC8.11(b,c), AC8.12, AC9.1–9.5,
+//          AC8.4c(매니저부), AC8.5–8.8, AC8.9(매니저부), AC8.10(매니저 스냅숏), AC8.11(b,c), AC8.12, AC9.1–9.5, AC9.6(매니저부, 11c),
 //          AC10.1–10.3, AC12.1, AC12.2, AC12.3(makeLive 연결), AC12.4, AC15.1–15.4
 //          + R4.4 매니저 수준 타이머 집합, R4.5 prefsPoll, R5.8 watchdog, R6.1 Dock 재시작, R8.8 지금 되돌리기,
 //          R10.1–10.4 세션 신호, S1 targetChoices, arch §12 I2(setTarget 즉시 재계산), I4, I9, I10.
@@ -121,6 +121,7 @@ final class DockPinManagerTests: XCTestCase {
             let f = fakes
             let counts: [(String, Int)] = [
                 ("permission.check", f.permission.checkCount),
+                ("permission.probe", f.permission.probeCount),
                 ("permission.prompt", f.permission.promptCount),
                 ("permission.open", f.permission.openCount),
                 ("tap.start", f.tap.startCount),
@@ -1178,6 +1179,193 @@ final class DockPinManagerTests: XCTestCase {
         XCTAssertFalse(poisoned, "알림 순간에 권한을 읽지 않아야 한다")
         XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name), "앱 재시작 없이 신뢰됨으로 끝난다")
         XCTAssertEqual(h.fakes.tap.startCount, 1)
+    }
+
+    // MARK: AC9.6 매니저부 (r5·r6, 커밋 11c) — 프로세스 판정 AND Dock AX 프로브
+
+    // 매니저의 권한 읽기는 모두 DockPinPolicy.combinedTrust(process: isTrusted(), dockProbe: dockPID().map(probe))다.
+    // 11c에서는 applyInProcess 단일 진입점이 아직 없다(11f). readAll·checkPermission·prefsPoll·디바운스 재계산이
+    // 각자 이 결합 판정을 읽는다. 가짜 프로브 `dockProbe = false`는 kAXErrorAPIDisabled를 뜻한다.
+
+    func test_AC9_6_manager_processTrueProbeFalse_atStart_needsPermission_noTap() {
+        let h = harness("AC9_6_start")
+        h.fakes.permission.dockProbe = false
+        h.start()
+        XCTAssertGreaterThanOrEqual(h.fakes.permission.probeCount, 1, "Dock PID가 있으면 시작 때 프로브를 부른다")
+        XCTAssertEqual(h.manager.status, .needsPermission, "프로세스 true + 프로브 false → untrusted(R9.1 AND, X1 쪽)")
+        XCTAssertEqual(h.fakes.tap.startCount, 0, "권한 없음이면 탭을 만들지 않는다")
+        XCTAssertEqual(h.fakes.scheduler.pendingRepeatingKinds, [.permissionPoll, .freshTrustCheck])
+        XCTAssertEqual(h.fakes.permission.promptCount, 0, "다시 시작할 때는 프롬프트 없음(R1.5)")
+    }
+
+    func test_AC9_6_manager_setEnabledTrue_processTrueProbeFalse_promptsOnce_needsPermission() {
+        let h = harness("AC9_6_enable", enabled: false)
+        h.fakes.permission.dockProbe = false
+        h.manager.setEnabled(true)
+        XCTAssertEqual(h.fakes.permission.promptCount, 1, "결합 판정이 untrusted면 켜는 순간 프롬프트 1회(R1.3)")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+        XCTAssertEqual(h.fakes.tap.startCount, 0)
+    }
+
+    func test_AC9_6_manager_processTrueProbeTrue_trusted_probedWithCurrentDockPID() {
+        let h = harness("AC9_6_pid")
+        h.start()
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "양쪽 다 true면 trusted")
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+        XCTAssertEqual(h.fakes.permission.probedPIDs.last, DockPinFixtures.dockPID, "프로브는 현재 Dock PID로 부른다")
+
+        let newPID: pid_t = DockPinFixtures.dockPID + 111            // Dock 재시작으로 PID가 바뀜
+        h.fakes.dockPreferences.pid = newPID
+        let probes = h.fakes.permission.probeCount
+        h.advance(1)                                                 // permissionPoll
+        XCTAssertGreaterThan(h.fakes.permission.probeCount, probes, "폴링 틱마다 프로브한다")
+        XCTAssertEqual(h.fakes.permission.probedPIDs.last, newPID, "PID를 캐시하지 않고 매번 새로 읽은 PID를 쓴다")
+        XCTAssertEqual(h.fakes.tap.stopCount, 0)
+    }
+
+    func test_AC9_6_manager_noDockPID_probeNotCalled_processAloneDecides() {
+        let h = harness("AC9_6_noPID")
+        h.fakes.dockPreferences.pid = nil
+        h.fakes.permission.dockProbe = false          // 불리면 untrusted가 되므로 "안 불림"이 드러난다
+        h.start()
+        XCTAssertEqual(h.fakes.permission.probeCount, 0, "Dock PID가 없으면 프로브 0회")
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "프로세스 판정 true만으로 trusted")
+        XCTAssertNotEqual(h.manager.status, .needsPermission)
+        h.advance(1)
+        XCTAssertEqual(h.fakes.permission.probeCount, 0, "폴링 틱에서도 프로브 0회")
+        XCTAssertEqual(h.fakes.tap.stopCount, 0)
+
+        h.fakes.dockPreferences.pid = DockPinFixtures.dockPID   // Dock이 다시 뜸 → 프로브가 판정에 들어온다
+        h.advance(1)
+        XCTAssertGreaterThanOrEqual(h.fakes.permission.probeCount, 1, "PID가 생기면 프로브한다")
+        XCTAssertEqual(h.fakes.permission.probedPIDs.last, DockPinFixtures.dockPID)
+        XCTAssertEqual(h.fakes.tap.stopCount, 1, "프로브 false → untrusted → 탭 제거")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+    }
+
+    func test_AC9_6_manager_noDockPID_processFalse_untrusted() {
+        let h = harness("AC9_6_noPID_false")
+        h.fakes.dockPreferences.pid = nil
+        h.fakes.permission.trusted = false
+        h.start()
+        XCTAssertEqual(h.manager.status, .needsPermission, "(false, nil) → false")
+        XCTAssertEqual(h.fakes.permission.probeCount, 0)
+        XCTAssertEqual(h.fakes.tap.startCount, 0)
+        h.fakes.permission.trusted = true
+        h.advance(1)
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "(true, nil) → true")
+        XCTAssertEqual(h.fakes.permission.probeCount, 0)
+    }
+
+    func test_AC9_6_manager_processFalseProbeTrue_untrusted_thenProcessTrueProbeFalse_stillUntrusted() {
+        let h = harness("AC9_6_mixed")
+        h.fakes.permission.trusted = false
+        h.fakes.permission.dockProbe = true
+        h.start()
+        XCTAssertEqual(h.manager.status, .needsPermission, "(false, true) → false")
+        XCTAssertEqual(h.fakes.tap.startCount, 0)
+
+        h.fakes.permission.trusted = true
+        h.fakes.permission.dockProbe = false
+        h.advance(1)
+        XCTAssertEqual(h.manager.status, .needsPermission, "(true, false) → false: 프로세스만 true로 바뀌어도 탭을 켜지 않는다")
+        XCTAssertEqual(h.fakes.tap.startCount, 0)
+
+        h.fakes.permission.dockProbe = true
+        h.advance(1)
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "(true, true) → true가 되면 탭 시작 1회(R9.2)")
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+    }
+
+    /// AC9.6 본문: 프로세스 판정 true + 프로브 false인 채 탭 실행 중에 폴링 틱 → stop 1회, .needsPermission
+    func test_AC9_6_manager_probeFlipsFalse_processStillTrue_pollTick_stopsTap_needsPermission() {
+        let h = harness("AC9_6_revoke")
+        h.start()
+        XCTAssertTrue(h.fakes.tap.isRunning, "사전 조건")
+        h.fakes.permission.dockProbe = false               // 프로세스 안 AXIsProcessTrusted는 낡은 true 그대로
+        h.advance(1)
+        XCTAssertEqual(h.fakes.tap.stopCount, 1)
+        XCTAssertFalse(h.fakes.tap.isRunning)
+        XCTAssertEqual(h.manager.status, .needsPermission)
+        XCTAssertTrue(h.fakes.permission.trusted, "프로세스 판정은 끝까지 true였다")
+        h.advance(3)
+        XCTAssertEqual(h.fakes.tap.stopCount, 1, "그 뒤 틱은 stop을 더 부르지 않는다")
+    }
+
+    /// 프로브로 감지한 철회도 R9.3 순서(탭 stop → 되돌리기 중단·복원 → 상태)를 지킨다(AC9.1과 같은 순서)
+    func test_AC9_6_manager_probeRevokeWhileDriving_tapStopFirst_thenAbortRestore_thenStatus() {
+        let h = drivingHarness("AC9_6_order")
+        h.advance(0.5)
+        h.fakes.log.clear()
+        h.fakes.permission.dockProbe = false
+        h.advance(0.6)                                     // permissionPoll t0+1
+        let entries = h.fakes.log.entries
+        guard let stopIndex = entries.firstIndex(of: "tap.stop") else {
+            return XCTFail("tap.stop 기록 없음: \(entries)")
+        }
+        let after = entries[(stopIndex + 1)...]
+        XCTAssertEqual(after.filter { $0 == "move" }.count, 1, "stop 뒤에는 복원 이동 1개뿐(되돌리기 중단이 stop보다 뒤)")
+        XCTAssertTrue(after.contains("status:needsPermission"), "상태 변경이 stop보다 뒤")
+        XCTAssertFalse(entries[..<stopIndex].contains("status:needsPermission"))
+        XCTAssertEqual(h.moves.last, Fixture.cursorOnBuiltIn, "복원 이벤트는 보낸다(R8.5 예외 2)")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+        XCTAssertEqual(h.fakes.tap.stopCount, 1)
+    }
+
+    func test_AC9_6_manager_prefsPoll_probeFalse_needsPermission() {
+        let h = harness("AC9_6_prefsPoll")
+        h.fakes.dockPreferences.separateSpaces = false
+        h.start()
+        XCTAssertEqual(h.manager.status, .inactive(.spacesOff), "사전 조건")
+        h.fakes.permission.dockProbe = false
+        h.advance(3)                                       // prefsPoll
+        XCTAssertEqual(h.manager.status, .needsPermission, "prefsPoll의 권한 읽기도 결합 판정(R4.5·R9.1)")
+    }
+
+    func test_AC9_6_manager_debounceRecompute_probeFalse_needsPermission_noTapStart() {
+        let h = harness("AC9_6_debounce")
+        h.fakes.displays.displays = [Fixture.builtIn]
+        h.start()
+        XCTAssertEqual(h.manager.status, .inactive(.singleDisplay), "사전 조건")
+        h.fakes.permission.dockProbe = false
+        h.fakes.displays.displays = DockPinFixtures.thisMac
+        h.fakes.displayChanges.send(.reconfigured)
+        h.advance(0.5)
+        XCTAssertEqual(h.fakes.tap.startCount, 0, "디바운스 재계산의 동기 읽기도 결합 판정이다")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+    }
+
+    /// 모든 권한 읽기 경로가 프로브를 거친다: 1초 폴링, R9.5 재확인(+1.0·+3.0), prefsPoll, 디바운스 재계산
+    func test_AC9_6_manager_everyPermissionReadPath_probesDock() {
+        let h = harness("AC9_6_paths")
+        var kinds: [DockPinTimerKind?] = []
+        let scheduler = h.fakes.scheduler
+        h.fakes.permission.onProbe = { kinds.append(scheduler.currentKind) }
+        h.start()
+        XCTAssertTrue(kinds.contains(where: { $0 == nil }), "readAll(시작) 경로에서 프로브")
+
+        kinds = []
+        h.advance(1)
+        XCTAssertTrue(kinds.contains(.repeating(.permissionPoll)), "1초 폴링 경로에서 프로브: \(kinds)")
+
+        kinds = []
+        h.fakes.systemEvents.send(.accessibilityChanged)
+        h.advance(3.0)
+        XCTAssertEqual(kinds.filter { $0 == .permissionRecheck }.count, 2, "R9.5 재확인 +1.0·+3.0에서 각 1회: \(kinds)")
+
+        kinds = []
+        h.fakes.displayChanges.send(.screenParametersChanged)
+        h.advance(0.5)
+        XCTAssertTrue(kinds.contains(.displayDebounce), "디바운스 재계산 경로에서 프로브: \(kinds)")
+
+        kinds = []
+        h.fakes.dockPreferences.orientationValue = .left       // .dockNotBottom → prefsPoll만 돈다
+        h.fakes.displayChanges.send(.screenParametersChanged)
+        h.advance(0.5)
+        XCTAssertEqual(h.manager.status, .inactive(.dockNotBottom(.left)), "사전 조건")
+        kinds = []
+        h.advance(3)
+        XCTAssertTrue(kinds.contains(.repeating(.prefsPoll)), "prefsPoll 경로에서 프로브: \(kinds)")
     }
 
     // MARK: - AC10 세션

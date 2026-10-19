@@ -211,6 +211,23 @@ final class DockPinCallLog {
         return respond?() ?? trusted
     }
 
+    /// (r5) R9.1 2번 — Dock AX 프로브. `dockProbe == false`는 kAXErrorAPIDisabled를 흉내 낸다.
+    /// 프로세스 판정(`checkCount`)과 따로 센다.
+    var dockProbe = true
+    private(set) var probeCount = 0
+    /// 프로브가 받은 Dock PID(호출 순서)
+    private(set) var probedPIDs: [pid_t] = []
+
+    /// 프로브할 때마다 불린다(어느 예약에서 프로브했는지 기록)
+    var onProbe: (() -> Void)?
+
+    func dockProbeTrusted(dockPID: pid_t) -> Bool {
+        probeCount += 1
+        probedPIDs.append(dockPID)
+        onProbe?()
+        return dockProbe
+    }
+
     func requestTrustPrompt() {
         promptCount += 1
         log?.add("permission.prompt")

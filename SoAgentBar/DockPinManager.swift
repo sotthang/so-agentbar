@@ -178,7 +178,7 @@ final class DockPinManager: ObservableObject {
 
     /// 활성화 입력과 디스플레이 맵의 원천(권한·디스플레이·Spaces·방향)을 각 1회 읽는다
     private func readConfiguration() {
-        hasPermission = deps.permission.isTrusted()
+        hasPermission = readTrust()
         allDisplays = deps.displays.allDisplays()
         mainID = deps.displays.mainDisplayID()
         separateSpaces = deps.dockPreferences.screensHaveSeparateSpaces()
@@ -313,7 +313,7 @@ final class DockPinManager: ObservableObject {
         case .dockPoll: locateAndEvaluate(.quick, trigger: .poll)
         case .prefsPoll:                                         // R4.5 — 방향과 권한만
             orientation = deps.dockPreferences.orientation()
-            hasPermission = deps.permission.isTrusted()
+            hasPermission = readTrust()
             reconcile()
         case .tapWatchdog: _ = deps.tap.reenableIfNeeded()       // R5.8
         case .tapRetry: retryTap()
@@ -340,8 +340,15 @@ final class DockPinManager: ObservableObject {
 
     // MARK: - 권한 (R9)
 
+    /// R9.1 프로세스 안 판정 = AXIsProcessTrusted AND Dock AX 프로브(PID 없으면 프로세스 판정만). PID는 매번 새로 읽는다.
+    private func readTrust() -> Bool {
+        DockPinPolicy.combinedTrust(
+            process: deps.permission.isTrusted(),
+            dockProbe: deps.dockPreferences.dockPID().map { deps.permission.dockProbeTrusted(dockPID: $0) })
+    }
+
     private func checkPermission() {
-        let trusted = deps.permission.isTrusted()
+        let trusted = readTrust()
         if hasPermission && !trusted {
             if deps.tap.isRunning { deps.tap.stop() }           // AC9.1 — 다른 어떤 처리보다 먼저
             tapState = .none

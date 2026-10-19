@@ -6,17 +6,20 @@ import XCTest
 // SPEC-004 커밋 11d(r6) — 새 프로세스 권한 확인의 부작용 계층(DockPinSystem.swift) 테스트.
 // 커버: AC9.13 중 단위로 볼 수 있는 부분(DockPinTrustCheckCommand.run: 1회 읽기, 한 줄 출력, 종료 0),
 //       AC9.15(a) 동작 수준(자식 환경 [:], stdin·stderr nullDevice, 인자 정확히 1개),
-//       AC9.15(c) 어댑터 수준(식별자가 바뀌면 run() 없이 completion(nil) 1번, lastFreshFailure == .executableChanged),
+//       AC9.15(c) 어댑터 수준(r6.1 VULN-001: 디스크 실행 파일의 코드 신원이 실행 중인 자기 자신과 다르거나
+//       서명 검증이 실패하면 run() 없이 completion(nil) 1번, lastFreshFailure == .executableChanged),
 //       R9.6 3번(해석 → nil 사유 N20), R9.6 4번(completion은 메인), arch §2.6 cancel 계약(자식 종료 + completion 0번),
 //       arch §5 FakeDockPinPermission 새 멤버의 자체 검증.
 //
 // arch §8은 AC9.13·AC9.15(a, c)를 "단위 테스트 아님"으로 두었다. 이 파일은 Tester가 덧붙인 안전한 범위의 검증이다:
-// - DockPinLivePermission(executableURL:)에 **임시 /bin/sh 스크립트**만 넣는다. 앱 실행 파일·AX·CG·Dock은 건드리지 않는다.
-//   (실제 앱 바이너리로 하는 확인은 AC9.13 세션 안 CLI 스크립트가 맡는다.)
+// - DockPinLivePermission(executableURL:codeSigning:)에 **임시 /bin/sh 스크립트**와 가짜 코드 신원 이음새(CodeSigningStub)를 넣는다.
+//   스크립트는 앱의 cdhash와 같을 수 없으므로, 실행 경로를 보는 테스트는 "일치"를 돌려주는 이음새를 쓴다.
+//   AX·CG·Dock은 건드리지 않는다. (실제 앱 바이너리로 하는 확인은 AC9.13 세션 안 CLI 스크립트가 맡는다.)
+// - VULN-001 실제 서명 테스트(MARK: VULN-001 live)는 테스트 호스트 앱 번들을 임시 폴더에 복사해서만 바꾼다.
 // - 실제 시간 대기가 있다(자식 실행·종료 왕복). 테스트 하나당 상한 3초, 대부분 0.1초 안팎이다.
 // - DockPinTrustCheckCommand.runAndExit()는 프로세스를 끝내므로 부르지 않는다. 이음새 run(trusted:output:)만 본다.
 //
-// RED 확인: 스텁은 run → 1(아무것도 안 씀), readExecutableIdentity → nil, freshTrustCheck → 실행·응답 없음,
+// RED 확인(11d): 스텁은 run → 1(아무것도 안 씀), freshTrustCheck → 실행·응답 없음,
 // lastFreshFailure → .launchFailed 이다. 그래서 가짜 자체 검증(MARK: Fake)을 뺀 테스트는 전부 실패하는 것이 정상이다.
 
 @MainActor
@@ -57,6 +60,36 @@ final class DockPinSystemTests: XCTestCase {
         try FileManager.default.removeItem(at: url)
         try ("#!/bin/sh\n" + body + "\n").write(to: url, atomically: false, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+    }
+
+    /// VULN-001 — 코드 신원 이음새 가짜. 클로저는 메인 밖(freshQueue)에서 불리므로 잠금으로 보호한다.
+    private final class CodeSigningStub: @unchecked Sendable {
+        static let selfHash = Data([0xaa, 0xbb, 0xcc])
+        private let lock = NSLock()
+        private var _running: Data? = CodeSigningStub.selfHash
+        private var _disk: Data? = CodeSigningStub.selfHash
+        private var _satisfies = true
+        private var _diskCalls: [URL] = []
+        private var _requirementCalls: [URL] = []
+
+        var running: Data? { get { lock.withLock { _running } } set { lock.withLock { _running = newValue } } }
+        var disk: Data? { get { lock.withLock { _disk } } set { lock.withLock { _disk = newValue } } }
+        var satisfies: Bool { get { lock.withLock { _satisfies } } set { lock.withLock { _satisfies = newValue } } }
+        var diskCalls: [URL] { lock.withLock { _diskCalls } }
+        var requirementCalls: [URL] { lock.withLock { _requirementCalls } }
+
+        var seam: DockPinCodeSigning {
+            DockPinCodeSigning(runningCDHash: { [self] in running },
+                               diskCDHash: { [self] url in lock.withLock { _diskCalls.append(url); return _disk } },
+                               diskSatisfiesRunningRequirement: { [self] url in
+                                   lock.withLock { _requirementCalls.append(url); return _satisfies }
+                               })
+        }
+    }
+
+    /// 실행 경로를 보는 테스트용 — 코드 신원은 "일치"(기본 CodeSigningStub)
+    private func makePermission(_ url: URL, signing: CodeSigningStub = CodeSigningStub()) -> DockPinLivePermission {
+        DockPinLivePermission(executableURL: url, codeSigning: signing.seam)
     }
 
     private struct FreshOutcome {
@@ -122,68 +155,10 @@ final class DockPinSystemTests: XCTestCase {
         }
     }
 
-    // MARK: - N17 — 실행 파일 식별자 읽기
-
-    func test_N17_readExecutableIdentity_existingFile_matchesInode() throws {
-        let url = try makeScript("echo 1")
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        let expectedInode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value
-
-        let identity = DockPinLivePermission.readExecutableIdentity(atPath: url.path)
-
-        XCTAssertNotNil(identity)
-        XCTAssertEqual(identity?.inode, expectedInode)
-    }
-
-    func test_N17_readExecutableIdentity_sameFileTwice_equal() throws {
-        let url = try makeScript("echo 1")
-        let first = DockPinLivePermission.readExecutableIdentity(atPath: url.path)
-        let second = DockPinLivePermission.readExecutableIdentity(atPath: url.path)
-
-        XCTAssertNotNil(first)
-        XCTAssertEqual(first, second)
-    }
-
-    func test_N17_readExecutableIdentity_missingFile_nil() throws {
-        let existing = try makeScript("echo 1")
-        XCTAssertNil(DockPinLivePermission.readExecutableIdentity(atPath: tempDir.appendingPathComponent("nope").path))
-        XCTAssertNotNil(DockPinLivePermission.readExecutableIdentity(atPath: existing.path), "짝: 있는 파일은 읽힌다")
-    }
-
-    func test_N17_readExecutableIdentity_replacedFile_differs() throws {
-        let url = try makeScript("echo 1")
-        let keep = tempDir.appendingPathComponent("keep-inode-busy")
-        try FileManager.default.linkItem(at: url, to: keep)       // 옛 inode를 붙잡아 새 파일이 같은 번호를 받지 않게 한다
-        let before = DockPinLivePermission.readExecutableIdentity(atPath: url.path)
-
-        try replaceScript(at: url, "echo 1")
-        let after = DockPinLivePermission.readExecutableIdentity(atPath: url.path)
-
-        XCTAssertNotNil(before)
-        XCTAssertNotNil(after)
-        XCTAssertNotEqual(before?.inode, after?.inode, "바꿔 넣은 파일은 inode가 다르다")
-        XCTAssertNotEqual(before, after)
-    }
-
-    func test_N17_readExecutableIdentity_modificationDateChanged_differs() throws {
-        let url = try makeScript("echo 1")
-        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_700_000_000)],
-                                              ofItemAtPath: url.path)
-        let before = DockPinLivePermission.readExecutableIdentity(atPath: url.path)
-
-        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_700_000_100)],
-                                              ofItemAtPath: url.path)
-        let after = DockPinLivePermission.readExecutableIdentity(atPath: url.path)
-
-        XCTAssertNotNil(before)
-        XCTAssertEqual(before?.inode, after?.inode, "같은 파일")
-        XCTAssertNotEqual(before, after, "수정 시각만 달라도 다르다")
-    }
-
     // MARK: - R9.6 1번·3번·4번 — 정상 결과
 
     func test_R9_6_freshTrustCheck_childPrints1_completesTrueOnceOnMain() throws {
-        let permission = DockPinLivePermission(executableURL: try makeScript("echo 1"))
+        let permission = makePermission(try makeScript("echo 1"))
 
         let outcome = runFresh(permission)
         drainMainQueue()
@@ -194,7 +169,7 @@ final class DockPinSystemTests: XCTestCase {
     }
 
     func test_R9_6_freshTrustCheck_childPrints0_completesFalse() throws {
-        let permission = DockPinLivePermission(executableURL: try makeScript("echo 0"))
+        let permission = makePermission(try makeScript("echo 0"))
 
         let outcome = runFresh(permission)
 
@@ -207,7 +182,7 @@ final class DockPinSystemTests: XCTestCase {
         let script = """
         if [ "$#" = "1" ] && [ "$1" = "\(DockPinPolicy.trustCheckArgument)" ]; then echo 1; else echo 0; fi
         """
-        let permission = DockPinLivePermission(executableURL: try makeScript(script))
+        let permission = makePermission(try makeScript(script))
 
         XCTAssertEqual(runFresh(permission).results, [true])
     }
@@ -220,21 +195,21 @@ final class DockPinSystemTests: XCTestCase {
         let script = """
         if [ -z "${\(Self.parentOnlyEnvKey)+x}" ] && [ -z "${HOME+x}" ] && [ -z "${DYLD_INSERT_LIBRARIES+x}" ]; then echo 1; else echo 0; fi
         """
-        let permission = DockPinLivePermission(executableURL: try makeScript(script))
+        let permission = makePermission(try makeScript(script))
 
         XCTAssertEqual(runFresh(permission).results, [true], "environment = [:] — 부모 변수·HOME·DYLD_*가 없다")
     }
 
     func test_AC9_15a_childStdin_isNullDevice_readHitsEOF() throws {
         // stdin이 nullDevice면 read가 바로 EOF로 실패한다. 물려받은 입력이면 막히거나 값을 읽는다
-        let permission = DockPinLivePermission(executableURL: try makeScript("if read line; then echo 0; else echo 1; fi"))
+        let permission = makePermission(try makeScript("if read line; then echo 0; else echo 1; fi"))
 
         XCTAssertEqual(runFresh(permission).results, [true])
     }
 
     func test_AC9_15a_childStderr_notMixedIntoStdout() throws {
         // stderr는 nullDevice — stdout 파이프에 섞이면 "noise\n1"이 되어 해석이 nil이 된다
-        let permission = DockPinLivePermission(executableURL: try makeScript("echo noise 1>&2\necho 1"))
+        let permission = makePermission(try makeScript("echo noise 1>&2\necho 1"))
 
         let outcome = runFresh(permission)
 
@@ -245,21 +220,21 @@ final class DockPinSystemTests: XCTestCase {
     // MARK: - R9.6 3번 / N20 — nil 결과와 사유
 
     func test_N20_unparsableOutput_nil_reasonUnparsable() throws {
-        let permission = DockPinLivePermission(executableURL: try makeScript("echo yes"))
+        let permission = makePermission(try makeScript("echo yes"))
 
         XCTAssertEqual(runFresh(permission).results, [nil])
         XCTAssertEqual(permission.lastFreshFailure, .unparsable)
     }
 
     func test_N20_nonZeroExit_nil_reasonUnparsable() throws {
-        let permission = DockPinLivePermission(executableURL: try makeScript("echo 1\nexit 3"))
+        let permission = makePermission(try makeScript("echo 1\nexit 3"))
 
         XCTAssertEqual(runFresh(permission).results, [nil], "종료 코드가 0이 아니면 출력이 1이어도 nil")
         XCTAssertEqual(permission.lastFreshFailure, .unparsable)
     }
 
     func test_N20_notExecutable_nil_reasonLaunchFailed() throws {
-        let permission = DockPinLivePermission(executableURL: try makeScript("echo 1", executable: false))
+        let permission = makePermission(try makeScript("echo 1", executable: false))
 
         XCTAssertEqual(runFresh(permission).results, [nil], "run()이 던지면 nil")
         XCTAssertEqual(permission.lastFreshFailure, .launchFailed)
@@ -267,88 +242,151 @@ final class DockPinSystemTests: XCTestCase {
 
     func test_N20_failureThenSuccess_reasonClearedToNil() throws {
         let url = try makeScript("echo yes")
-        let mtime = Date(timeIntervalSince1970: 1_700_000_000)     // 정수 초 — 되돌릴 때 정밀도 손실이 없다
-        try FileManager.default.setAttributes([.modificationDate: mtime], ofItemAtPath: url.path)
-        let permission = DockPinLivePermission(executableURL: url)
+        let permission = makePermission(url)
         XCTAssertEqual(runFresh(permission).results, [nil])
         XCTAssertEqual(permission.lastFreshFailure, .unparsable)
 
-        // 같은 파일(같은 inode)을 덮어쓰고 수정 시각을 되돌려 식별자를 그대로 둔다
         try "#!/bin/sh\necho 1\n".write(to: url, atomically: false, encoding: .utf8)
-        try FileManager.default.setAttributes([.modificationDate: mtime], ofItemAtPath: url.path)
 
         XCTAssertEqual(runFresh(permission).results, [true])
         XCTAssertNil(permission.lastFreshFailure, "정상 결과가 오면 사유를 지운다")
     }
 
-    // MARK: - AC9.15(c) 어댑터 수준 — N17 식별자 불일치면 실행하지 않는다
+    // MARK: - AC9.15(c) 어댑터 수준 — r6.1 VULN-001 코드 신원이 다르면 실행하지 않는다
 
-    func test_AC9_15c_executableReplaced_doesNotRun_completesNilOnce() throws {
-        let firstMarker = tempDir.appendingPathComponent("ran-first")
-        let secondMarker = tempDir.appendingPathComponent("ran-second")
-        let url = try makeScript("/usr/bin/touch '\(firstMarker.path)'\necho 1")
-        let keep = tempDir.appendingPathComponent("keep-inode-busy")
-        try FileManager.default.linkItem(at: url, to: keep)
-        let permission = DockPinLivePermission(executableURL: url)
+    /// 실행되면 marker를 만들고 1을 쓰는 스크립트
+    private func makeMarkerScript(_ marker: URL) throws -> URL {
+        try makeScript("/usr/bin/touch '\(marker.path)'\necho 1")
+    }
 
-        XCTAssertEqual(runFresh(permission).results, [true], "첫 확인: 식별자를 기록하고 실행한다")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: firstMarker.path), "짝: 첫 확인은 실제로 실행됐다")
+    func test_VULN001_match_launches_verifiesExactExecutable() throws {
+        let marker = tempDir.appendingPathComponent("ran")
+        let url = try makeMarkerScript(marker)
+        let signing = CodeSigningStub()
 
-        try replaceScript(at: url, "/usr/bin/touch '\(secondMarker.path)'\necho 1")
+        let outcome = runFresh(makePermission(url, signing: signing))
+
+        XCTAssertEqual(outcome.results, [true])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: marker.path), "일치하면 실행한다")
+        XCTAssertEqual(signing.diskCalls, [url], "실행할 바로 그 파일의 cdhash를 읽는다")
+        XCTAssertEqual(signing.requirementCalls, [url], "실행할 바로 그 파일을 서명 검증한다")
+    }
+
+    func test_VULN001_cdhashMismatch_doesNotLaunch_completesNilOnce_reasonExecutableChanged() throws {
+        let marker = tempDir.appendingPathComponent("ran")
+        let signing = CodeSigningStub()
+        signing.disk = Data([0x01])
+        let permission = makePermission(try makeMarkerScript(marker), signing: signing)
+
         let outcome = runFresh(permission)
         drainMainQueue()
 
-        XCTAssertEqual(outcome.results, [nil], "식별자가 다르면 completion(nil) 1번")
+        XCTAssertEqual(outcome.results, [nil], "completion(nil) 정확히 1번")
         XCTAssertEqual(outcome.onMainThread, [true])
-        XCTAssertFalse(FileManager.default.fileExists(atPath: secondMarker.path), "run()을 부르지 않는다")
-        XCTAssertEqual(permission.lastFreshFailure, .executableChanged)
-    }
-
-    func test_AC9_15c_modificationDateChanged_doesNotRun() throws {
-        let marker = tempDir.appendingPathComponent("ran")
-        let url = try makeScript("echo 1")
-        let permission = DockPinLivePermission(executableURL: url)
-        XCTAssertEqual(runFresh(permission).results, [true])
-
-        // 같은 inode, 다른 수정 시각(같은 DerivedData 경로에 덮어 빌드한 경우)
-        try "#!/bin/sh\n/usr/bin/touch '\(marker.path)'\necho 1\n".write(to: url, atomically: false, encoding: .utf8)
-        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_600_000_000)],
-                                              ofItemAtPath: url.path)
-
-        XCTAssertEqual(runFresh(permission).results, [nil])
         XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "run()을 부르지 않는다")
         XCTAssertEqual(permission.lastFreshFailure, .executableChanged)
     }
 
-    func test_AC9_15c_executableRemoved_completesNil_reasonExecutableChanged() throws {
-        let url = try makeScript("echo 1")
-        let permission = DockPinLivePermission(executableURL: url)
-        XCTAssertEqual(runFresh(permission).results, [true])
+    func test_VULN001_requirementCheckFails_doesNotLaunch() throws {
+        // cdhash가 같아도(코드 디렉터리는 그대로 두고 코드 페이지만 바꾼 경우) 서명 검증이 실패하면 실행하지 않는다
+        let marker = tempDir.appendingPathComponent("ran")
+        let signing = CodeSigningStub()
+        signing.satisfies = false
+        let permission = makePermission(try makeMarkerScript(marker), signing: signing)
 
-        try FileManager.default.removeItem(at: url)
+        let outcome = runFresh(permission)
+        drainMainQueue()
 
-        XCTAssertEqual(runFresh(permission).results, [nil], "현재 식별자를 읽지 못하면 실행하지 않는다")
+        XCTAssertEqual(outcome.results, [nil])
+        XCTAssertEqual(outcome.onMainThread, [true])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "run()을 부르지 않는다")
         XCTAssertEqual(permission.lastFreshFailure, .executableChanged)
     }
 
-    func test_AC9_15c_unreadableOnFirstCheck_doesNotRun_thenRecordsWhenReadable() throws {
-        let url = tempDir.appendingPathComponent("fake-app")
-        let permission = DockPinLivePermission(executableURL: url)
+    func test_VULN001_diskCDHashUnreadable_doesNotLaunch() throws {
+        let marker = tempDir.appendingPathComponent("ran")
+        let signing = CodeSigningStub()
+        signing.disk = nil
+        let permission = makePermission(try makeMarkerScript(marker), signing: signing)
 
-        XCTAssertEqual(runFresh(permission).results, [nil], "처음부터 읽지 못하면(nil, nil) 실행하지 않는다")
+        XCTAssertEqual(runFresh(permission).results, [nil])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+        XCTAssertEqual(permission.lastFreshFailure, .executableChanged)
+    }
+
+    func test_VULN001_runningBaselineUnknown_doesNotLaunch() throws {
+        // 기준(프로세스 시작 때의 자기 cdhash)이 없으면 디스크 값으로 채우지 않고 실행하지 않는다
+        let marker = tempDir.appendingPathComponent("ran")
+        let signing = CodeSigningStub()
+        signing.running = nil
+        let permission = makePermission(try makeMarkerScript(marker), signing: signing)
+
+        XCTAssertEqual(runFresh(permission).results, [nil])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+        XCTAssertEqual(permission.lastFreshFailure, .executableChanged)
+        XCTAssertEqual(runFresh(permission).results, [nil], "두 번째도 실행하지 않는다(첫 확인 때 기록하지 않는다)")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+    }
+
+    func test_VULN001_verifiedBeforeEveryLaunch_laterMismatchStopsLaunch() throws {
+        // 첫 확인 뒤 같은 자리에서 바꿔치기(inode·수정 시각 유지)해도 매 실행 전 확인이 막는다
+        let marker = tempDir.appendingPathComponent("ran")
+        let signing = CodeSigningStub()
+        let url = try makeMarkerScript(marker)
+        let permission = makePermission(url, signing: signing)
+        XCTAssertEqual(runFresh(permission).results, [true])
+        try FileManager.default.removeItem(at: marker)
+
+        signing.disk = Data([0x02])
+        XCTAssertEqual(runFresh(permission).results, [nil])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "두 번째는 실행하지 않는다")
         XCTAssertEqual(permission.lastFreshFailure, .executableChanged)
 
-        try makeScript("echo 1")
-        XCTAssertEqual(runFresh(permission).results, [true], "읽히게 된 첫 값을 기록하고 실행한다")
+        signing.disk = CodeSigningStub.selfHash
+        XCTAssertEqual(runFresh(permission).results, [true], "다시 일치하면 실행한다")
+        XCTAssertEqual(signing.diskCalls.count, 3, "매 실행 전에 확인한다")
         XCTAssertNil(permission.lastFreshFailure)
     }
 
     func test_N17_sameIdentity_repeatedChecks_allRun() throws {
-        let permission = DockPinLivePermission(executableURL: try makeScript("echo 1"))
+        let permission = makePermission(try makeScript("echo 1"))
 
         let results = (0..<3).flatMap { _ in runFresh(permission).results }
 
-        XCTAssertEqual(results, [true, true, true], "식별자가 그대로면 매번 실행한다")
+        XCTAssertEqual(results, [true, true, true], "코드 신원이 그대로면 매번 실행한다")
+    }
+
+    // MARK: - VULN-001 live — 실제 Security API
+
+    func test_VULN001_apiLevel_defaultLiveSigning_unsignedScript_doesNotLaunch() throws {
+        // API 수준: 이음새를 넣지 않은 어댑터는 실제 코드 신원 확인을 한다. 서명 없는 스크립트는 앱과 같을 수 없다
+        let marker = tempDir.appendingPathComponent("ran")
+        let permission = DockPinLivePermission(executableURL: try makeMarkerScript(marker))
+
+        let outcome = runFresh(permission)
+        drainMainQueue()
+
+        XCTAssertEqual(outcome.results, [nil])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "바꿔치기된 실행 파일을 실행하지 않는다")
+        XCTAssertEqual(permission.lastFreshFailure, .executableChanged)
+    }
+
+    func test_VULN001_live_ownExecutable_matchesRunningBaseline() throws {
+        let live = DockPinCodeSigning.live
+        let executable = try XCTUnwrap(Bundle.main.executableURL)
+
+        let running = try XCTUnwrap(live.runningCDHash(), "테스트 호스트 앱은 서명되어 있다")
+        XCTAssertEqual(live.diskCDHash(executable), running, "디스크의 자기 실행 파일 cdhash == 기준")
+        XCTAssertTrue(live.diskSatisfiesRunningRequirement(executable))
+        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(runningCDHash: running, diskCDHash: live.diskCDHash(executable)))
+    }
+
+    func test_VULN001_live_unsignedFile_noCDHash_failsRequirement() throws {
+        let url = try makeScript("echo 1")
+        let live = DockPinCodeSigning.live
+
+        XCTAssertNil(live.diskCDHash(url))
+        XCTAssertFalse(live.diskSatisfiesRunningRequirement(url))
     }
 
     // MARK: - arch §2.6 — cancel(): 자식 종료 + completion 0번
@@ -356,7 +394,7 @@ final class DockPinSystemTests: XCTestCase {
     func test_cancel_runningChild_terminatesChild_andNeverCompletes() throws {
         let pidFile = tempDir.appendingPathComponent("child.pid")
         let script = "echo $$ > '\(pidFile.path)'\nexec /bin/sleep 30"     // exec — 같은 pid로 잠들어 고아 프로세스가 남지 않는다
-        let permission = DockPinLivePermission(executableURL: try makeScript(script))
+        let permission = makePermission(try makeScript(script))
 
         let never = expectation(description: "completion must not be called")
         never.isInverted = true
@@ -379,7 +417,7 @@ final class DockPinSystemTests: XCTestCase {
     }
 
     func test_cancel_afterCompletion_isHarmless() throws {
-        let permission = DockPinLivePermission(executableURL: try makeScript("echo 1"))
+        let permission = makePermission(try makeScript("echo 1"))
         let done = expectation(description: "completion")
         var results: [Bool?] = []
         let handle = permission.freshTrustCheck { results.append($0); done.fulfill() }

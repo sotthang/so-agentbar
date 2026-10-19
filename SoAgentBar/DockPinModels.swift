@@ -156,12 +156,6 @@ struct DockPinSessionState: Equatable, Sendable {
     var onConsole = true
 }
 
-/// (r6) R9.6 1번, N17 — 실행 파일 식별자. 순수 값(파일 읽기는 어댑터가 한다)
-struct DockPinExecutableIdentity: Equatable, Sendable {
-    var inode: UInt64
-    var modifiedAt: TimeInterval
-}
-
 /// (r6) R9.6 7번 — 새 프로세스 확인을 시작한 이유(로그·테스트 구분용). 주기 / 7-1 셋째 행 / R9.5 N21
 enum DockPinFreshCheckOrigin: Equatable, Sendable { case periodic, latchDoubt, notifyAdvance }
 

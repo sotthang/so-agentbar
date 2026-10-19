@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 import os
+import Security
 
 // SPEC-004 Dock Pin — 시스템 접점 프로토콜 + Live 어댑터 (arch §2.6)
 // 부작용 파일. 순수 판정은 DockPinModels/DisplayMap/EdgeRule/Placement/Policy 에 있다(R13.1).
@@ -50,8 +51,9 @@ enum DockPinDisplaySignal: Equatable, Sendable {
     func dockProbeTrusted(dockPID: pid_t) -> Bool
     /// (r5) R9.6 — 자기 실행 파일 + trustCheckArgument를 메인 밖에서 실행. completion은 메인에서 최대 1번
     /// (parseFreshTrustOutput 결과, 실행 실패 = nil). cancel() → 자식 terminate + completion 0번. 시한은 매니저가 잰다.
-    /// (r6) 자식 environment = [:], stdin·stderr = nullDevice(N16). 실행 전 실행 파일 식별자 확인(N17):
-    /// shouldLaunchFreshCheck == false면 run() 없이 completion(nil). 결과 사유는 lastFreshFailure로 남긴다(로그용, N20).
+    /// (r6) 자식 environment = [:], stdin·stderr = nullDevice(N16). (r6.1 VULN-001) 매 실행 전 코드 신원 확인:
+    /// 디스크 cdhash ≠ 시작 때 기록한 자기 cdhash, 또는 자기 지정 요구사항 서명 검증 실패면 run() 없이 completion(nil).
+    /// 결과 사유는 lastFreshFailure로 남긴다(로그용, N20).
     func freshTrustCheck(completion: @escaping @MainActor (Bool?) -> Void) -> DockPinCancellable
     /// (r6) N20 — 직전 completion(nil)의 사유. nil이면 정상 결과. 매니저가 로그에만 쓴다
     var lastFreshFailure: DockPinFreshFailure? { get }
@@ -317,17 +319,84 @@ final class DockPinLiveWorkItem: DockPinCancellable {
     }
 }
 
+/// (r6.1, VULN-001) 새 프로세스 확인 실행 전 코드 신원 확인 이음새. 자식은 부모의 TCC 책임으로 돌아 앱의
+/// 손쉬운 사용 권한을 쓰므로, 디스크의 실행 파일이 지금 돌고 있는 코드와 같을 때만 실행한다.
+/// 클로저는 메인 밖(freshQueue)에서 불린다. 테스트는 가짜 값을 넣고, 실제 구현은 `live`다.
+struct DockPinCodeSigning: Sendable {
+    /// 프로세스 시작 때 기록한 자기 자신의 cdhash(kSecCodeInfoUnique). nil = 기록 실패 → 실행하지 않는다
+    var runningCDHash: @Sendable () -> Data?
+    /// 디스크 파일의 cdhash. 서명이 없거나 읽지 못하면 nil
+    var diskCDHash: @Sendable (URL) -> Data?
+    /// 디스크 파일이 서명 검증(코드 페이지·중첩 코드 포함)을 통과하고 자기 지정 요구사항을 만족하는가
+    var diskSatisfiesRunningRequirement: @Sendable (URL) -> Bool
+
+    static let live = DockPinCodeSigning(
+        runningCDHash: { DockPinRunningCodeBaseline.recorded?.cdhash },
+        diskCDHash: { url in DockPinRunningCodeBaseline.cdhash(ofFileAt: url) },
+        diskSatisfiesRunningRequirement: { url in DockPinRunningCodeBaseline.fileSatisfiesRequirement(url) })
+}
+
+/// (r6.1, VULN-001) 실행 중인 자기 코드의 기준값. `SecCodeCopySelf` + 서명 정보는 디스크를 다시 읽으므로
+/// (바꿔치기 뒤에 부르면 새 파일 값을 돌려준다 — 세션 안 실측) 반드시 프로세스 시작 때 한 번 기록한다.
+/// main.swift가 NSApplication 전에 `recordAtLaunch()`를 부른다.
+enum DockPinRunningCodeBaseline {
+    struct Baseline: @unchecked Sendable {       // SecRequirement는 불변 CF 객체
+        let cdhash: Data
+        let requirement: SecRequirement
+    }
+
+    /// 첫 접근 때 한 번 계산(Swift 전역 lazy, 스레드 안전)
+    static let recorded: Baseline? = capture()
+
+    /// 실행 직후의 기준을 고정한다. 단축 경로(--dockpin-trust-check) 뒤, NSApplication 전에 부른다
+    static func recordAtLaunch() { _ = recorded }
+
+    /// 커널이 기록한 실행 코드와 디스크가 같음을 확인(SecCodeCheckValidity)한 뒤에만 기준으로 삼는다
+    private static func capture() -> Baseline? {
+        var code: SecCode?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return nil }
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode,
+              let cdhash = cdhash(of: staticCode) else { return nil }
+        var requirement: SecRequirement?
+        guard SecCodeCopyDesignatedRequirement(staticCode, [], &requirement) == errSecSuccess, let requirement,
+              SecCodeCheckValidity(code, [], nil) == errSecSuccess else { return nil }
+        return Baseline(cdhash: cdhash, requirement: requirement)
+    }
+
+    static func cdhash(ofFileAt url: URL) -> Data? {
+        var staticCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(url as CFURL, [], &staticCode) == errSecSuccess, let staticCode else { return nil }
+        return cdhash(of: staticCode)
+    }
+
+    private static func cdhash(of staticCode: SecStaticCode) -> Data? {
+        var info: CFDictionary?
+        guard SecCodeCopySigningInformation(staticCode, [], &info) == errSecSuccess,
+              let hash = (info as? [String: Any])?[kSecCodeInfoUnique as String] as? Data,
+              !hash.isEmpty else { return nil }
+        return hash
+    }
+
+    /// cdhash가 같아도 코드 디렉터리만 남기고 페이지를 바꾼 파일은 여기서 걸린다(실측 -67061).
+    /// 중첩 코드(Debug의 *.debug.dylib, Sparkle.framework)도 검증한다. 실측 약 10–20 ms
+    static func fileSatisfiesRequirement(_ url: URL) -> Bool {
+        guard let requirement = recorded?.requirement else { return false }
+        var staticCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(url as CFURL, [], &staticCode) == errSecSuccess, let staticCode else { return false }
+        let flags = SecCSFlags(rawValue: kSecCSStrictValidate | kSecCSCheckAllArchitectures | kSecCSCheckNestedCode)
+        return SecStaticCodeCheckValidity(staticCode, flags, requirement) == errSecSuccess
+    }
+}
+
 /// AX 권한 확인·요청·설정 열기.
 @MainActor final class DockPinLivePermission: DockPinPermissionProviding {
     /// 실행할 파일. nil이면 확인 때 Bundle.main.executableURL을 쓴다(테스트는 임시 스크립트를 넣는다).
-    /// init은 시스템 호출을 하지 않는다(식별자 기록은 첫 확인 때, N17).
+    /// init은 시스템 호출을 하지 않는다(코드 신원 기준은 main.swift가 프로세스 시작 때 기록한다, VULN-001).
     private let executableURL: URL?
 
     /// (r6) N20 — 직전 completion(nil)의 사유
     private(set) var lastFreshFailure: DockPinFreshFailure?
-
-    /// (r6) N17 — 처음 읽힌 실행 파일 식별자. 이후 확인은 이 값과 같을 때만 실행한다
-    private var recordedIdentity: DockPinExecutableIdentity?
 
     /// R9.6 4번 — 자식 실행·대기는 메인 밖 직렬 큐에서
     nonisolated private static let freshQueue = DispatchQueue(label: "com.sotthang.soagentbar.dockpin.fresh",
@@ -335,25 +404,21 @@ final class DockPinLiveWorkItem: DockPinCancellable {
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.sotthang.soagentbar",
                                        category: "DockPin")
 
-    init(executableURL: URL? = nil) {
+    /// (r6.1) VULN-001 — 매 실행 전 코드 신원 확인
+    private let codeSigning: DockPinCodeSigning
+
+    init(executableURL: URL? = nil, codeSigning: DockPinCodeSigning = .live) {
         self.executableURL = executableURL
+        self.codeSigning = codeSigning
     }
 
-    /// (r6) N17 — attributesOfItem의 .systemFileNumber + .modificationDate. 읽지 못하면 nil. 메인 밖에서 부른다.
-    nonisolated static func readExecutableIdentity(atPath path: String) -> DockPinExecutableIdentity? {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
-              let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value,
-              let modified = attributes[.modificationDate] as? Date else { return nil }
-        return DockPinExecutableIdentity(inode: inode, modifiedAt: modified.timeIntervalSince1970)
-    }
-
-    /// (r5·r6) R9.6 1번·3번·4번, N16, N17 — arch §2.6
+    /// (r5·r6·r6.1) R9.6 1번·3번·4번, N16, VULN-001 — arch §2.6
     func freshTrustCheck(completion: @escaping @MainActor (Bool?) -> Void) -> DockPinCancellable {
         let handle = DockPinFreshCheckHandle()
         let url = executableURL ?? Bundle.main.executableURL
-        let recorded = recordedIdentity
+        let codeSigning = codeSigning
         Self.freshQueue.async {
-            let outcome = Self.performFreshCheck(url: url, recorded: recorded, handle: handle)
+            let outcome = Self.performFreshCheck(url: url, codeSigning: codeSigning, handle: handle)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     guard handle.finish() else { return }       // 취소됐으면 completion 0번
@@ -365,9 +430,6 @@ final class DockPinLiveWorkItem: DockPinCancellable {
     }
 
     private func apply(_ outcome: DockPinFreshOutcome, completion: @MainActor (Bool?) -> Void) {
-        if recordedIdentity == nil, let current = outcome.identity {
-            recordedIdentity = current
-        }
         lastFreshFailure = outcome.failure
         let reason = outcome.failure.map { "\($0)" } ?? "-"
         let result = outcome.result.map { $0 ? "1" : "0" } ?? "nil"
@@ -375,13 +437,15 @@ final class DockPinLiveWorkItem: DockPinCancellable {
         completion(outcome.result)
     }
 
-    /// 메인 밖(freshQueue). 식별자 확인 → 실행 → 출력 해석. 취소 표시가 있으면 실행하지 않거나 자식을 끝낸다.
-    nonisolated private static func performFreshCheck(url: URL?, recorded: DockPinExecutableIdentity?,
+    /// 메인 밖(freshQueue). 코드 신원 확인 → 실행 → 출력 해석. 취소 표시가 있으면 실행하지 않거나 자식을 끝낸다.
+    nonisolated private static func performFreshCheck(url: URL?, codeSigning: DockPinCodeSigning,
                                                       handle: DockPinFreshCheckHandle) -> DockPinFreshOutcome {
-        guard let url else { return DockPinFreshOutcome(result: nil, failure: .launchFailed, identity: nil) }
-        let current = readExecutableIdentity(atPath: url.path)
-        guard DockPinPolicy.shouldLaunchFreshCheck(recorded: recorded, current: current) else {
-            return DockPinFreshOutcome(result: nil, failure: .executableChanged, identity: current)
+        guard let url else { return DockPinFreshOutcome(result: nil, failure: .launchFailed) }
+        // VULN-001: cdhash 비교(싸다) → 서명·요구사항 검증(코드 페이지까지). 하나라도 아니면 실행하지 않는다
+        guard DockPinPolicy.shouldLaunchFreshCheck(runningCDHash: codeSigning.runningCDHash(),
+                                                   diskCDHash: codeSigning.diskCDHash(url)),
+              codeSigning.diskSatisfiesRunningRequirement(url) else {
+            return DockPinFreshOutcome(result: nil, failure: .executableChanged)
         }
 
         let process = Process()
@@ -395,11 +459,11 @@ final class DockPinLiveWorkItem: DockPinCancellable {
         let exited = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in exited.signal() }      // waitUntilExit의 런루프 폴링 지연을 피한다
 
-        guard !handle.isCancelled else { return DockPinFreshOutcome(result: nil, failure: nil, identity: current) }
+        guard !handle.isCancelled else { return DockPinFreshOutcome(result: nil, failure: nil) }
         do {
             try process.run()
         } catch {
-            return DockPinFreshOutcome(result: nil, failure: .launchFailed, identity: current)
+            return DockPinFreshOutcome(result: nil, failure: .launchFailed)
         }
         handle.attach(process)
 
@@ -407,7 +471,7 @@ final class DockPinLiveWorkItem: DockPinCancellable {
         exited.wait()
         let output = String(decoding: data, as: UTF8.self)
         let result = DockPinPolicy.parseFreshTrustOutput(exitStatus: process.terminationStatus, stdout: output)
-        return DockPinFreshOutcome(result: result, failure: result == nil ? .unparsable : nil, identity: current)
+        return DockPinFreshOutcome(result: result, failure: result == nil ? .unparsable : nil)
     }
 
     func isTrusted() -> Bool {
@@ -439,7 +503,6 @@ final class DockPinLiveWorkItem: DockPinCancellable {
 private struct DockPinFreshOutcome: Sendable {
     var result: Bool?
     var failure: DockPinFreshFailure?
-    var identity: DockPinExecutableIdentity?
 }
 
 /// freshTrustCheck 핸들. cancel() → 취소 표시 + 실행 중인 자식 terminate. 응답 뒤 cancel()은 아무 일도 하지 않는다.

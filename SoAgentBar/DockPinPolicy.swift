@@ -297,11 +297,11 @@ enum DockPinPolicy {
         arguments.count == 2 && arguments[1] == trustCheckArgument
     }
 
-    /// R9.6 1번(N17) — current nil → false, recorded nil → true, 같음 → true, 다름 → false
-    static func shouldLaunchFreshCheck(recorded: DockPinExecutableIdentity?,
-                                       current: DockPinExecutableIdentity?) -> Bool {
-        guard let current else { return false }
-        return recorded.map { $0 == current } ?? true
+    /// R9.6 1번(r6.1 VULN-001) — 실행 전 코드 신원 비교. 기준(프로세스 시작 때 기록한 자기 cdhash)과
+    /// 디스크 파일의 cdhash가 둘 다 있고, 비어 있지 않고, 같을 때만 true. 기준이 없으면 디스크 값으로 채우지 않는다.
+    static func shouldLaunchFreshCheck(runningCDHash: Data?, diskCDHash: Data?) -> Bool {
+        guard let runningCDHash, let diskCDHash, !runningCDHash.isEmpty else { return false }
+        return runningCDHash == diskCDHash
     }
 
     // MARK: - R11.2 표

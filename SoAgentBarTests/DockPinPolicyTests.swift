@@ -8,7 +8,7 @@ import CoreGraphics
 // 커버 AC: AC4.1, AC4.7, AC4.10(d), AC5.11(일정 함수), AC7.1–7.4, AC8.1, AC8.6(일정 함수), AC8.10,
 //          AC8.11(a), AC10.4, AC11.1–11.5, AC12.3, S5(설계 추가) + R2.5/S2 선택지 제목, S6 고정 문구.
 // 커밋 11a(r5·r6) 추가: AC4.7(수정 — freshTrustCheck 행), AC9.6 순수부(combinedTrust, dockProbeTrusted),
-//          AC9.8(d, e)(parseFreshTrustOutput, isTrustCheckInvocation), AC9.15(b)(shouldLaunchFreshCheck),
+//          AC9.8(d, e)(parseFreshTrustOutput, isTrustCheckInvocation), AC9.15(b)(shouldLaunchFreshCheck — r6.1 VULN-001에서 cdhash 비교로 교체),
 //          DockPinTuning 상수 교체·추가(SPEC "조정 숫자" 표).
 //
 // RED 확인 방법: 이 파일은 컴파일된다(so-tester가 arch §2.5 시그니처의 고정값 스텁을 넣었다).
@@ -1120,41 +1120,37 @@ final class DockPinPolicyTests: XCTestCase {
         XCTAssertEqual(DockPinPolicy.trustCheckArgument, "--dockpin-trust-check")
     }
 
-    // MARK: - 11a (r6, N17) AC9.15(b) — shouldLaunchFreshCheck
+    // MARK: - r6.1 (VULN-001) AC9.15(b) — shouldLaunchFreshCheck(runningCDHash:diskCDHash:)
+    // 실행 전 코드 신원 비교. 기준은 프로세스 시작 때 기록한 자기 자신의 cdhash, 비교 대상은 디스크 파일의 cdhash.
 
-    private enum Identity {
-        static let a = DockPinExecutableIdentity(inode: 42, modifiedAt: 1_700_000_000)
-        static let otherInode = DockPinExecutableIdentity(inode: 43, modifiedAt: 1_700_000_000)
-        static let otherModified = DockPinExecutableIdentity(inode: 42, modifiedAt: 1_700_000_001)
+    private enum CDHash {
+        static let a = Data([0x01, 0xab, 0x04, 0xa7])
+        static let b = Data([0x01, 0xab, 0x04, 0xa8])
     }
 
-    func test_AC9_15b_shouldLaunchFreshCheck_notRecordedYet_currentPresent_true() {
-        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(recorded: nil, current: Identity.a))
+    func test_VULN001_shouldLaunchFreshCheck_sameCDHash_true() {
+        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(runningCDHash: CDHash.a, diskCDHash: CDHash.a))
     }
 
-    func test_AC9_15b_shouldLaunchFreshCheck_sameIdentity_true() {
-        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.a, current: Identity.a))
+    func test_VULN001_shouldLaunchFreshCheck_differentCDHash_false() {
+        XCTAssertFalse(DockPinPolicy.shouldLaunchFreshCheck(runningCDHash: CDHash.a, diskCDHash: CDHash.b))
+        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(runningCDHash: CDHash.b, diskCDHash: CDHash.b), "짝: 같으면 true")
     }
 
-    func test_AC9_15b_shouldLaunchFreshCheck_inodeChanged_false() {
-        XCTAssertFalse(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.a, current: Identity.otherInode))
-        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.a, current: Identity.a), "짝: 같으면 true")
+    func test_VULN001_shouldLaunchFreshCheck_diskUnreadable_false() {
+        XCTAssertFalse(DockPinPolicy.shouldLaunchFreshCheck(runningCDHash: CDHash.a, diskCDHash: nil))
+        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(runningCDHash: CDHash.a, diskCDHash: CDHash.a), "짝: 읽히면 true")
     }
 
-    func test_AC9_15b_shouldLaunchFreshCheck_modifiedAtChanged_false() {
-        XCTAssertFalse(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.a, current: Identity.otherModified))
-        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.otherModified,
-                                                           current: Identity.otherModified), "짝: 같으면 true")
+    func test_VULN001_shouldLaunchFreshCheck_runningUnknown_false() {
+        // 기준을 기록하지 못했으면(서명 없음 등) 디스크 값과 상관없이 실행하지 않는다 — 첫 확인 때 디스크에서 채우지 않는다
+        XCTAssertFalse(DockPinPolicy.shouldLaunchFreshCheck(runningCDHash: nil, diskCDHash: CDHash.a))
+        XCTAssertFalse(DockPinPolicy.shouldLaunchFreshCheck(runningCDHash: nil, diskCDHash: nil))
     }
 
-    func test_AC9_15b_shouldLaunchFreshCheck_currentUnreadable_false() {
-        XCTAssertFalse(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.a, current: nil))
-        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.a, current: Identity.a), "짝: 읽히면 true")
-    }
-
-    func test_AC9_15b_shouldLaunchFreshCheck_bothNil_false() {
-        XCTAssertFalse(DockPinPolicy.shouldLaunchFreshCheck(recorded: nil, current: nil))
-        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(recorded: nil, current: Identity.a), "짝: 현재 값이 있으면 true")
+    func test_VULN001_shouldLaunchFreshCheck_emptyCDHash_false() {
+        XCTAssertFalse(DockPinPolicy.shouldLaunchFreshCheck(runningCDHash: Data(), diskCDHash: Data()), "빈 값은 신원이 아니다")
+        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(runningCDHash: CDHash.a, diskCDHash: CDHash.a), "짝")
     }
 
     // MARK: - 11a (r5·r6) DockPinTuning 상수 (SPEC "조정 숫자" 표)

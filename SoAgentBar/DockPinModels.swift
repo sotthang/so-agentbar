@@ -3,8 +3,6 @@ import Foundation
 
 // SPEC-004 Dock Pin — 순수 값 타입 (arch §2.1, 커밋 1)
 // 이 파일은 CoreGraphics / Foundation 만 import 한다 (AC13.1).
-//
-// `DockPinRelocationPhase.isRelocating/isDriving`은 커밋 4까지 스텁이다.
 
 /// R2.1 — 고정 대상. 저장은 UUID 문자열 하나(nil = .main).
 enum DockPinTarget: Hashable, Sendable {
@@ -102,17 +100,16 @@ enum DockPinRelocationPhase: Equatable, Sendable {
     case verifying
     case failed(attempts: Int)
 
-    /// driving, verifying — AC8.10 (커밋 4 DockPinPolicyTests에서 검증)
+    /// driving, verifying — AC8.10
     var isRelocating: Bool {
-        // STUB(RED): 커밋 4에서 테스트·구현
-        return false
+        switch self {
+        case .driving, .verifying: return true
+        case .idle, .waiting, .failed: return false
+        }
     }
 
-    /// driving — AC8.10 (커밋 4 DockPinPolicyTests에서 검증)
-    var isDriving: Bool {
-        // STUB(RED): 커밋 4에서 테스트·구현
-        return false
-    }
+    /// driving — AC8.10
+    var isDriving: Bool { self == .driving }
 }
 
 /// R4.4 tapState 입력

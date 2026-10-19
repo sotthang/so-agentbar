@@ -151,6 +151,8 @@
 		DP102DP102DP102DP102DP01 /* DockPinEdgeRuleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP102DP102DP102DP102DP02 /* DockPinEdgeRuleTests.swift */; };
 		DP004DP004DP004DP004DP01 /* DockPinPlacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP004DP004DP004DP004DP02 /* DockPinPlacement.swift */; };
 		DP103DP103DP103DP103DP01 /* DockPinPlacementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP103DP103DP103DP103DP02 /* DockPinPlacementTests.swift */; };
+		DP005DP005DP005DP005DP01 /* DockPinPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP005DP005DP005DP005DP02 /* DockPinPolicy.swift */; };
+		DP104DP104DP104DP104DP01 /* DockPinPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP104DP104DP104DP104DP02 /* DockPinPolicyTests.swift */; };
 		MA002MA002MA002MA002MA01 /* MenubarAnimationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = MA002MA002MA002MA002MA02 /* MenubarAnimationController.swift */; };
 		MA005MA005MA005MA005MA01 /* MenubarAnimationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MA005MA005MA005MA005MA02 /* MenubarAnimationControllerTests.swift */; };
 /* End PBXBuildFile section */
@@ -240,6 +242,8 @@
 		DP102DP102DP102DP102DP02 /* DockPinEdgeRuleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinEdgeRuleTests.swift; sourceTree = "<group>"; };
 		DP004DP004DP004DP004DP02 /* DockPinPlacement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinPlacement.swift; sourceTree = "<group>"; };
 		DP103DP103DP103DP103DP02 /* DockPinPlacementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinPlacementTests.swift; sourceTree = "<group>"; };
+		DP005DP005DP005DP005DP02 /* DockPinPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinPolicy.swift; sourceTree = "<group>"; };
+		DP104DP104DP104DP104DP02 /* DockPinPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinPolicyTests.swift; sourceTree = "<group>"; };
 		MA002MA002MA002MA002MA02 /* MenubarAnimationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarAnimationController.swift; sourceTree = "<group>"; };
 		MA005MA005MA005MA005MA02 /* MenubarAnimationControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarAnimationControllerTests.swift; sourceTree = "<group>"; };
 		PA1000PA1000PA1000PA1002 /* char_0.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_0.png; path = "Assets/pixel-agents/characters/char_0.png"; sourceTree = "<group>"; };
@@ -350,6 +354,7 @@
 				DP002DP002DP002DP002DP02 /* DockPinDisplayMap.swift */,
 				DP003DP003DP003DP003DP02 /* DockPinEdgeRule.swift */,
 				DP004DP004DP004DP004DP02 /* DockPinPlacement.swift */,
+				DP005DP005DP005DP005DP02 /* DockPinPolicy.swift */,
 				3E1ED4571EA5484EA2B785B1 /* MenuBarIconView.swift */,
 				3E1ED4571EA5484EA2B785B3 /* AgentListView.swift */,
 				D0A7CBDB2F7556860052C5A3 /* SettingsView.swift */,
@@ -490,6 +495,7 @@
 				DP101DP101DP101DP101DP02 /* DockPinDisplayMapTests.swift */,
 				DP102DP102DP102DP102DP02 /* DockPinEdgeRuleTests.swift */,
 				DP103DP103DP103DP103DP02 /* DockPinPlacementTests.swift */,
+				DP104DP104DP104DP104DP02 /* DockPinPolicyTests.swift */,
 			);
 			path = SoAgentBarTests;
 			sourceTree = "<group>";
@@ -704,6 +710,7 @@
 				DP002DP002DP002DP002DP01 /* DockPinDisplayMap.swift in Sources */,
 				DP003DP003DP003DP003DP01 /* DockPinEdgeRule.swift in Sources */,
 				DP004DP004DP004DP004DP01 /* DockPinPlacement.swift in Sources */,
+				DP005DP005DP005DP005DP01 /* DockPinPolicy.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -748,6 +755,7 @@
 				DP101DP101DP101DP101DP01 /* DockPinDisplayMapTests.swift in Sources */,
 				DP102DP102DP102DP102DP01 /* DockPinEdgeRuleTests.swift in Sources */,
 				DP103DP103DP103DP103DP01 /* DockPinPlacementTests.swift in Sources */,
+				DP104DP104DP104DP104DP01 /* DockPinPolicyTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

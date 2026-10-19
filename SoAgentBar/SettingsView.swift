@@ -565,6 +565,8 @@ struct SettingsView: View {
                         }
                     }
 
+                    DockPinSettingsSection(store: store)
+
                     // 앱 섹션
                     sectionHeader(store.t("앱", "App"))
 

@@ -260,6 +260,9 @@ final class DockPinCallLog {
     var cursor: CGPoint? = CGPoint(x: 500, y: 500)
     private(set) var moves: [CGPoint] = []
     private(set) var cursorReadCount = 0
+    /// 커밋 7 — 시계를 주면 이동마다 그 시각을 moveTimes에 남긴다(AC8.4·AC8.4c 시각 검증). 없으면 기록 안 함
+    var clock: (@MainActor () -> TimeInterval)?
+    private(set) var moveTimes: [TimeInterval] = []
     private let log: DockPinCallLog?
 
     init(log: DockPinCallLog? = nil) { self.log = log }
@@ -272,6 +275,7 @@ final class DockPinCallLog {
     /// 실제 커서는 움직이지 않는다. 기록하고 가짜 커서만 옮긴다.
     func postTaggedMouseMove(to point: CGPoint) {
         moves.append(point)
+        if let clock { moveTimes.append(clock()) }
         cursor = point
         log?.add("move")
     }

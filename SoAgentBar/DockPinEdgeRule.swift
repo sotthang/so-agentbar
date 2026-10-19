@@ -13,6 +13,9 @@ struct DockPinGuardSnapshot: Equatable, Sendable {
     var isRelocating = false
     var isDriving = false
     var marker: Int64 = DockPinTuning.eventMarker
+    /// VULN-002 — 되돌리기 시한(탭 시계 uptime, s). now > 시한이면 isRelocating·isDriving을 거짓으로 본다.
+    /// 메인이 멈춰 스냅숏을 못 내려도 사용자 입력을 시한 뒤에는 버리지 않는다. nil = 시한 없음(옛 동작)
+    var relocationDeadline: TimeInterval?
 }
 
 enum DockPinTapSignal: Equatable, Sendable {
@@ -85,14 +88,20 @@ enum DockPinEdgeRule {
         (blockableTypes + observedTypes).reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
 
     /// R5.4 표 1–9행 그대로(1a행 포함). 버튼 번호 > 31이면 1a·2·3행을 건너뛰고 5행.
+    /// now = 탭 시계(uptime). 스냅숏 시한이 지났으면(VULN-002) 되돌리는 중이 아닌 것으로 판정하고,
+    /// 억제된 버튼의 Dragged·Up은 통과시키며 억제를 푼다.
     static func decide(type: CGEventType, location: CGPoint, flags: CGEventFlags,
                        userData: Int64, buttonNumber: Int64,
-                       snapshot: DockPinGuardSnapshot,
+                       snapshot: DockPinGuardSnapshot, now: TimeInterval,
                        suppression: inout DockPinGestureSuppression) -> DockPinTapDecision {
         // 1행 — 앱이 보낸 이벤트
         if userData == snapshot.marker { return .pass }
 
-        let driving = snapshot.isDriving
+        // VULN-002 — 할당 없는 비교
+        var expired = false
+        if let deadline = snapshot.relocationDeadline, now > deadline { expired = true }
+        let driving = snapshot.isDriving && !expired
+        let relocating = snapshot.isRelocating && !expired
         // contains/insert 는 0…31 밖이면 false/무시 → 31 초과 버튼은 1a·2·3행을 건너뛴다
         let suppressible = buttonNumber >= 0 && buttonNumber < Int64(DockPinTuning.suppressibleButtonCount)
 
@@ -113,7 +122,7 @@ enum DockPinEdgeRule {
             // 3행 (Up)
             if suppression.contains(button: buttonNumber) {
                 suppression.remove(button: buttonNumber)
-                return suppressedDrop(driving: driving)
+                if !expired { return suppressedDrop(driving: driving) }
             }
             return observed(driving: driving)
 
@@ -125,12 +134,13 @@ enum DockPinEdgeRule {
         case .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
             // 3행 (Dragged)
             if suppression.contains(button: buttonNumber) {
-                return suppressedDrop(driving: driving)
+                if !expired { return suppressedDrop(driving: driving) }
+                suppression.remove(button: buttonNumber)    // VULN-002 — 시한 뒤에는 남은 제스처를 통과
             }
-            return moveOrDrag(location: location, flags: flags, snapshot: snapshot)
+            return moveOrDrag(location: location, flags: flags, rows: snapshot.rows, relocating: relocating)
 
         case .mouseMoved:
-            return moveOrDrag(location: location, flags: flags, snapshot: snapshot)
+            return moveOrDrag(location: location, flags: flags, rows: snapshot.rows, relocating: relocating)
 
         default:
             // 9행
@@ -150,9 +160,9 @@ enum DockPinEdgeRule {
 
     /// 6–9행 — 이동·드래그
     private static func moveOrDrag(location: CGPoint, flags: CGEventFlags,
-                                   snapshot: DockPinGuardSnapshot) -> DockPinTapDecision {
-        let row = triggerRow(containing: location, in: snapshot.rows)
-        if snapshot.isRelocating {
+                                   rows: [DockPinTriggerRow], relocating: Bool) -> DockPinTapDecision {
+        let row = triggerRow(containing: location, in: rows)
+        if relocating {
             return row == nil ? .pass(signal: .userActivity) : .drop(signal: .userActivity)   // 6행
         }
         guard let row else { return .pass }                                                   // 9행

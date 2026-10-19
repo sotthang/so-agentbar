@@ -665,6 +665,69 @@ final class DockPinManagerTests: XCTestCase {
         XCTAssertEqual(h.lastSnapshot?.rows, [Fixture.sidecarRow], "되돌리는 중에도 트리거 줄은 그대로(P1)")
     }
 
+    // MARK: - VULN-002 되돌리기 시한
+
+    func test_VULN002_tuning_relocationGuardWindow_isApproachPlusTimeoutsPlusMargin_atMost4s() {
+        let approach = Double(DockPinDrivePath.approach(to: .zero).count) * DockPinTuning.driveInterval
+        XCTAssertEqual(approach, 0.24, accuracy: 1e-9, "다가가기 15점 × 16 ms")
+        XCTAssertEqual(DockPinTuning.relocationDeadlineMargin, 0.5)
+        XCTAssertEqual(DockPinTuning.relocationGuardWindow,
+                       approach + DockPinTuning.relocationTimeout + DockPinTuning.finalScanTimeout
+                       + DockPinTuning.relocationDeadlineMargin, accuracy: 1e-9)
+        XCTAssertLessThanOrEqual(DockPinTuning.relocationGuardWindow, 4.0, "입력 차단 상한 ≈ 3.94 s")
+    }
+
+    func test_VULN002_manager_driveStartSnapshot_hasDeadlineOnSchedulerClock() throws {
+        let h = drivingHarness("VULN002_start")
+        let startedAt = h.now                              // 활성화 직후 동기로 시작했다(시계 진행 없음)
+        let snapshot = try XCTUnwrap(h.lastSnapshot)
+        XCTAssertTrue(snapshot.isDriving)
+        let deadline = try XCTUnwrap(snapshot.relocationDeadline, "driving 스냅숏은 시한을 가진다")
+        XCTAssertEqual(deadline, startedAt + DockPinTuning.relocationGuardWindow, accuracy: 1e-9)
+
+        // 메인이 멈춰 스냅숏이 그대로여도 탭 시계로 시한이 지나면 클릭·스크롤이 통과한다
+        var suppression = DockPinGestureSuppression()
+        let click = DockPinEdgeRule.decide(type: .leftMouseDown, location: CGPoint(x: 864, y: 1116), flags: [],
+                                           userData: 0, buttonNumber: 0, snapshot: snapshot,
+                                           now: deadline + 0.001, suppression: &suppression)
+        XCTAssertEqual(click, .pass)
+        let scroll = DockPinEdgeRule.decide(type: .scrollWheel, location: CGPoint(x: 864, y: 1116), flags: [],
+                                            userData: 0, buttonNumber: 0, snapshot: snapshot,
+                                            now: deadline + 0.001, suppression: &suppression)
+        XCTAssertEqual(scroll, .pass)
+    }
+
+    func test_VULN002_manager_deadlineKeptThroughVerifying_clearedWhenDriveEnds() throws {
+        let h = drivingHarness("VULN002_end")
+        let deadline = try XCTUnwrap(h.lastSnapshot?.relocationDeadline)
+        var relocatorConfirmed = false
+        h.custom = { mode in
+            if relocatorConfirmed { return nil }
+            if mode == .quick { relocatorConfirmed = true; return Fixture.onBuiltIn }
+            return Fixture.onSidecar
+        }
+        h.advance(0.5)
+        XCTAssertEqual(h.lastSnapshot?.isDriving, false, "사전 조건: verifying")
+        XCTAssertEqual(h.lastSnapshot?.isRelocating, true)
+        XCTAssertEqual(h.lastSnapshot?.relocationDeadline, deadline, "verifying 동안 같은 시한")
+
+        h.custom = nil
+        h.fakes.locator.completePending(with: Fixture.onBuiltIn)
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+        XCTAssertEqual(h.lastSnapshot?.isRelocating, false)
+        XCTAssertNil(h.lastSnapshot?.relocationDeadline, "되돌리기가 끝나면 시한 nil")
+    }
+
+    func test_VULN002_manager_userActivityAbort_clearsDeadline() {
+        let h = drivingHarness("VULN002_abort")
+        XCTAssertNotNil(h.lastSnapshot?.relocationDeadline)
+        h.fakes.tap.userActivityCount += 1
+        h.advance(Fixture.tick)
+        XCTAssertEqual(h.manager.status, .waiting(.userActive, displayName: Fixture.builtIn.name))
+        XCTAssertEqual(h.lastSnapshot?.isDriving, false)
+        XCTAssertNil(h.lastSnapshot?.relocationDeadline)
+    }
+
     func test_AC8_3_manager_dockReturnsDuringDrive_verifiesThenPinned_restoresLast() {
         let h = drivingHarness("AC8_3")
         h.advance(0.5)
@@ -729,7 +792,7 @@ final class DockPinManagerTests: XCTestCase {
         XCTAssertTrue(snapshot.isDriving, "마지막 조회 대기 중에도 driving 유지(N9)")
         var suppression = DockPinGestureSuppression()
         let decision = DockPinEdgeRule.decide(type: .leftMouseDown, location: CGPoint(x: 864, y: 1116), flags: [],
-                                              userData: 0, buttonNumber: 0, snapshot: snapshot,
+                                              userData: 0, buttonNumber: 0, snapshot: snapshot, now: h.now,
                                               suppression: &suppression)
         XCTAssertEqual(decision, .drop(signal: .userActivity), "D1: 그 스냅숏으로 클릭을 버린다")
 

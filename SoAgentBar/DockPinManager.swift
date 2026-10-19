@@ -56,6 +56,8 @@ final class DockPinManager: ObservableObject {
     private var optionPassFloor: [CGDirectDisplayID: TimeInterval] = [:]
     private var overrideDisplayID: CGDirectDisplayID?
     private var phase: DockPinRelocationPhase = .idle
+    /// (r6.2) VULN-002 — 되돌리기 시작 때 정한 탭 시계 시한. 스냅숏에는 phase.isRelocating일 때만 싣는다
+    private var relocationDeadline: TimeInterval?
     private var failureCount = 0
     private var tapState: DockPinTapState = .none
 
@@ -281,7 +283,8 @@ final class DockPinManager: ObservableObject {
         guard deps.tap.isRunning else { return }
         let snapshot = DockPinGuardSnapshot(rows: activation == .active ? (layout?.rows ?? []) : [],
                                             isRelocating: phase.isRelocating,
-                                            isDriving: phase.isDriving)
+                                            isDriving: phase.isDriving,
+                                            relocationDeadline: phase.isRelocating ? relocationDeadline : nil)
         guard snapshot != lastPushedSnapshot else { return }
         lastPushedSnapshot = snapshot
         deps.tap.update(snapshot: snapshot)
@@ -687,6 +690,7 @@ final class DockPinManager: ObservableObject {
     private func startDrive() {
         guard let layout, let point = layout.relocationTarget else { return }
         phase = .driving
+        relocationDeadline = deps.scheduler.now + DockPinTuning.relocationGuardWindow   // 스케줄러 시계 == 탭 시계(V5)
         publish()
         relocator.start(DockPinDrivePlan(target: point, anchorID: layout.anchor.display.id, displays: layout.displays)) {
             [weak self] outcome in self?.handleDriveOutcome(outcome)

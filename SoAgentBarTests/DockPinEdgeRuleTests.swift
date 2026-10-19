@@ -48,6 +48,21 @@ final class DockPinEdgeRuleTests: XCTestCase {
         /// R8.1 driving — isDriving이면 isRelocating도 참
         static let driving = DockPinGuardSnapshot(rows: [rightRow, leftRow], isRelocating: true, isDriving: true,
                                                   marker: DockPinTuning.eventMarker)
+
+        /// VULN-002 — 시한(탭 시계 uptime) 100 s
+        static let deadline: TimeInterval = 100
+        static var drivingWithDeadline: DockPinGuardSnapshot {
+            var s = driving
+            s.relocationDeadline = deadline
+            return s
+        }
+        static var relocatingNotDrivingWithDeadline: DockPinGuardSnapshot {
+            var s = relocatingNotDriving
+            s.relocationDeadline = deadline
+            return s
+        }
+        /// 시한이 지난 시각
+        static let afterDeadline: TimeInterval = deadline + 0.001
     }
 
     private enum Button {
@@ -62,20 +77,21 @@ final class DockPinEdgeRuleTests: XCTestCase {
     /// 억제 상태를 이어 쓰는 판정(순서열 테스트용)
     private func decide(_ type: CGEventType, at location: CGPoint = Fixture.outside,
                         flags: CGEventFlags = [], userData: Int64 = 0, button: Int64 = Button.left,
-                        snapshot: DockPinGuardSnapshot,
+                        snapshot: DockPinGuardSnapshot, now: TimeInterval = 0,
                         suppression: inout DockPinGestureSuppression) -> DockPinTapDecision {
         DockPinEdgeRule.decide(type: type, location: location, flags: flags,
                                userData: userData, buttonNumber: button,
-                               snapshot: snapshot, suppression: &suppression)
+                               snapshot: snapshot, now: now, suppression: &suppression)
     }
 
     /// 새 억제 상태(빈 마스크)로 한 번 판정
     private func decideFresh(_ type: CGEventType, at location: CGPoint = Fixture.outside,
                              flags: CGEventFlags = [], userData: Int64 = 0, button: Int64 = Button.left,
-                             snapshot: DockPinGuardSnapshot = Fixture.idle) -> DockPinTapDecision {
+                             snapshot: DockPinGuardSnapshot = Fixture.idle,
+                             now: TimeInterval = 0) -> DockPinTapDecision {
         var suppression = DockPinGestureSuppression()
         return decide(type, at: location, flags: flags, userData: userData, button: button,
-                      snapshot: snapshot, suppression: &suppression)
+                      snapshot: snapshot, now: now, suppression: &suppression)
     }
 
     private static let moveAndDragTypes: [CGEventType] = [
@@ -370,6 +386,89 @@ final class DockPinEdgeRuleTests: XCTestCase {
         XCTAssertEqual(decide(.leftMouseDown, snapshot: Fixture.driving, suppression: &s),
                        .drop(signal: .userActivity))
         XCTAssertTrue(s.contains(button: Button.left))
+    }
+
+    // MARK: - VULN-002 되돌리기 시한 (메인이 멈춰도 입력을 영영 버리지 않는다)
+
+    func test_VULN002_defaultSnapshot_hasNoDeadline() {
+        XCTAssertNil(DockPinGuardSnapshot().relocationDeadline)
+    }
+
+    func test_VULN002_driving_nowBeforeOrAtDeadline_clickAndScrollDropped() {
+        for now in [Fixture.deadline - 1, Fixture.deadline] {
+            XCTAssertEqual(decideFresh(.leftMouseDown, snapshot: Fixture.drivingWithDeadline, now: now),
+                           .drop(signal: .userActivity), "now \(now)")
+            XCTAssertEqual(decideFresh(.scrollWheel, snapshot: Fixture.drivingWithDeadline, now: now),
+                           .drop(signal: .userActivity), "now \(now)")
+        }
+    }
+
+    func test_VULN002_driving_nowAfterDeadline_clickPassesWithoutSuppression() {
+        var s = DockPinGestureSuppression()
+        XCTAssertEqual(decide(.leftMouseDown, snapshot: Fixture.drivingWithDeadline, now: Fixture.afterDeadline,
+                              suppression: &s), .pass)
+        XCTAssertEqual(s.mask, 0, "시한이 지나면 2행(억제 추가)을 타지 않는다")
+        XCTAssertEqual(decide(.leftMouseUp, snapshot: Fixture.drivingWithDeadline, now: Fixture.afterDeadline,
+                              suppression: &s), .pass)
+    }
+
+    func test_VULN002_driving_nowAfterDeadline_scrollPasses() {
+        XCTAssertEqual(decideFresh(.scrollWheel, snapshot: Fixture.drivingWithDeadline, now: Fixture.afterDeadline),
+                       .pass)
+    }
+
+    func test_VULN002_afterDeadline_triggerRowMove_behavesAsNotRelocating() {
+        for snapshot in [Fixture.drivingWithDeadline, Fixture.relocatingNotDrivingWithDeadline] {
+            // 8행: 줄 안 이동은 신호 없이 버림 / 9행: 줄 밖은 신호 없이 통과 / 7행: Option 통과
+            XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.inRightRow, snapshot: snapshot,
+                                       now: Fixture.afterDeadline), .drop)
+            XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.outside, snapshot: snapshot,
+                                       now: Fixture.afterDeadline), .pass)
+            XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.inRightRow, flags: .maskAlternate, snapshot: snapshot,
+                                       now: Fixture.afterDeadline), .pass(signal: .optionPass(Fixture.rightID)))
+        }
+    }
+
+    func test_VULN002_beforeDeadline_triggerRowMove_stillRelocating() {
+        XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.inRightRow, snapshot: Fixture.relocatingNotDrivingWithDeadline,
+                                   now: Fixture.deadline), .drop(signal: .userActivity))
+    }
+
+    func test_VULN002_suppressedButton_dragAndUpAfterDeadline_passAndClearSuppression() {
+        var s = DockPinGestureSuppression()
+        XCTAssertEqual(decide(.leftMouseDown, snapshot: Fixture.drivingWithDeadline, now: Fixture.deadline,
+                              suppression: &s), .drop(signal: .userActivity), "시한 안 Down은 억제")
+        XCTAssertTrue(s.contains(button: Button.left))
+
+        // 메인이 멈춰 스냅숏이 driving 그대로인 채 시한이 지났다
+        XCTAssertEqual(decide(.leftMouseDragged, at: Fixture.outside, snapshot: Fixture.drivingWithDeadline,
+                              now: Fixture.afterDeadline, suppression: &s), .pass, "억제된 Dragged가 통과")
+        XCTAssertFalse(s.contains(button: Button.left), "시한이 지난 Dragged가 억제를 푼다")
+        XCTAssertEqual(decide(.leftMouseUp, snapshot: Fixture.drivingWithDeadline, now: Fixture.afterDeadline,
+                              suppression: &s), .pass, "Up 통과")
+        XCTAssertEqual(s.mask, 0)
+    }
+
+    func test_VULN002_suppressedButton_upAfterDeadline_passesAndClears() {
+        var s = DockPinGestureSuppression()
+        _ = decide(.rightMouseDown, button: Button.right, snapshot: Fixture.drivingWithDeadline, now: 0,
+                   suppression: &s)
+        XCTAssertTrue(s.contains(button: Button.right))
+        XCTAssertEqual(decide(.rightMouseUp, button: Button.right, snapshot: Fixture.drivingWithDeadline,
+                              now: Fixture.afterDeadline, suppression: &s), .pass)
+        XCTAssertFalse(s.contains(button: Button.right))
+    }
+
+    func test_VULN002_nilDeadline_keepsOldBehavior_evenFarInTheFuture() {
+        let far: TimeInterval = 1_000_000
+        XCTAssertEqual(decideFresh(.leftMouseDown, snapshot: Fixture.driving, now: far), .drop(signal: .userActivity))
+        XCTAssertEqual(decideFresh(.scrollWheel, snapshot: Fixture.driving, now: far), .drop(signal: .userActivity))
+        XCTAssertEqual(decideFresh(.mouseMoved, at: Fixture.inRightRow, snapshot: Fixture.relocatingNotDriving, now: far),
+                       .drop(signal: .userActivity))
+        var s = DockPinGestureSuppression()
+        _ = decide(.leftMouseDown, snapshot: Fixture.driving, now: far, suppression: &s)
+        XCTAssertEqual(decide(.leftMouseUp, snapshot: Fixture.idle, now: far, suppression: &s), .drop,
+                       "정상 종료 뒤 억제된 Up은 여전히 버린다(3행)")
     }
 
     // MARK: - R5.5 31 초과 버튼은 억제 규칙 미적용 (5행)

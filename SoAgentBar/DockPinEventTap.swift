@@ -185,6 +185,7 @@ final class DockPinEventTap: DockPinEventTapping, @unchecked Sendable {
         }
 
         let snapshot = shared.withLock { $0.snapshot }
+        let now = clock()                                   // VULN-002 — 시한 비교와 신호 기록이 같은 탭 시계
         let decision = DockPinEdgeRule.decide(
             type: type,
             location: event.location,
@@ -192,10 +193,10 @@ final class DockPinEventTap: DockPinEventTapping, @unchecked Sendable {
             userData: event.getIntegerValueField(.eventSourceUserData),
             buttonNumber: event.getIntegerValueField(.mouseEventButtonNumber),
             snapshot: snapshot,
+            now: now,
             suppression: &suppression)
 
         if let signal = decision.signal {
-            let now = clock()
             let notify = shared.withLock { $0.signals.record(signal, at: now) }
             if notify, let wake = handles.withLockUnchecked({ $0.wake }) {
                 CFRunLoopSourceSignal(wake)

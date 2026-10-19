@@ -187,6 +187,12 @@ enum DockPinTuning {
     static let verifyEveryTicks = 6                             // 틱(약 100 ms) — 매 틱 조회는 과함
     static let relocationTimeout: TimeInterval = 2.0            // s — 실측 0.33–1.00 s에 여유. 지나면 마지막 전체 조회(R8.3-5)
     static let finalScanTimeout: TimeInterval = 1.2             // s — R6.4 재읽기 50회 × 20ms = 1.0 s + 여유 (리뷰 v2 N9)
+    static let relocationDeadlineMargin: TimeInterval = 0.5     // s — (r6.2) VULN-002. 틱 지연·확인 조회 여유
+    /// (r6.2) VULN-002 — 스냅숏 시한 = 되돌리기 시작 시각 + 이 값. 다가가기(15점 × 16 ms = 0.24 s)
+    /// + relocationTimeout + finalScanTimeout + 여유 ≈ 3.94 s. 메인이 멈춰도 입력 차단은 이 상한을 넘지 않는다
+    static let relocationGuardWindow: TimeInterval =
+        Double(DockPinDrivePath.approach(to: .zero).count) * driveInterval
+        + relocationTimeout + finalScanTimeout + relocationDeadlineMargin
     static let optionPassSlots = 32                             // 칸 — R7.2, 활성 디스플레이 목록 상한과 같은 수(리뷰 v2 N11). SIMD32 폭과 같아야 한다
     static let suppressibleButtonCount = 32                     // 개(0…31) — 제스처 억제 UInt32 비트마스크(R5.5)
     static let idleBeforeRelocation: TimeInterval = 0.5         // s — P3

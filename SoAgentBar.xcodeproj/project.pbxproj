@@ -156,6 +156,7 @@
 		DP006DP006DP006DP006DP01 /* DockPinSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP006DP006DP006DP006DP02 /* DockPinSystem.swift */; };
 		DP007DP007DP007DP007DP01 /* DockPinEventTap.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP007DP007DP007DP007DP02 /* DockPinEventTap.swift */; };
 		DP108DP108DP108DP108DP01 /* DockPinEventTapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP108DP108DP108DP108DP02 /* DockPinEventTapTests.swift */; };
+		DP109DP109DP109DP109DP01 /* DockPinSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP109DP109DP109DP109DP02 /* DockPinSystemTests.swift */; };
 		DP008DP008DP008DP008DP01 /* DockPinDockLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP008DP008DP008DP008DP02 /* DockPinDockLocator.swift */; };
 		DP107DP107DP107DP107DP01 /* DockPinFakes.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP107DP107DP107DP107DP02 /* DockPinFakes.swift */; };
 		DP009DP009DP009DP009DP01 /* DockPinRelocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP009DP009DP009DP009DP02 /* DockPinRelocator.swift */; };
@@ -257,6 +258,7 @@
 		DP006DP006DP006DP006DP02 /* DockPinSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinSystem.swift; sourceTree = "<group>"; };
 		DP007DP007DP007DP007DP02 /* DockPinEventTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinEventTap.swift; sourceTree = "<group>"; };
 		DP108DP108DP108DP108DP02 /* DockPinEventTapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinEventTapTests.swift; sourceTree = "<group>"; };
+		DP109DP109DP109DP109DP02 /* DockPinSystemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinSystemTests.swift; sourceTree = "<group>"; };
 		DP008DP008DP008DP008DP02 /* DockPinDockLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinDockLocator.swift; sourceTree = "<group>"; };
 		DP107DP107DP107DP107DP02 /* DockPinFakes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinFakes.swift; sourceTree = "<group>"; };
 		DP009DP009DP009DP009DP02 /* DockPinRelocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinRelocator.swift; sourceTree = "<group>"; };
@@ -523,6 +525,7 @@
 				DP103DP103DP103DP103DP02 /* DockPinPlacementTests.swift */,
 				DP104DP104DP104DP104DP02 /* DockPinPolicyTests.swift */,
 				DP108DP108DP108DP108DP02 /* DockPinEventTapTests.swift */,
+				DP109DP109DP109DP109DP02 /* DockPinSystemTests.swift */,
 				DP105DP105DP105DP105DP02 /* DockPinRelocatorTests.swift */,
 				DP106DP106DP106DP106DP02 /* DockPinManagerTests.swift */,
 				DP107DP107DP107DP107DP02 /* DockPinFakes.swift */,
@@ -793,6 +796,7 @@
 				DP103DP103DP103DP103DP01 /* DockPinPlacementTests.swift in Sources */,
 				DP104DP104DP104DP104DP01 /* DockPinPolicyTests.swift in Sources */,
 				DP108DP108DP108DP108DP01 /* DockPinEventTapTests.swift in Sources */,
+				DP109DP109DP109DP109DP01 /* DockPinSystemTests.swift in Sources */,
 				DP105DP105DP105DP105DP01 /* DockPinRelocatorTests.swift in Sources */,
 				DP106DP106DP106DP106DP01 /* DockPinManagerTests.swift in Sources */,
 				DP107DP107DP107DP107DP01 /* DockPinFakes.swift in Sources */,

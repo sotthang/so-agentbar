@@ -228,6 +228,71 @@ final class DockPinCallLog {
         return dockProbe
     }
 
+    // MARK: (r5·r6) R9.6 — 새 프로세스 확인 (커밋 11d, arch §5)
+    //
+    // 기본은 무응답(보류)이다. 테스트가 completeFresh(_:)로 응답한다.
+    // 실제 어댑터 계약을 흉내 낸다: completion은 최대 1번, cancel()된 핸들의 completion은 0번.
+
+    /// 보류 중인 확인 1건. cancel()은 아직 응답하지 않은 핸들에서 처음 한 번만 센다.
+    final class FreshHandle: DockPinCancellable {
+        fileprivate var completion: (@MainActor (Bool?) -> Void)?
+        private(set) var isCancelled = false
+        private let onCancel: () -> Void
+
+        fileprivate init(completion: (@MainActor (Bool?) -> Void)?, onCancel: @escaping () -> Void) {
+            self.completion = completion
+            self.onCancel = onCancel
+        }
+
+        /// 응답했거나 취소됐으면 끝난 것
+        var isFinished: Bool { isCancelled || completion == nil }
+
+        func cancel() {
+            guard !isFinished else { return }
+            isCancelled = true
+            completion = nil
+            onCancel()
+        }
+    }
+
+    /// freshTrustCheck 호출 횟수(자동 응답 포함)
+    private(set) var freshCount = 0
+    /// 끝나지 않은 확인을 cancel()한 횟수(이미 응답했거나 이미 취소된 핸들의 cancel()은 세지 않는다)
+    private(set) var freshCancelCount = 0
+    /// (r6) 즉시 응답 모드(AC9.12): non-nil이면 freshTrustCheck 안에서 completion을 동기로 부른다(.some(nil) = 결과 nil)
+    var autoRespondFresh: Bool?? = nil
+    /// N20 로그 사유. 테스트가 정한다
+    var lastFreshFailure: DockPinFreshFailure? = nil
+    /// freshTrustCheck가 불릴 때마다(어느 예약에서 시작했는지 기록)
+    var onFresh: (() -> Void)?
+    /// 만들어진 핸들(호출 순서)
+    private(set) var freshHandles: [FreshHandle] = []
+
+    /// AC9.7 c, AC9.14 "진행 중" — 응답도 취소도 안 된 핸들이 있다
+    var isFreshPending: Bool { freshHandles.contains { !$0.isFinished } }
+
+    func freshTrustCheck(completion: @escaping @MainActor (Bool?) -> Void) -> DockPinCancellable {
+        freshCount += 1
+        onFresh?()
+        if let auto = autoRespondFresh {
+            let handle = FreshHandle(completion: nil, onCancel: {})
+            freshHandles.append(handle)
+            completion(auto)
+            return handle
+        }
+        let handle = FreshHandle(completion: completion) { [weak self] in self?.freshCancelCount += 1 }
+        freshHandles.append(handle)
+        return handle
+    }
+
+    /// 가장 최근 핸들에 응답한다. 그 핸들이 이미 취소됐거나 응답했으면 아무것도 하지 않는다
+    /// (취소 뒤 늦게 온 결과는 어댑터가 버린다 — completion 0번).
+    func completeFresh(_ result: Bool?) {
+        guard let handle = freshHandles.last, let completion = handle.completion else { return }
+        handle.completion = nil
+        completion(result)
+    }
+
     func requestTrustPrompt() {
         promptCount += 1
         log?.add("permission.prompt")

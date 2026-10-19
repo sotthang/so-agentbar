@@ -48,8 +48,35 @@ enum DockPinDisplaySignal: Equatable, Sendable {
     /// 결과 오류 코드 → DockPinPolicy.dockProbeTrusted(axError:): kAXErrorAPIDisabled만 false,
     /// 성공·kAXErrorCannotComplete(시한 초과)·그 밖 → true. 메인에서 동기.
     func dockProbeTrusted(dockPID: pid_t) -> Bool
+    /// (r5) R9.6 — 자기 실행 파일 + trustCheckArgument를 메인 밖에서 실행. completion은 메인에서 최대 1번
+    /// (parseFreshTrustOutput 결과, 실행 실패 = nil). cancel() → 자식 terminate + completion 0번. 시한은 매니저가 잰다.
+    /// (r6) 자식 environment = [:], stdin·stderr = nullDevice(N16). 실행 전 실행 파일 식별자 확인(N17):
+    /// shouldLaunchFreshCheck == false면 run() 없이 completion(nil). 결과 사유는 lastFreshFailure로 남긴다(로그용, N20).
+    func freshTrustCheck(completion: @escaping @MainActor (Bool?) -> Void) -> DockPinCancellable
+    /// (r6) N20 — 직전 completion(nil)의 사유. nil이면 정상 결과. 매니저가 로그에만 쓴다
+    var lastFreshFailure: DockPinFreshFailure? { get }
     func requestTrustPrompt()                   // AXIsProcessTrustedWithOptions(prompt: true)
     func openPrivacySettings()                  // x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility
+}
+
+/// (r6) N20 — 새 프로세스 결과가 nil인 사유(로그 문자열용). 시한 초과는 매니저가 정하므로 여기 없다
+enum DockPinFreshFailure: Equatable, Sendable { case launchFailed, unparsable, executableChanged }
+
+/// (r5) R9.6 2번 — main.swift 단축 경로. NSApplication·AgentStore·UserDefaults를 건드리지 않는다.
+/// AXIsProcessTrusted() 1회 → stdout "1\n"/"0\n" → exit(0).
+enum DockPinTrustCheckCommand {
+    /// 테스트 이음새: `trusted`를 정확히 1번 읽고, `output`에 "1\n" 또는 "0\n"을 정확히 1번 쓰고, 종료 코드 0을 돌려준다.
+    static func run(trusted: () -> Bool, output: (String) -> Void) -> Int32 {
+        output(trusted() ? "1\n" : "0\n")
+        return 0
+    }
+
+    /// run(trusted: AXIsProcessTrusted, output: 표준 출력에 버퍼 없이 쓰기) → exit(코드).
+    static func runAndExit() -> Never {
+        let code = run(trusted: { AXIsProcessTrusted() },
+                       output: { FileHandle.standardOutput.write(Data($0.utf8)) })
+        exit(code)
+    }
 }
 
 @MainActor protocol DockPinSessionProviding: AnyObject {
@@ -292,6 +319,97 @@ final class DockPinLiveWorkItem: DockPinCancellable {
 
 /// AX 권한 확인·요청·설정 열기.
 @MainActor final class DockPinLivePermission: DockPinPermissionProviding {
+    /// 실행할 파일. nil이면 확인 때 Bundle.main.executableURL을 쓴다(테스트는 임시 스크립트를 넣는다).
+    /// init은 시스템 호출을 하지 않는다(식별자 기록은 첫 확인 때, N17).
+    private let executableURL: URL?
+
+    /// (r6) N20 — 직전 completion(nil)의 사유
+    private(set) var lastFreshFailure: DockPinFreshFailure?
+
+    /// (r6) N17 — 처음 읽힌 실행 파일 식별자. 이후 확인은 이 값과 같을 때만 실행한다
+    private var recordedIdentity: DockPinExecutableIdentity?
+
+    /// R9.6 4번 — 자식 실행·대기는 메인 밖 직렬 큐에서
+    nonisolated private static let freshQueue = DispatchQueue(label: "com.sotthang.soagentbar.dockpin.fresh",
+                                                              qos: .utility)
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.sotthang.soagentbar",
+                                       category: "DockPin")
+
+    init(executableURL: URL? = nil) {
+        self.executableURL = executableURL
+    }
+
+    /// (r6) N17 — attributesOfItem의 .systemFileNumber + .modificationDate. 읽지 못하면 nil. 메인 밖에서 부른다.
+    nonisolated static func readExecutableIdentity(atPath path: String) -> DockPinExecutableIdentity? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+              let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value,
+              let modified = attributes[.modificationDate] as? Date else { return nil }
+        return DockPinExecutableIdentity(inode: inode, modifiedAt: modified.timeIntervalSince1970)
+    }
+
+    /// (r5·r6) R9.6 1번·3번·4번, N16, N17 — arch §2.6
+    func freshTrustCheck(completion: @escaping @MainActor (Bool?) -> Void) -> DockPinCancellable {
+        let handle = DockPinFreshCheckHandle()
+        let url = executableURL ?? Bundle.main.executableURL
+        let recorded = recordedIdentity
+        Self.freshQueue.async {
+            let outcome = Self.performFreshCheck(url: url, recorded: recorded, handle: handle)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard handle.finish() else { return }       // 취소됐으면 completion 0번
+                    self.apply(outcome, completion: completion)
+                }
+            }
+        }
+        return handle
+    }
+
+    private func apply(_ outcome: DockPinFreshOutcome, completion: @MainActor (Bool?) -> Void) {
+        if recordedIdentity == nil, let current = outcome.identity {
+            recordedIdentity = current
+        }
+        lastFreshFailure = outcome.failure
+        let reason = outcome.failure.map { "\($0)" } ?? "-"
+        let result = outcome.result.map { $0 ? "1" : "0" } ?? "nil"
+        Self.logger.debug("fresh-check r=\(result, privacy: .public) reason=\(reason, privacy: .public)")
+        completion(outcome.result)
+    }
+
+    /// 메인 밖(freshQueue). 식별자 확인 → 실행 → 출력 해석. 취소 표시가 있으면 실행하지 않거나 자식을 끝낸다.
+    nonisolated private static func performFreshCheck(url: URL?, recorded: DockPinExecutableIdentity?,
+                                                      handle: DockPinFreshCheckHandle) -> DockPinFreshOutcome {
+        guard let url else { return DockPinFreshOutcome(result: nil, failure: .launchFailed, identity: nil) }
+        let current = readExecutableIdentity(atPath: url.path)
+        guard DockPinPolicy.shouldLaunchFreshCheck(recorded: recorded, current: current) else {
+            return DockPinFreshOutcome(result: nil, failure: .executableChanged, identity: current)
+        }
+
+        let process = Process()
+        process.executableURL = url
+        process.arguments = [DockPinPolicy.trustCheckArgument]
+        process.environment = [:]                                   // N16
+        process.standardInput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }      // waitUntilExit의 런루프 폴링 지연을 피한다
+
+        guard !handle.isCancelled else { return DockPinFreshOutcome(result: nil, failure: nil, identity: current) }
+        do {
+            try process.run()
+        } catch {
+            return DockPinFreshOutcome(result: nil, failure: .launchFailed, identity: current)
+        }
+        handle.attach(process)
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        exited.wait()
+        let output = String(decoding: data, as: UTF8.self)
+        let result = DockPinPolicy.parseFreshTrustOutput(exitStatus: process.terminationStatus, stdout: output)
+        return DockPinFreshOutcome(result: result, failure: result == nil ? .unparsable : nil, identity: current)
+    }
+
     func isTrusted() -> Bool {
         AXIsProcessTrusted()
     }
@@ -314,6 +432,54 @@ final class DockPinLiveWorkItem: DockPinCancellable {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
         else { return }
         NSWorkspace.shared.open(url)
+    }
+}
+
+/// 새 프로세스 확인 1건의 결과(메인으로 넘기는 값)
+private struct DockPinFreshOutcome: Sendable {
+    var result: Bool?
+    var failure: DockPinFreshFailure?
+    var identity: DockPinExecutableIdentity?
+}
+
+/// freshTrustCheck 핸들. cancel() → 취소 표시 + 실행 중인 자식 terminate. 응답 뒤 cancel()은 아무 일도 하지 않는다.
+private final class DockPinFreshCheckHandle: DockPinCancellable, @unchecked Sendable {
+    private struct State {
+        var cancelled = false
+        var finished = false
+        var process: Process?
+    }
+
+    private let state = OSAllocatedUnfairLock(uncheckedState: State())
+
+    var isCancelled: Bool { state.withLock { $0.cancelled } }
+
+    /// 실행된 자식을 붙인다. 그사이 취소됐으면 바로 끝낸다.
+    func attach(_ process: Process) {
+        let cancelled = state.withLock { s -> Bool in
+            s.process = process
+            return s.cancelled
+        }
+        if cancelled { process.terminate() }
+    }
+
+    /// 메인에서 completion 직전에 부른다. 취소됐으면 false.
+    func finish() -> Bool {
+        state.withLock { s -> Bool in
+            guard !s.cancelled else { return false }
+            s.finished = true
+            s.process = nil
+            return true
+        }
+    }
+
+    func cancel() {
+        let process = state.withLock { s -> Process? in
+            guard !s.cancelled, !s.finished else { return nil }
+            s.cancelled = true
+            return s.process
+        }
+        if let process, process.isRunning { process.terminate() }
     }
 }
 

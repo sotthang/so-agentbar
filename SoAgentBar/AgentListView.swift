@@ -322,6 +322,19 @@ struct AgentRowView: View {
                         .truncationMode(.tail)
                         .help(agent.currentTask)
 
+                    if !agent.workingPath.isEmpty {
+                        HStack(spacing: 3) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 9))
+                            Text(shortFolder(agent.workingPath))
+                                .lineLimit(1)
+                                .truncationMode(.head)
+                        }
+                        .font(.system(size: 10))
+                        .foregroundColor(Color(NSColor.tertiaryLabelColor))
+                        .help(agent.workingPath)
+                    }
+
                     if agent.status == .idle, agent.lastActivity > Date(timeIntervalSince1970: 0) {
                         Text(store.relativeTime(agent.lastActivity))
                             .font(.system(size: 10))
@@ -399,6 +412,12 @@ struct AgentRowView: View {
             .padding(.bottom, 6)
             .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
         }
+    }
+
+    /// 전체 경로 대신 마지막 두 폴더만 표시 (전체 경로는 hover 툴팁)
+    private func shortFolder(_ path: String) -> String {
+        let parts = (path as NSString).pathComponents.filter { $0 != "/" }
+        return parts.suffix(2).joined(separator: "/")
     }
 
     private func formatTokens(_ count: Int) -> String {

@@ -144,6 +144,9 @@
 		MA003MA003MA003MA003MA01 /* MenubarBodyCharacterizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MA003MA003MA003MA003MA02 /* MenubarBodyCharacterizationTests.swift */; };
 		MA001MA001MA001MA001MA01 /* MenubarActivityIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = MA001MA001MA001MA001MA02 /* MenubarActivityIndicator.swift */; };
 		MA004MA004MA004MA004MA01 /* MenubarActivityIndicatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MA004MA004MA004MA004MA02 /* MenubarActivityIndicatorTests.swift */; };
+		DP001DP001DP001DP001DP01 /* DockPinModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP001DP001DP001DP001DP02 /* DockPinModels.swift */; };
+		DP002DP002DP002DP002DP01 /* DockPinDisplayMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP002DP002DP002DP002DP02 /* DockPinDisplayMap.swift */; };
+		DP101DP101DP101DP101DP01 /* DockPinDisplayMapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DP101DP101DP101DP101DP02 /* DockPinDisplayMapTests.swift */; };
 		MA002MA002MA002MA002MA01 /* MenubarAnimationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = MA002MA002MA002MA002MA02 /* MenubarAnimationController.swift */; };
 		MA005MA005MA005MA005MA01 /* MenubarAnimationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MA005MA005MA005MA005MA02 /* MenubarAnimationControllerTests.swift */; };
 /* End PBXBuildFile section */
@@ -226,6 +229,9 @@
 		MA003MA003MA003MA003MA02 /* MenubarBodyCharacterizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarBodyCharacterizationTests.swift; sourceTree = "<group>"; };
 		MA001MA001MA001MA001MA02 /* MenubarActivityIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarActivityIndicator.swift; sourceTree = "<group>"; };
 		MA004MA004MA004MA004MA02 /* MenubarActivityIndicatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarActivityIndicatorTests.swift; sourceTree = "<group>"; };
+		DP001DP001DP001DP001DP02 /* DockPinModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinModels.swift; sourceTree = "<group>"; };
+		DP002DP002DP002DP002DP02 /* DockPinDisplayMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinDisplayMap.swift; sourceTree = "<group>"; };
+		DP101DP101DP101DP101DP02 /* DockPinDisplayMapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPinDisplayMapTests.swift; sourceTree = "<group>"; };
 		MA002MA002MA002MA002MA02 /* MenubarAnimationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarAnimationController.swift; sourceTree = "<group>"; };
 		MA005MA005MA005MA005MA02 /* MenubarAnimationControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenubarAnimationControllerTests.swift; sourceTree = "<group>"; };
 		PA1000PA1000PA1000PA1002 /* char_0.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = char_0.png; path = "Assets/pixel-agents/characters/char_0.png"; sourceTree = "<group>"; };
@@ -332,6 +338,8 @@
 				CU002CU002CU002CU002CU02 /* CursorTokenStore.swift */,
 				MA001MA001MA001MA001MA02 /* MenubarActivityIndicator.swift */,
 				MA002MA002MA002MA002MA02 /* MenubarAnimationController.swift */,
+				DP001DP001DP001DP001DP02 /* DockPinModels.swift */,
+				DP002DP002DP002DP002DP02 /* DockPinDisplayMap.swift */,
 				3E1ED4571EA5484EA2B785B1 /* MenuBarIconView.swift */,
 				3E1ED4571EA5484EA2B785B3 /* AgentListView.swift */,
 				D0A7CBDB2F7556860052C5A3 /* SettingsView.swift */,
@@ -469,6 +477,7 @@
 				MA003MA003MA003MA003MA02 /* MenubarBodyCharacterizationTests.swift */,
 				MA004MA004MA004MA004MA02 /* MenubarActivityIndicatorTests.swift */,
 				MA005MA005MA005MA005MA02 /* MenubarAnimationControllerTests.swift */,
+				DP101DP101DP101DP101DP02 /* DockPinDisplayMapTests.swift */,
 			);
 			path = SoAgentBarTests;
 			sourceTree = "<group>";
@@ -679,6 +688,8 @@
 				CU002CU002CU002CU002CU01 /* CursorTokenStore.swift in Sources */,
 				MA001MA001MA001MA001MA01 /* MenubarActivityIndicator.swift in Sources */,
 				MA002MA002MA002MA002MA01 /* MenubarAnimationController.swift in Sources */,
+				DP001DP001DP001DP001DP01 /* DockPinModels.swift in Sources */,
+				DP002DP002DP002DP002DP01 /* DockPinDisplayMap.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -720,6 +731,7 @@
 				MA003MA003MA003MA003MA01 /* MenubarBodyCharacterizationTests.swift in Sources */,
 				MA004MA004MA004MA004MA01 /* MenubarActivityIndicatorTests.swift in Sources */,
 				MA005MA005MA005MA005MA01 /* MenubarAnimationControllerTests.swift in Sources */,
+				DP101DP101DP101DP101DP01 /* DockPinDisplayMapTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

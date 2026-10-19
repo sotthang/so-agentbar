@@ -8,7 +8,7 @@ import os
 //
 // 모든 Live 어댑터의 init은 시스템 호출·등록을 하지 않는다(등록은 start에서만). 테스트는 Live 어댑터를 부르지 않는다.
 // 좌표는 전부 CG 전역(CGDisplayBounds, CGEvent.location). NSScreen은 이름과 Spaces 읽기에만 쓴다(F11).
-// `DockPinDependencies.live()`는 DockPinDockLocator(커밋 6)가 생긴 뒤 추가한다.
+// `DockPinDependencies.live()`는 실제 어댑터 + DockPinDockLocator(커밋 6)를 묶는다.
 
 protocol DockPinCancellable: AnyObject { func cancel() }
 
@@ -123,7 +123,25 @@ enum DockPinLocateOutcome: Equatable, Sendable {
     var poster: DockPinEventPosting
     var tap: DockPinEventTapping
     var locator: DockPinDockLocating
-    // static func live() -> DockPinDependencies   — 커밋 6 (DockPinDockLocator 필요)
+
+    /// 실제 어댑터 묶음. 어떤 init도 시스템 등록을 하지 않는다(등록은 start에서만).
+    /// 스케줄러와 Dock 설정은 조회기와 같은 인스턴스를 나눠 쓴다.
+    static func live() -> DockPinDependencies {
+        let scheduler = DockPinLiveScheduler()
+        let dockPreferences = DockPinLiveDockPreferences()
+        return DockPinDependencies(scheduler: scheduler,
+                                   displays: DockPinLiveDisplays(),
+                                   displayChanges: DockPinLiveDisplayChanges(),
+                                   dockPreferences: dockPreferences,
+                                   permission: DockPinLivePermission(),
+                                   session: DockPinLiveSession(),
+                                   systemEvents: DockPinLiveSystemEvents(),
+                                   poster: DockPinLiveEventPoster(),
+                                   tap: DockPinEventTap(),
+                                   locator: DockPinDockLocator(listing: DockPinLiveWindowListing(),
+                                                               dockPreferences: dockPreferences,
+                                                               scheduler: scheduler))
+    }
 }
 
 // MARK: - Live 어댑터

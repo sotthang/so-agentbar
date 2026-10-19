@@ -128,6 +128,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             observePinState()
             observeSleepWake()
             presentAutomaticUpdatesPromptIfNeeded()
+            store.dockPinManager.startIfEnabled()       // [SPEC-004 R1.2] 프롬프트 없음
         }
     }
 
@@ -773,6 +774,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        store.dockPinManager.shutdown()                 // [SPEC-004 R12.1] 맨 첫 줄
         // [SPEC-003 R9.4] 옵저버 해제는 deinit이 아니라 여기서 한다 — AppDelegate는 앱 수명
         // 동안 살아있어 deinit이 사실상 호출되지 않는다.
         animationController.suspend()

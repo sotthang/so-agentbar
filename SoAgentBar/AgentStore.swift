@@ -362,6 +362,9 @@ class AgentStore: ObservableObject {
     // Clipboard
     var clipboardMonitor: ClipboardMonitor
 
+    // Dock 고정 (SPEC-004) — 설정은 매니저가 주입받은 UserDefaults로 소유한다(R1.1)
+    let dockPinManager: DockPinManager
+
     // Quick Note
     let quickNoteStore: QuickNoteStore
 
@@ -531,6 +534,7 @@ class AgentStore: ObservableObject {
         let savedMode = KeepAwakeMode(rawValue: savedModeRaw) ?? .off
         self.keepAwakeManager = KeepAwakeManager(initialMode: savedMode)
         self.clipboardMonitor = ClipboardMonitor()
+        self.dockPinManager = DockPinManager.makeLive(defaults: .standard)
         self.quickNoteStore = QuickNoteStore()
         self.autoKeepAwakeOnSession =
             UserDefaults.standard.object(forKey: "autoKeepAwakeOnSession") as? Bool ?? false
@@ -657,6 +661,9 @@ class AgentStore: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         clipboardMonitor.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        dockPinManager.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
     }

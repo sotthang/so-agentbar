@@ -1039,26 +1039,145 @@ final class DockPinManagerTests: XCTestCase {
         XCTAssertEqual(h.fakes.permission.promptCount, 0)
     }
 
-    func test_AC9_4_accessibilityNotification_stopsTapImmediately() {
+    // MARK: AC9.4 · AC9.5 (r5) — 권한 알림: 즉시 확인 없음, +1.0·+3.0초 재확인
+
+    /// `permissionRecheck` 예약이 실행되며 권한을 읽은 시각(t0 기준 상대값). 폴링 틱 몫은 빼고 센다.
+    private func recordRecheckReads(_ h: Harness, from t0: TimeInterval) -> () -> [TimeInterval] {
+        var times: [TimeInterval] = []
+        let scheduler = h.fakes.scheduler
+        h.fakes.permission.onCheck = {
+            if scheduler.currentKind == .permissionRecheck { times.append(scheduler.now - t0) }
+        }
+        return { times }
+    }
+
+    func test_AC9_4_accessibilityNotification_noCheckAtNotification_tapStopsAfterOneSecond() {
         let h = harness("AC9_4")
         h.start()
         XCTAssertTrue(h.fakes.tap.isRunning, "사전 조건")
+        let checks = h.fakes.permission.checkCount
+        h.fakes.log.clear()
         h.fakes.permission.trusted = false
         h.fakes.systemEvents.send(.accessibilityChanged)
-        XCTAssertEqual(h.fakes.tap.stopCount, 1, "폴링 틱을 기다리지 않는다")
+        XCTAssertEqual(h.fakes.permission.checkCount, checks, "알림을 처리한 그 자리에서는 권한 확인 0회(R9.5 r5)")
+        XCTAssertEqual(h.fakes.tap.stopCount, 0, "알림 순간에는 stop 0회")
+        XCTAssertTrue(h.fakes.tap.isRunning)
+
+        h.advance(1.0)
+        XCTAssertEqual(h.fakes.tap.stopCount, 1, "+1.0초까지 stop 정확히 1회(폴링 틱이 먼저 와도 합계 1회)")
         XCTAssertFalse(h.fakes.tap.isRunning)
         XCTAssertEqual(h.manager.status, .needsPermission)
+        let entries = h.fakes.log.entries
+        guard let stopIndex = entries.firstIndex(of: "tap.stop") else {
+            return XCTFail("tap.stop 기록 없음: \(entries)")
+        }
+        XCTAssertFalse(entries[..<stopIndex].contains("status:needsPermission"), "AC9.1 순서: stop이 상태 변경보다 먼저")
+        h.advance(3.0)
+        XCTAssertEqual(h.fakes.tap.stopCount, 1, "+3.0초 재확인도 stop을 더 부르지 않는다")
     }
 
-    func test_AC9_5_accessibilityNotification_checksNowAndAfter0_5s() {
+    func test_AC9_5_accessibilityNotification_noImmediateCheck_schedulesOneAndThreeSeconds() {
         let h = harness("AC9_5")
         h.start()
         let checks = h.fakes.permission.checkCount
         h.fakes.systemEvents.send(.accessibilityChanged)
-        XCTAssertEqual(h.fakes.permission.checkCount, checks + 1, "즉시 1회")
-        XCTAssertEqual(h.fakes.scheduler.pendingCount(.permissionRecheck), 1)
+        XCTAssertEqual(h.fakes.permission.checkCount, checks, "즉시 확인 0회")
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.permissionRecheck), 2, "재확인 예약 2개")
+        XCTAssertEqual(h.fakes.scheduler.scheduledDelays(.permissionRecheck), DockPinTuning.permissionNotifyRecheckDelays)
+        XCTAssertEqual(h.fakes.scheduler.scheduledDelays(.permissionRecheck), [1.0, 3.0])
+    }
+
+    func test_AC9_5_accessibilityNotification_readsOnceAtPlusOneAndPlusThree() {
+        let h = harness("AC9_5_reads")
+        h.start()
+        let reads = recordRecheckReads(h, from: h.now)
+        h.fakes.systemEvents.send(.accessibilityChanged)
+        h.advance(0.99)
+        XCTAssertEqual(reads(), [], "+1.0초 전에는 재확인 읽기 없음")
+        h.advance(0.01)
+        XCTAssertEqual(reads().count, 1, "+1.0초에 1회")
+        h.advance(1.99)
+        XCTAssertEqual(reads().count, 1, "+3.0초 전에는 더 없음")
+        h.advance(0.01)
+        XCTAssertEqual(reads().count, 2, "+3.0초에 1회")
+        for (actual, expected) in zip(reads(), [1.0, 3.0]) {
+            XCTAssertEqual(actual, expected, accuracy: 1e-6)
+        }
+        h.advance(10)
+        XCTAssertEqual(reads().count, 2, "그 뒤 재확인은 더 없다(폴링 틱 몫 제외)")
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.permissionRecheck), 0)
+    }
+
+    func test_AC9_5_secondNotificationAtHalfSecond_cancelsPending_reschedulesFromSecond() {
+        let h = harness("AC9_5_renotify")
+        h.start()
+        let t0 = h.now
+        h.fakes.systemEvents.send(.accessibilityChanged)
         h.advance(0.5)
-        XCTAssertEqual(h.fakes.permission.checkCount, checks + 2, "0.5 s 뒤 1회 더")
+        let checks = h.fakes.permission.checkCount
+        let reads = recordRecheckReads(h, from: t0)
+        h.fakes.systemEvents.send(.accessibilityChanged)
+        XCTAssertEqual(h.fakes.permission.checkCount, checks, "두 번째 알림도 즉시 확인 0회")
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.permissionRecheck), 2,
+                       "앞의 예약은 취소되고 두 번째 알림 기준 2개만 대기")
+        XCTAssertEqual(h.fakes.scheduler.timeUntilNext(.permissionRecheck) ?? -1, 1.0, accuracy: 1e-6)
+        h.advance(5)
+        XCTAssertEqual(reads().count, 2, "취소된 첫 알림 예약(+1.0, +3.0)은 실행되지 않는다")
+        for (actual, expected) in zip(reads(), [1.5, 3.5]) {
+            XCTAssertEqual(actual, expected, accuracy: 1e-6, "첫 알림 기준 +1.5, +3.5")
+        }
+    }
+
+    func test_AC9_5_disable_cancelsBothPendingRechecks() {
+        let h = harness("AC9_5_teardown")
+        h.start()
+        h.fakes.systemEvents.send(.accessibilityChanged)
+        h.manager.setEnabled(false)
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.permissionRecheck), 0, "정리 때 대기 중 재확인 모두 취소")
+        let checks = h.fakes.permission.checkCount
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.checkCount, checks)
+    }
+
+    func test_AC9_5_grantNotification_reflectedAfterOneSecond_withoutRestart() {
+        let h = harness("AC9_5_grant")
+        h.fakes.permission.trusted = false
+        h.start()
+        XCTAssertEqual(h.manager.status, .needsPermission, "사전 조건")
+        h.fakes.permission.trusted = true
+        h.fakes.systemEvents.send(.accessibilityChanged)
+        XCTAssertEqual(h.manager.status, .needsPermission, "알림 순간에는 읽지 않으므로 아직 그대로")
+        XCTAssertEqual(h.fakes.tap.startCount, 0)
+        h.advance(1.0)
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "+1.0초 뒤 탭 시작 1회(재시작 없이)")
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name))
+        h.advance(3.0)
+        XCTAssertEqual(h.fakes.tap.startCount, 1, "+3.0초 재확인은 추가 시작 없음")
+    }
+
+    /// r5 실기기 버그 회귀: 알림 순간 읽으면 tccd 기록 전의 낡은 false가 프로세스에 다시 캐시되어 영영 안 바뀐다.
+    func test_AC9_5_regression_staleFalseIfReadAtNotificationInstant_endsTrusted() {
+        let h = harness("AC9_5_regression")
+        h.fakes.permission.trusted = false
+        h.start()
+        XCTAssertEqual(h.manager.status, .needsPermission, "사전 조건")
+
+        var granted = false
+        var atNotificationInstant = false
+        var poisoned = false                    // 알림 순간 읽힘 → 낡은 false가 캐시됨(8분간 안 바뀐 증상)
+        h.fakes.permission.respond = {
+            if atNotificationInstant { poisoned = true }
+            return granted && !poisoned
+        }
+        granted = true                          // 사용자가 시스템 설정에서 허용
+        atNotificationInstant = true
+        h.fakes.systemEvents.send(.accessibilityChanged)
+        atNotificationInstant = false
+
+        h.advance(3.5)
+        XCTAssertFalse(poisoned, "알림 순간에 권한을 읽지 않아야 한다")
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name), "앱 재시작 없이 신뢰됨으로 끝난다")
+        XCTAssertEqual(h.fakes.tap.startCount, 1)
     }
 
     // MARK: - AC10 세션

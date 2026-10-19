@@ -64,7 +64,7 @@ final class DockPinManager: ObservableObject {
     private var debounceToken: DockPinCancellable?
     private var waitRecheckToken: DockPinCancellable?
     private var settleToken: DockPinCancellable?
-    private var permissionRecheckToken: DockPinCancellable?
+    private var permissionRecheckTokens: [DockPinCancellable] = []
     private var optionCheckTokens: [DockPinCancellable] = []
 
     private lazy var relocator = DockPinRelocator(
@@ -411,14 +411,8 @@ final class DockPinManager: ObservableObject {
             guard tapState == .running else { return }
             deps.locator.invalidateCache()
             activationScan()
-        case .accessibilityChanged:                               // R9.5 — 즉시 + 0.5 s 뒤
-            checkPermission()
-            cancel(&permissionRecheckToken)
-            permissionRecheckToken = deps.scheduler.schedule(after: DockPinTuning.permissionNotificationRecheck,
-                                                             kind: .permissionRecheck) { [weak self] in
-                self?.permissionRecheckToken = nil
-                self?.checkPermission()
-            }
+        case .accessibilityChanged:                               // R9.5 (r5) — 즉시 확인 없음, +1.0·+3.0 s 뒤
+            schedulePermissionRechecks()
         case .appBecameActive:
             separateSpaces = deps.dockPreferences.screensHaveSeparateSpaces()
             reconcile()
@@ -460,6 +454,21 @@ final class DockPinManager: ObservableObject {
                 self?.locateAndEvaluate(.quick, trigger: .poll)
             })
         }
+    }
+
+    /// R9.5 / AC9.5 — 알림 순간 읽으면 tccd 기록 전 낡은 false가 캐시된다(F22). 새 알림은 대기 중 확인을 대신한다
+    private func schedulePermissionRechecks() {
+        cancelPermissionRechecks()
+        for delay in DockPinTuning.permissionNotifyRecheckDelays {
+            permissionRecheckTokens.append(deps.scheduler.schedule(after: delay, kind: .permissionRecheck) { [weak self] in
+                self?.checkPermission()
+            })
+        }
+    }
+
+    private func cancelPermissionRechecks() {
+        permissionRecheckTokens.forEach { $0.cancel() }
+        permissionRecheckTokens.removeAll()
     }
 
     private func cancelOptionChecks() {
@@ -645,7 +654,7 @@ final class DockPinManager: ObservableObject {
         cancel(&debounceToken)
         cancel(&waitRecheckToken)
         cancel(&settleToken)
-        cancel(&permissionRecheckToken)
+        cancelPermissionRechecks()
         cancelOptionChecks()
         deps.locator.cancelAll()
         activation = .inactive(.off)

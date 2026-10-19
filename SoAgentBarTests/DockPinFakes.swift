@@ -51,6 +51,8 @@ final class DockPinCallLog {
     private(set) var createdCount = 0
     /// 실행된 작업 종류(실행 순서)
     private(set) var firedKinds: [DockPinTimerKind] = []
+    /// 지금 실행 중인 예약의 종류(예약 작업 밖이면 nil) — AC9.5 "폴링 틱 몫은 빼고 센다"
+    private(set) var currentKind: DockPinTimerKind?
 
     private var entries: [Entry] = []
     private var nextID = 0
@@ -106,7 +108,9 @@ final class DockPinCallLog {
             entries.removeAll { $0.id == next.id }
             now = max(now, next.fireAt)
             firedKinds.append(next.kind)
+            currentKind = next.kind
             next.work()
+            currentKind = nil
         }
         now = max(now, target)
     }
@@ -194,11 +198,17 @@ final class DockPinCallLog {
     private(set) var openCount = 0
     private let log: DockPinCallLog?
 
+    /// 읽을 때마다 불린다(AC9.5: 어느 시점·어느 예약에서 읽었는지 기록)
+    var onCheck: (() -> Void)?
+    /// 있으면 `trusted` 대신 이 값을 돌려준다(r5 버그 재현: 알림 순간 읽으면 낡은 false가 캐시됨)
+    var respond: (() -> Bool)?
+
     init(log: DockPinCallLog? = nil) { self.log = log }
 
     func isTrusted() -> Bool {
         checkCount += 1
-        return trusted
+        onCheck?()
+        return respond?() ?? trusted
     }
 
     func requestTrustPrompt() {

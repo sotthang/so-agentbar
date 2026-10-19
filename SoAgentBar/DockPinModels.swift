@@ -175,7 +175,6 @@ enum DockPinTuning {
     static let tapRetryDelays: [TimeInterval] = [1, 2, 5, 10]   // s — B2
     static let tapRetryTail: TimeInterval = 30                  // s — B2 (이후 30 s)
     static let permissionPollInterval: TimeInterval = 1         // s — 권한 감시(R4.4 표의 상태에서만)
-    static let permissionNotificationRecheck: TimeInterval = 0.5 // s — 권한 알림 뒤 재확인(R9.5). 11b에서 permissionNotifyRecheckDelays로 교체·제거
     static let permissionNotifyRecheckDelays: [TimeInterval] = [1.0, 3.0] // s — (r5) R9.5, F22 (알림 뒤 +1초·+3초)
     static let freshTrustCheckInterval: TimeInterval = 5              // s — (r5) R9.6, F20 (약 65ms/회)
     static let freshTrustCheckTimeout: TimeInterval = 2               // s — (r5) R9.6 5번 (초과 → 결과 nil)

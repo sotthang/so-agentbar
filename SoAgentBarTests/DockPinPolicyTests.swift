@@ -7,6 +7,9 @@ import CoreGraphics
 // SPEC-004 커밋 4 — 순수 계층(DockPinPolicy.swift + DockPinModels의 단계 플래그) 단위 테스트.
 // 커버 AC: AC4.1, AC4.7, AC4.10(d), AC5.11(일정 함수), AC7.1–7.4, AC8.1, AC8.6(일정 함수), AC8.10,
 //          AC8.11(a), AC10.4, AC11.1–11.5, AC12.3, S5(설계 추가) + R2.5/S2 선택지 제목, S6 고정 문구.
+// 커밋 11a(r5·r6) 추가: AC4.7(수정 — freshTrustCheck 행), AC9.6 순수부(combinedTrust, dockProbeTrusted),
+//          AC9.8(d, e)(parseFreshTrustOutput, isTrustCheckInvocation), AC9.15(b)(shouldLaunchFreshCheck),
+//          DockPinTuning 상수 교체·추가(SPEC "조정 숫자" 표).
 //
 // RED 확인 방법: 이 파일은 컴파일된다(so-tester가 arch §2.5 시그니처의 고정값 스텁을 넣었다).
 // 스텁은 일부러 틀린 값(켜짐을 뒤집은 activation, 전체 타이머 집합, 뒤집은 구성 변경·잠금·테스트 호스트 판정,
@@ -195,9 +198,10 @@ final class DockPinPolicyTests: XCTestCase {
         XCTAssertEqual(DockPinPolicy.requiredTimers(activation: .inactive(.off), tapState: .none), [])
     }
 
-    func test_AC4_7_requiredTimers_needsPermission_onlyPermissionPoll() {
+    func test_AC4_7_requiredTimers_needsPermission_permissionPollAndFreshTrustCheck() {
+        // r5: R4.4 표 2행 — 1초 권한 폴링 + 5초 새 프로세스 확인(R9.6)
         XCTAssertEqual(DockPinPolicy.requiredTimers(activation: .inactive(.needsPermission), tapState: .none),
-                       [.permissionPoll])
+                       [.permissionPoll, .freshTrustCheck])
     }
 
     func test_AC4_7_requiredTimers_singleDisplay_noneIncludingPermissionPoll() {
@@ -213,9 +217,10 @@ final class DockPinPolicyTests: XCTestCase {
                        [.prefsPoll])
     }
 
-    func test_AC4_7_requiredTimers_activeTapRunning_permissionDockPollAndWatchdog() {
+    func test_AC4_7_requiredTimers_activeTapRunning_permissionDockPollWatchdogAndFreshTrustCheck() {
+        // r5: R4.4 표 5행 — 탭 실행 중이면 새 프로세스 확인(R9.6)도 돈다
         XCTAssertEqual(DockPinPolicy.requiredTimers(activation: .active, tapState: .running),
-                       [.permissionPoll, .dockPoll, .tapWatchdog])
+                       [.permissionPoll, .dockPoll, .tapWatchdog, .freshTrustCheck])
     }
 
     func test_AC4_7_requiredTimers_activeTapRetrying_permissionPollAndTapRetry() {
@@ -230,21 +235,41 @@ final class DockPinPolicyTests: XCTestCase {
         XCTAssertEqual(DockPinPolicy.requiredTimers(activation: .active, tapState: .none), [.permissionPoll])
     }
 
-    func test_AC4_7_requiredTimers_noPermissionAndOneDisplay_exactlyPermissionPoll() {
+    func test_AC4_7_requiredTimers_noPermissionAndOneDisplay_permissionPollAndFreshTrustCheck() {
         // R4.4 예외(N12): activation 결과(.needsPermission)를 그대로 넘긴다
         var inputs = Fixture.activeInputs
         inputs.hasPermission = false
         inputs.activeDisplayCount = 1
         let activation = DockPinPolicy.activation(inputs)
         XCTAssertEqual(activation, .inactive(.needsPermission))
-        XCTAssertEqual(DockPinPolicy.requiredTimers(activation: activation, tapState: .none), [.permissionPoll])
+        XCTAssertEqual(DockPinPolicy.requiredTimers(activation: activation, tapState: .none),
+                       [.permissionPoll, .freshTrustCheck], "r5: 화면 1대여도 권한 없음이면 1초 + 5초 확인")
     }
 
     func test_AC4_7_requiredTimers_inactiveIgnoresTapState() {
         // 비활성 행은 "탭 없음"이다 — tapState가 무엇이든 활성화 행만 따른다
         XCTAssertEqual(DockPinPolicy.requiredTimers(activation: .inactive(.singleDisplay), tapState: .running), [])
         XCTAssertEqual(DockPinPolicy.requiredTimers(activation: .inactive(.needsPermission),
-                                                    tapState: .retrying(attempt: 2)), [.permissionPoll])
+                                                    tapState: .retrying(attempt: 2)), [.permissionPoll, .freshTrustCheck])
+    }
+
+    func test_AC4_7_freshTrustCheck_onlyInNeedsPermissionAndActiveRunningRows() {
+        // R9.6: freshTrustCheck는 .needsPermission과 .active + 탭 실행 중 두 행에만 있다
+        let rows: [(DockPinActivation, DockPinTapState, Bool)] = [
+            (.inactive(.off), .none, false),
+            (.inactive(.needsPermission), .none, true),
+            (.inactive(.singleDisplay), .none, false),
+            (.inactive(.spacesOff), .none, false),
+            (.inactive(.dockNotBottom(.left)), .none, false),
+            (.inactive(.dockNotBottom(.right)), .none, false),
+            (.active, .running, true),
+            (.active, .retrying(attempt: 1), false),
+            (.active, .none, false),
+        ]
+        for (activation, tapState, expected) in rows {
+            XCTAssertEqual(DockPinPolicy.requiredTimers(activation: activation, tapState: tapState)
+                            .contains(.freshTrustCheck), expected, "\(activation) / \(tapState)")
+        }
     }
 
     // MARK: - AC4.10(d) isDisplayConfigChange (R4.8)
@@ -983,5 +1008,176 @@ final class DockPinPolicyTests: XCTestCase {
         // 짝 단정: 같은 딕셔너리에 키 하나가 더해지면 true
         XCTAssertTrue(DockPinPolicy.isTestHost(environment: ["PATH": "/usr/bin", "XCTestBundlePath": "/b"],
                                                xcTestClassLoaded: false))
+    }
+
+    // MARK: - 11a (r5·r6) AC9.6 순수부 — combinedTrust (R9.1)
+
+    func test_AC9_6_combinedTrust_processTrue_probeTrue_true() {
+        XCTAssertTrue(DockPinPolicy.combinedTrust(process: true, dockProbe: true))
+    }
+
+    func test_AC9_6_combinedTrust_processTrue_probeFalse_false() {
+        XCTAssertFalse(DockPinPolicy.combinedTrust(process: true, dockProbe: false), "프로브 APIDisabled면 untrusted(X1 쪽)")
+        XCTAssertTrue(DockPinPolicy.combinedTrust(process: true, dockProbe: true), "짝: 프로브만 true로 바꾸면 true")
+    }
+
+    func test_AC9_6_combinedTrust_processFalse_probeTrue_false() {
+        XCTAssertFalse(DockPinPolicy.combinedTrust(process: false, dockProbe: true))
+        XCTAssertTrue(DockPinPolicy.combinedTrust(process: true, dockProbe: true), "짝: process만 true로 바꾸면 true")
+    }
+
+    func test_AC9_6_combinedTrust_processFalse_probeFalse_false() {
+        XCTAssertFalse(DockPinPolicy.combinedTrust(process: false, dockProbe: false))
+        XCTAssertTrue(DockPinPolicy.combinedTrust(process: true, dockProbe: true), "짝: 둘 다 true면 true")
+    }
+
+    func test_AC9_6_combinedTrust_noDockPID_usesProcessOnly() {
+        XCTAssertTrue(DockPinPolicy.combinedTrust(process: true, dockProbe: nil), "PID 없음 → process만으로 판정")
+        XCTAssertFalse(DockPinPolicy.combinedTrust(process: false, dockProbe: nil))
+    }
+
+    // MARK: - 11a (r6, C13) AC9.6 보강 — dockProbeTrusted(axError:)
+
+    func test_AC9_6_dockProbeTrusted_success_true() {
+        XCTAssertTrue(DockPinPolicy.dockProbeTrusted(axError: 0))
+    }
+
+    func test_AC9_6_dockProbeTrusted_apiDisabled_false() {
+        XCTAssertFalse(DockPinPolicy.dockProbeTrusted(axError: -25211), "kAXErrorAPIDisabled만 untrusted")
+        XCTAssertTrue(DockPinPolicy.dockProbeTrusted(axError: 0), "짝: 성공은 trusted")
+    }
+
+    func test_AC9_6_dockProbeTrusted_cannotCompleteTimeout_true() {
+        // C13: 메시징 시한 초과(kAXErrorCannotComplete)는 trusted
+        XCTAssertTrue(DockPinPolicy.dockProbeTrusted(axError: -25204))
+    }
+
+    func test_AC9_6_dockProbeTrusted_attributeUnsupported_true() {
+        XCTAssertTrue(DockPinPolicy.dockProbeTrusted(axError: -25205))
+    }
+
+    func test_AC9_6_axErrorAPIDisabledConstant_isMinus25211() {
+        XCTAssertEqual(DockPinPolicy.axErrorAPIDisabled, -25211)
+        XCTAssertFalse(DockPinPolicy.dockProbeTrusted(axError: DockPinPolicy.axErrorAPIDisabled))
+    }
+
+    // MARK: - 11a (r5) AC9.8(d) — parseFreshTrustOutput (R9.6 3번)
+
+    func test_AC9_8d_parseFreshTrustOutput_exit0_oneWithNewline_true() {
+        XCTAssertEqual(DockPinPolicy.parseFreshTrustOutput(exitStatus: 0, stdout: "1\n"), true)
+    }
+
+    func test_AC9_8d_parseFreshTrustOutput_exit0_zero_false() {
+        XCTAssertEqual(DockPinPolicy.parseFreshTrustOutput(exitStatus: 0, stdout: "0"), false)
+    }
+
+    func test_AC9_8d_parseFreshTrustOutput_exit0_empty_nil() {
+        XCTAssertNil(DockPinPolicy.parseFreshTrustOutput(exitStatus: 0, stdout: ""))
+        XCTAssertEqual(DockPinPolicy.parseFreshTrustOutput(exitStatus: 0, stdout: "1"), true, "짝: 같은 종료 코드에 \"1\"이면 true")
+    }
+
+    func test_AC9_8d_parseFreshTrustOutput_nonZeroExit_nil() {
+        XCTAssertNil(DockPinPolicy.parseFreshTrustOutput(exitStatus: 1, stdout: "1"))
+        XCTAssertEqual(DockPinPolicy.parseFreshTrustOutput(exitStatus: 0, stdout: "1"), true, "짝: 종료 코드만 0이면 true")
+    }
+
+    func test_AC9_8d_parseFreshTrustOutput_otherString_nil() {
+        XCTAssertNil(DockPinPolicy.parseFreshTrustOutput(exitStatus: 0, stdout: "yes"))
+        XCTAssertEqual(DockPinPolicy.parseFreshTrustOutput(exitStatus: 0, stdout: "0\n"), false, "짝: \"0\"은 false")
+    }
+
+    func test_AC9_8d_parseFreshTrustOutput_surroundingWhitespaceTrimmed() {
+        // R9.6 3번: 앞뒤 공백을 뺀 출력으로 판정
+        XCTAssertEqual(DockPinPolicy.parseFreshTrustOutput(exitStatus: 0, stdout: "  1 \n"), true)
+        XCTAssertEqual(DockPinPolicy.parseFreshTrustOutput(exitStatus: 0, stdout: "\t0\r\n"), false)
+    }
+
+    // MARK: - 11a (r5) AC9.8(e) — isTrustCheckInvocation (R9.6 2번)
+
+    func test_AC9_8e_isTrustCheckInvocation_exactFlag_true() {
+        XCTAssertTrue(DockPinPolicy.isTrustCheckInvocation(arguments: ["/x/SoAgentBar", "--dockpin-trust-check"]))
+    }
+
+    func test_AC9_8e_isTrustCheckInvocation_noArguments_false() {
+        XCTAssertFalse(DockPinPolicy.isTrustCheckInvocation(arguments: ["/x/SoAgentBar"]))
+        XCTAssertTrue(DockPinPolicy.isTrustCheckInvocation(arguments: ["/x/SoAgentBar", "--dockpin-trust-check"]),
+                      "짝: 플래그를 더하면 true")
+    }
+
+    func test_AC9_8e_isTrustCheckInvocation_extraArgument_false() {
+        XCTAssertFalse(DockPinPolicy.isTrustCheckInvocation(arguments: ["/x/SoAgentBar", "--dockpin-trust-check", "y"]))
+        XCTAssertTrue(DockPinPolicy.isTrustCheckInvocation(arguments: ["/x/SoAgentBar", "--dockpin-trust-check"]),
+                      "짝: 추가 인자만 빼면 true")
+    }
+
+    func test_AC9_8e_isTrustCheckInvocation_xcodeDebugArguments_false() {
+        XCTAssertFalse(DockPinPolicy.isTrustCheckInvocation(arguments: ["/x/SoAgentBar", "-NSDocumentRevisionsDebugMode", "YES"]))
+        XCTAssertTrue(DockPinPolicy.isTrustCheckInvocation(arguments: ["/x/SoAgentBar", DockPinPolicy.trustCheckArgument]),
+                      "짝: 상수 인자면 true")
+    }
+
+    func test_AC9_8e_trustCheckArgumentConstant() {
+        XCTAssertEqual(DockPinPolicy.trustCheckArgument, "--dockpin-trust-check")
+    }
+
+    // MARK: - 11a (r6, N17) AC9.15(b) — shouldLaunchFreshCheck
+
+    private enum Identity {
+        static let a = DockPinExecutableIdentity(inode: 42, modifiedAt: 1_700_000_000)
+        static let otherInode = DockPinExecutableIdentity(inode: 43, modifiedAt: 1_700_000_000)
+        static let otherModified = DockPinExecutableIdentity(inode: 42, modifiedAt: 1_700_000_001)
+    }
+
+    func test_AC9_15b_shouldLaunchFreshCheck_notRecordedYet_currentPresent_true() {
+        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(recorded: nil, current: Identity.a))
+    }
+
+    func test_AC9_15b_shouldLaunchFreshCheck_sameIdentity_true() {
+        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.a, current: Identity.a))
+    }
+
+    func test_AC9_15b_shouldLaunchFreshCheck_inodeChanged_false() {
+        XCTAssertFalse(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.a, current: Identity.otherInode))
+        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.a, current: Identity.a), "짝: 같으면 true")
+    }
+
+    func test_AC9_15b_shouldLaunchFreshCheck_modifiedAtChanged_false() {
+        XCTAssertFalse(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.a, current: Identity.otherModified))
+        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.otherModified,
+                                                           current: Identity.otherModified), "짝: 같으면 true")
+    }
+
+    func test_AC9_15b_shouldLaunchFreshCheck_currentUnreadable_false() {
+        XCTAssertFalse(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.a, current: nil))
+        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(recorded: Identity.a, current: Identity.a), "짝: 읽히면 true")
+    }
+
+    func test_AC9_15b_shouldLaunchFreshCheck_bothNil_false() {
+        XCTAssertFalse(DockPinPolicy.shouldLaunchFreshCheck(recorded: nil, current: nil))
+        XCTAssertTrue(DockPinPolicy.shouldLaunchFreshCheck(recorded: nil, current: Identity.a), "짝: 현재 값이 있으면 true")
+    }
+
+    // MARK: - 11a (r5·r6) DockPinTuning 상수 (SPEC "조정 숫자" 표)
+
+    func test_tuning_permissionNotifyRecheckDelays_oneAndThreeSeconds() {
+        XCTAssertEqual(DockPinTuning.permissionNotifyRecheckDelays, [1.0, 3.0], "R9.5: 옛 0.5 s 즉시 재확인 대체")
+    }
+
+    func test_tuning_freshTrustCheckInterval_fiveSeconds() {
+        XCTAssertEqual(DockPinTuning.freshTrustCheckInterval, 5, "R9.6")
+    }
+
+    func test_tuning_freshTrustCheckTimeout_twoSeconds() {
+        XCTAssertEqual(DockPinTuning.freshTrustCheckTimeout, 2, "R9.6 5번")
+    }
+
+    func test_tuning_dockProbeTimeout_quarterSecond() {
+        XCTAssertEqual(DockPinTuning.dockProbeTimeout, 0.25, "R9.1 2번, C13")
+    }
+
+    func test_tuning_freshTrustTimeoutShorterThanInterval() {
+        // R9.6 6번: 한 번에 하나 — 시한이 주기보다 짧아야 주기 확인이 매번 건너뛰어지지 않는다
+        XCTAssertLessThan(DockPinTuning.freshTrustCheckTimeout, DockPinTuning.freshTrustCheckInterval)
+        XCTAssertGreaterThan(DockPinTuning.freshTrustCheckTimeout, 0)
     }
 }

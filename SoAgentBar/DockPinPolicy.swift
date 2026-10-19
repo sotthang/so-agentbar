@@ -141,12 +141,12 @@ enum DockPinPolicy {
         case .inactive(.off), .inactive(.singleDisplay):
             return []
         case .inactive(.needsPermission):
-            return [.permissionPoll]
+            return [.permissionPoll, .freshTrustCheck]
         case .inactive(.spacesOff), .inactive(.dockNotBottom):
             return [.prefsPoll]
         case .active:
             switch tapState {
-            case .running: return [.permissionPoll, .dockPoll, .tapWatchdog]
+            case .running: return [.permissionPoll, .dockPoll, .tapWatchdog, .freshTrustCheck]
             case .retrying: return [.permissionPoll, .tapRetry]
             case .none: return [.permissionPoll]
             }
@@ -264,6 +264,45 @@ enum DockPinPolicy {
     private static let testHostEnvironmentKeys = [
         "XCTestConfigurationFilePath", "XCTestBundlePath", "XCTestSessionIdentifier",
     ]
+
+    // MARK: - (r5·r6) R9 권한 판정
+
+    /// R9.6 2번 — 새 프로세스 확인 전용 인자
+    static let trustCheckArgument = "--dockpin-trust-check"
+    /// R9.1 2번 — kAXErrorAPIDisabled. ApplicationServices를 import하지 않으려고 정수로 둔다(AC13.1)
+    static let axErrorAPIDisabled: Int32 = -25211
+
+    /// R9.1 — process && (dockProbe ?? true). dockProbe nil = Dock PID 없음
+    static func combinedTrust(process: Bool, dockProbe: Bool?) -> Bool {
+        process && (dockProbe ?? true)
+    }
+
+    /// R9.1 2번(C13) — axErrorAPIDisabled만 false, 그 밖(성공·CannotComplete 등) true
+    static func dockProbeTrusted(axError: Int32) -> Bool {
+        axError != axErrorAPIDisabled
+    }
+
+    /// R9.6 3번 — 종료 코드 0 + 공백을 뺀 출력 "1"/"0"만 true/false, 그 밖 nil
+    static func parseFreshTrustOutput(exitStatus: Int32, stdout: String) -> Bool? {
+        guard exitStatus == 0 else { return nil }
+        switch stdout.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "1": return true
+        case "0": return false
+        default: return nil
+        }
+    }
+
+    /// R9.6 2번 — 인자 개수 정확히 2이고 [1] == trustCheckArgument
+    static func isTrustCheckInvocation(arguments: [String]) -> Bool {
+        arguments.count == 2 && arguments[1] == trustCheckArgument
+    }
+
+    /// R9.6 1번(N17) — current nil → false, recorded nil → true, 같음 → true, 다름 → false
+    static func shouldLaunchFreshCheck(recorded: DockPinExecutableIdentity?,
+                                       current: DockPinExecutableIdentity?) -> Bool {
+        guard let current else { return false }
+        return recorded.map { $0 == current } ?? true
+    }
 
     // MARK: - R11.2 표
 

@@ -298,7 +298,7 @@ final class DockPinManagerTests: XCTestCase {
         let h = harness("AC4_2")
         h.start()
         XCTAssertTrue(h.fakes.tap.isRunning, "사전 조건: 화면 2대 + 권한 → 탭 실행")
-        XCTAssertEqual(h.fakes.scheduler.pendingRepeatingKinds, [.permissionPoll, .dockPoll, .tapWatchdog])
+        XCTAssertEqual(h.fakes.scheduler.pendingRepeatingKinds, [.permissionPoll, .dockPoll, .tapWatchdog, .freshTrustCheck])
 
         h.fakes.displays.displays = [Fixture.builtIn]
         h.fakes.displayChanges.send(.screenParametersChanged)
@@ -511,13 +511,13 @@ final class DockPinManagerTests: XCTestCase {
 
     // MARK: - R4.4 / R4.5 / R5.8 매니저 수준 타이머
 
-    func test_R4_4_noPermissionAndSingleDisplay_onlyPermissionPoll() {
+    func test_R4_4_noPermissionAndSingleDisplay_permissionPollAndFreshTrustCheck() {
         let h = harness("R4_4_np1")
         h.fakes.permission.trusted = false
         h.fakes.displays.displays = [Fixture.builtIn]
         h.start()
         XCTAssertEqual(h.manager.status, .needsPermission, "순위 2가 순위 3보다 먼저(N12)")
-        XCTAssertEqual(h.fakes.scheduler.pendingRepeatingKinds, [.permissionPoll])
+        XCTAssertEqual(h.fakes.scheduler.pendingRepeatingKinds, [.permissionPoll, .freshTrustCheck], "r5: R4.4 예외")
     }
 
     func test_R4_4_singleDisplayWithPermission_noRepeatingTimers() {
@@ -632,7 +632,7 @@ final class DockPinManagerTests: XCTestCase {
         h.advance(30)
         XCTAssertEqual(h.fakes.tap.startCount, 8)
         XCTAssertEqual(h.fakes.scheduler.pendingCount(.repeating(.tapRetry)), 0, "성공하면 재시도가 멈춘다")
-        XCTAssertEqual(h.fakes.scheduler.pendingRepeatingKinds, [.permissionPoll, .dockPoll, .tapWatchdog])
+        XCTAssertEqual(h.fakes.scheduler.pendingRepeatingKinds, [.permissionPoll, .dockPoll, .tapWatchdog, .freshTrustCheck])
         if case .tapFailed = h.manager.status { XCTFail("성공 뒤 .tapFailed가 아니어야 한다") }
         let scheduled = h.fakes.scheduler.scheduledDelays(.repeating(.tapRetry)).count
         h.advance(60)
@@ -1031,7 +1031,7 @@ final class DockPinManagerTests: XCTestCase {
         h.fakes.permission.trusted = false
         h.start()
         XCTAssertEqual(h.manager.status, .needsPermission, "사전 조건")
-        XCTAssertEqual(h.fakes.scheduler.pendingRepeatingKinds, [.permissionPoll])
+        XCTAssertEqual(h.fakes.scheduler.pendingRepeatingKinds, [.permissionPoll, .freshTrustCheck])
         h.fakes.permission.trusted = true
         h.advance(1)
         XCTAssertEqual(h.fakes.tap.startCount, 1)

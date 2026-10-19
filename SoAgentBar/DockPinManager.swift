@@ -296,6 +296,7 @@ final class DockPinManager: ObservableObject {
         case .tapRetry:
             if case .retrying(let attempt) = tapState { return DockPinPolicy.tapRetryDelay(attempt: attempt) }
             return DockPinPolicy.tapRetryDelay(attempt: 1)
+        case .freshTrustCheck: return DockPinTuning.freshTrustCheckInterval
         }
     }
 
@@ -316,6 +317,7 @@ final class DockPinManager: ObservableObject {
             reconcile()
         case .tapWatchdog: _ = deps.tap.reenableIfNeeded()       // R5.8
         case .tapRetry: retryTap()
+        case .freshTrustCheck: break                             // R9.6 — 실행은 11e에서 붙인다
         }
         guard isEnabled, !isShutDown, repeating[kind] == nil,
               DockPinPolicy.requiredTimers(activation: activation, tapState: tapState).contains(kind) else { return }

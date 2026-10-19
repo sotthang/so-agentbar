@@ -121,13 +121,17 @@ enum DockPinRelocationPhase: Equatable, Sendable {
 enum DockPinTapState: Equatable, Sendable { case none, running, retrying(attempt: Int) }
 
 /// R4.4 — 반복 타이머 집합의 원소
-enum DockPinRepeatingTimer: Hashable, Sendable { case permissionPoll, dockPoll, prefsPoll, tapWatchdog, tapRetry }
+enum DockPinRepeatingTimer: Hashable, Sendable {
+    case permissionPoll, dockPoll, prefsPoll, tapWatchdog, tapRetry
+    case freshTrustCheck                        // (r5) R9.6 — 5초 새 프로세스 확인
+}
 
 /// 스케줄러 예약 종류. 가짜 스케줄러가 종류별로 센다(AC1.2·AC4.2·AC9.2 등).
 enum DockPinTimerKind: Hashable, Sendable {
     case repeating(DockPinRepeatingTimer)
     case displayDebounce, permissionRecheck, sessionSettle, optionCheck
     case waitRecheck, relocationRetry, driveTick, finalScanTimeout, scanRateLimit
+    case freshTrustTimeout                      // (r5) R9.6 5번 — 2초 시한
 }
 
 /// R11.2 / R11.7 — 사용자에게 보이는 상태(리뷰 v2 N14: .checking 연관값 없음)
@@ -152,6 +156,15 @@ struct DockPinSessionState: Equatable, Sendable {
     var onConsole = true
 }
 
+/// (r6) R9.6 1번, N17 — 실행 파일 식별자. 순수 값(파일 읽기는 어댑터가 한다)
+struct DockPinExecutableIdentity: Equatable, Sendable {
+    var inode: UInt64
+    var modifiedAt: TimeInterval
+}
+
+/// (r6) R9.6 7번 — 새 프로세스 확인을 시작한 이유(로그·테스트 구분용). 주기 / 7-1 셋째 행 / R9.5 N21
+enum DockPinFreshCheckOrigin: Equatable, Sendable { case periodic, latchDoubt, notifyAdvance }
+
 /// R13.3 — 조정 숫자. 각 상수 옆 주석: 단위 — 근거(SPEC "조정 숫자" 표의 근거 열 그대로).
 enum DockPinTuning {
     static let triggerRowHeight: CGFloat = 1                    // pt — 참고 실측: 맨 아래 1px 줄만 트리거
@@ -162,7 +175,11 @@ enum DockPinTuning {
     static let tapRetryDelays: [TimeInterval] = [1, 2, 5, 10]   // s — B2
     static let tapRetryTail: TimeInterval = 30                  // s — B2 (이후 30 s)
     static let permissionPollInterval: TimeInterval = 1         // s — 권한 감시(R4.4 표의 상태에서만)
-    static let permissionNotificationRecheck: TimeInterval = 0.5 // s — 권한 알림 뒤 재확인(R9.5)
+    static let permissionNotificationRecheck: TimeInterval = 0.5 // s — 권한 알림 뒤 재확인(R9.5). 11b에서 permissionNotifyRecheckDelays로 교체·제거
+    static let permissionNotifyRecheckDelays: [TimeInterval] = [1.0, 3.0] // s — (r5) R9.5, F22 (알림 뒤 +1초·+3초)
+    static let freshTrustCheckInterval: TimeInterval = 5              // s — (r5) R9.6, F20 (약 65ms/회)
+    static let freshTrustCheckTimeout: TimeInterval = 2               // s — (r5) R9.6 5번 (초과 → 결과 nil)
+    static let dockProbeTimeout: Float = 0.25                         // s — (r6) R9.1 2번, C13. AXUIElementSetMessagingTimeout 인자(Float). 측정 없음(D5, A24)
     static let dockPollInterval: TimeInterval = 3               // s — 평소 위치 확인
     static let prefsPollInterval: TimeInterval = 3              // s — 비활성(방향) 중 설정·권한 재확인
     static let optionOverrideWindow: TimeInterval = 10          // s — B1 (확인 주기 3초의 3배 이상)

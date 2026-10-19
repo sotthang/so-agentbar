@@ -60,6 +60,7 @@
 - **Pixel Agents Window** — Visualize active Claude Code sessions as animated pixel art characters in a floating macOS window. Toggle the window from the session panel header, customize opacity in settings, and watch characters animate based on session status (working, waiting for approval, etc.) Always display resident system monitor pets (CPU and Memory) that react to live system metrics in real-time
 - **System Resource Monitor** — Real-time CPU, Memory, and Disk usage display in the menu bar popover. System pets in the pixel window dynamically adjust their movement speed and activity based on current CPU and Memory metrics, replacing the need for separate system monitoring tools
 - **Keep Awake** — Toggle keep-awake mode in 3 steps: Off / Always / Auto. Always prevents the Mac from sleeping regardless of session status. Auto activates sleep prevention only when one or more Claude sessions are actively running. The mode button in the session panel header shows the current state with visual feedback
+- **Dock Pin** — Keep a bottom Dock on one display. With two or more displays (Sidecar included), touching the bottom edge of another display no longer drags the Dock over, and if it does end up elsewhere it is moved back automatically. Hold Option to move it on purpose. Opt-in, off by default, requires Accessibility permission. See [Dock Pin](#dock-pin) for conditions and cautions
 - **Clipboard History** — Track your recent clipboard copies in a dedicated tab. View the 20 most recent text items, search through your clipboard history, and click any entry to restore it to your clipboard. History persists across app restarts
 - **Quick Note** — Jot down quick thoughts or reminders in a persistent text editor tab. Your notes auto-save as you type and are restored when you reopen the app
 - **Custom Emoji** — Assign unique emoji icons to each project for quick identification
@@ -113,6 +114,39 @@ so-agentbar monitors Claude and Codex agent session logs via FSEvents, and fetch
 
 Session status is determined by parsing JSONL log events. Token and cost data are restored after app restart via incremental log parsing. Cursor request usage is fetched live on each poll interval.
 
+## Dock Pin
+
+Settings → **Dock Pin** → "Keep the Dock on one display", then choose the display in "Keep the Dock on" (default: main display). The status line under the picker shows what the feature is doing right now.
+
+**When it works**
+- Two or more active displays. Sidecar counts as a regular secondary display; mirrored displays and Universal Control do not
+- The Dock is at the **bottom** of the screen
+- **"Displays have separate Spaces"** is on (System Settings → Desktop & Dock; this is the macOS default)
+
+If a condition isn't met, the feature waits and the status line says why (e.g. "Waiting — only one display"). It turns itself back on when you connect a display or move the Dock back to the bottom — no need to touch the toggle.
+
+**Permission** — Accessibility permission is requested only when you turn the feature on. Until it is granted, the status line shows "Open Permission Settings". Once you allow it, the status line usually changes within 1–3 seconds (at most about 5) — no restart needed. If it still says permission is needed after that, the toggle you turned on probably belongs to a different SoAgentBar build (see below).
+
+**Grant permission to the build you are running** — The release app in `/Applications` and a local Xcode build share the bundle ID, so the Accessibility list can show two "SoAgentBar" entries that are actually separate. For an Xcode Debug build:
+1. Quit every running SoAgentBar (including the release app)
+2. In System Settings → Privacy & Security → Accessibility, remove the SoAgentBar entries with `−` (if you can't tell them apart, remove both and re-allow the release app later)
+3. Click `+`, press Cmd+Shift+G and pick `SoAgentBar.app` from DerivedData (Xcode → Product → Show Build Folder in Finder → `Products/Debug/SoAgentBar.app`), then turn it on
+4. Run from Xcode
+
+If the build is re-signed ad-hoc, the old entry no longer matches — repeat steps 2–3. Apps under `/private/tmp` don't appear in the list; use `~/Applications` instead.
+
+**Background check** — To confirm the permission, a short-lived process plus a code-signature check (tens of ms) runs every 5 s while pinned (up to about once per second in rare uncertain states). That is roughly 17,000 short launches a day, which endpoint security tools on managed Macs may log. While it is waiting for permission, the check slows down: every 5 seconds for the first minute, every 30 seconds up to 10 minutes, then once a minute (about 1,500 a day). Changing any Accessibility permission, switching to SoAgentBar, or turning Dock Pin back on restarts the 5-second pace. Nothing runs when Dock Pin is off. If the app's binary has changed on disk (e.g. after an update, before relaunch) or the build is unsigned, the background check is skipped and Dock Pin relies on in-process checks until the app is relaunched.
+
+**Moving the Dock on purpose** — Hold **Option** while touching another display's bottom edge. The Dock moves and stays there; use **"Move Dock back now"** in Settings to bring it back.
+
+**Cursor movement** — To move the Dock back, the app briefly moves the cursor to the pinned display's bottom edge and then returns it (at most about 3.5 seconds). If the display the cursor was on is disconnected during this, the cursor goes to the center of the pinned display instead.
+
+> [!WARNING]
+> - **Turn off Dock Pin or quit the app before turning off Accessibility permission.** If permission is revoked while the Dock is being moved back, restoring the cursor is not guaranteed.
+> - Local Xcode builds and the release build have **separate** Accessibility entries. When cleaning up a local build's entry, first quit every running SoAgentBar (or turn Dock Pin off), then remove it from the list. `tccutil reset Accessibility com.sotthang.soagentbar` can also remove the release build's permission, since both share the bundle ID.
+
+Tested on macOS 27.
+
 ## Settings
 
 | Setting | Description |
@@ -130,6 +164,7 @@ Session status is determined by parsing JSONL log events. Token and cost data ar
 | Keep Awake Mode | Toggle between Off, Always, and Auto (session-dependent) |
 | Auto Keep Awake on Session | Automatically prevent sleep when Claude sessions are active |
 | Clipboard History | Enable or disable clipboard history tracking and display |
+| Dock Pin | Keep a bottom Dock on one chosen display (main display by default); shows live status and "Move Dock back now". Requires Accessibility permission |
 | Codex CLI Monitoring | Enable or disable OpenAI Codex CLI/VSCode session tracking (estimated usage from local logs) |
 | Cursor Request Monitoring | Enable or disable Cursor (free/personal plan) request usage tracking. Requires Cursor app login |
 | Gemini Monitoring | Enable or disable Google Gemini usage tracking (estimated usage from local logs) |

@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-// SPEC-004 Dock Pin — 정책 순수 함수 (arch §2.5, 커밋 4)
+// SPEC-004 Dock Pin — 정책 순수 함수 (arch §2.5)
 // activation(R4.1), requiredTimers(R4.4), isDisplayConfigChange(R4.8), isUserOverride(R7.4),
 // relocationDecision(R8.2), 재시도 일정(R5.9, R8.7), status(R11.7), presentation(R11.1–11.2, S5),
 // 문구 카탈로그(R11.2–11.3, R11.6, S2, S6), 잠금 판정(R10.3), 테스트 호스트 판정(R12.3)
@@ -37,7 +37,7 @@ struct DockPinStatusInputs: Equatable, Sendable {
     var hasRelocationTarget: Bool
 }
 
-/// R4.8 (C8) — 비교 대상. baseLayout은 오버라이드 없이(overrideDisplayID: nil) 계산한 것(arch §12 I3).
+/// R4.8 (리뷰 v2 C8) — 비교 대상. baseLayout은 오버라이드 없이(overrideDisplayID: nil) 계산한 것(arch §12 I3).
 struct DockPinConfigFingerprint: Equatable, Sendable {
     let baseLayout: DockPinLayout?
     let inputs: DockPinActivationInputs
@@ -256,11 +256,14 @@ enum DockPinPolicy {
         (sessionInfo?["CGSSessionScreenIsLocked"] as? NSNumber)?.boolValue ?? false
     }
 
-    /// R12.3 — 세 환경 키 중 하나 또는 xcTestClassLoaded. 함수 안에서 NSClassFromString을 부르지 않는다(N13)
+    /// R12.3 — 세 환경 키 중 하나 또는 xcTestClassLoaded. XCTest 클래스 조회는 호출측(makeLive 기본 인자)이 한다(N13)
     static func isTestHost(environment: [String: String], xcTestClassLoaded: Bool) -> Bool {
-        let keys = ["XCTestConfigurationFilePath", "XCTestBundlePath", "XCTestSessionIdentifier"]
-        return xcTestClassLoaded || keys.contains { environment[$0] != nil }
+        xcTestClassLoaded || testHostEnvironmentKeys.contains { environment[$0] != nil }
     }
+
+    private static let testHostEnvironmentKeys = [
+        "XCTestConfigurationFilePath", "XCTestBundlePath", "XCTestSessionIdentifier",
+    ]
 
     // MARK: - R11.2 표
 

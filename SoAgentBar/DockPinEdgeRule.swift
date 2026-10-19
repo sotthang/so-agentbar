@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-// SPEC-004 Dock Pin — 탭 판정 규칙 (arch §2.3, 커밋 2)
+// SPEC-004 Dock Pin — 탭 판정 규칙 (arch §2.3)
 // 스냅숏, 판정 decide, 제스처 억제, Option 고정 칸, 신호 상자, 탭 수명 (R5, R7.2)
 // 이 파일은 CoreGraphics / Foundation 만 import 한다 (AC13.1). 모든 타입은 순수 값 타입이다.
 //
@@ -81,9 +81,8 @@ enum DockPinEdgeRule {
         .otherMouseDown, .otherMouseUp, .scrollWheel,
     ]
     /// 키보드 없음(R5.2)
-    static var eventMask: CGEventMask {
+    static let eventMask: CGEventMask =
         (blockableTypes + observedTypes).reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
-    }
 
     /// R5.4 표 1–9행 그대로(1a행 포함). 버튼 번호 > 31이면 1a·2·3행을 건너뛰고 5행.
     static func decide(type: CGEventType, location: CGPoint, flags: CGEventFlags,

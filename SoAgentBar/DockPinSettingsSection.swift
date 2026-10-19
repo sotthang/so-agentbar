@@ -54,7 +54,7 @@ struct DockPinSettingsSection: View {
     // [B]
     private var targetSelection: Binding<String> {
         Binding(
-            get: { manager.targetChoices.first { $0.target == manager.target }?.id ?? "main" },
+            get: { manager.targetChoices.first { $0.target == manager.target }?.id ?? DockPinTargetChoice.mainID },
             set: { id in
                 guard let choice = manager.targetChoices.first(where: { $0.id == id }) else { return }
                 manager.setTarget(choice.target, displayName: choice.displayNameToSave)

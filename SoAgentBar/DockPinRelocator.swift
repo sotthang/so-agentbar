@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-// SPEC-004 Dock Pin — 되돌리기 실행기 (arch §2.9, 커밋 7)
+// SPEC-004 Dock Pin — 되돌리기 실행기 (arch §2.9)
 // 주입형 파일. 다가가기(15점) → 목표 줄 유지(6틱마다 단일 조회) → 2.0 s 뒤 이동 중단 + 마지막 전체 조회(.final, 상한 1.2 s)
 // → 결과 뒤 복원(R8.3–R8.6, D2). 전송기·조회기·스케줄러·활동 카운터·복원점 계산은 모두 주입한다.
 // warp 경로는 없다(DockPinEventPosting에 warp 메서드가 없다, AC13.3).

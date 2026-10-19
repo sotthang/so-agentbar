@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-// SPEC-004 Dock Pin — Dock 창 위치 판정 규칙 (arch §2.4, 커밋 3)
+// SPEC-004 Dock Pin — Dock 창 위치 판정 규칙 (arch §2.4)
 // placement(R6.7), selectDockWindow(preferCached)(R6.4 1–2순위, N9), settle(R6.4 3순위, 주입 IO), 스캔 백오프(R6.6)
 // 이 파일은 CoreGraphics / Foundation 만 import 한다 (AC13.1). 창 목록 IO는 클로저로만 받는다.
 

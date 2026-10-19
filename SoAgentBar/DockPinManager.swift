@@ -2,7 +2,7 @@ import Combine
 import CoreGraphics
 import Foundation
 
-// SPEC-004 Dock Pin — 조정자 (arch §2.10, §3, 커밋 8)
+// SPEC-004 Dock Pin — 조정자 (arch §2.10, §3)
 // @MainActor ObservableObject. 설정 소유(R1), 활성화·자동 on/off(R4), 탭 수명(R5.8–5.11), Option 존중(R7),
 // 되돌리기 조정(R8), 권한(R9), 세션(R10), 상태 발행(R11, S1, S5), 종료(R12), Sidecar(R15).
 //
@@ -141,9 +141,7 @@ final class DockPinManager: ObservableObject {
     /// R8.8 — 오버라이드 해제 + 이벤트 계기
     func moveBackNow() {
         guard !isInert, !isShutDown, activation == .active, !phase.isRelocating else { return }
-        releaseOverride()
-        publish()
-        eventTrigger()
+        releaseOverrideAndRecheck()
     }
 
     /// R1.4
@@ -174,11 +172,20 @@ final class DockPinManager: ObservableObject {
 
     /// 권한·디스플레이·Spaces·방향·세션 각 1회
     private func readAll() {
+        readConfiguration()
+        refreshSessionState()
+    }
+
+    /// 활성화 입력과 디스플레이 맵의 원천(권한·디스플레이·Spaces·방향)을 각 1회 읽는다
+    private func readConfiguration() {
         hasPermission = deps.permission.isTrusted()
         allDisplays = deps.displays.allDisplays()
         mainID = deps.displays.mainDisplayID()
         separateSpaces = deps.dockPreferences.screensHaveSeparateSpaces()
         orientation = deps.dockPreferences.orientation()
+    }
+
+    private func refreshSessionState() {
         session.locked = deps.session.isScreenLocked()
         session.onConsole = deps.session.isOnConsole()
     }
@@ -204,8 +211,7 @@ final class DockPinManager: ObservableObject {
         var scanAfter = false
         if activation != .active {
             if deps.tap.isRunning { deps.tap.stop() }           // R9.3 — 탭 제거가 먼저
-            relocator.abort(.deactivated)
-            phase = .idle
+            abortDrive(.deactivated)
             failureCount = 0
             cancel(&retryToken)
             cancel(&waitRecheckToken)
@@ -231,7 +237,7 @@ final class DockPinManager: ObservableObject {
 
     /// arch §12 I9 — 조회는 .event(백오프 무시), 판정 계기는 .poll
     private func activationScan() {
-        locate(.event) { [weak self] outcome in self?.onPlacement(outcome, trigger: .poll) }
+        locateAndEvaluate(.event, trigger: .poll)
     }
 
     /// 레이아웃·선택지·스냅숏·상태
@@ -303,7 +309,7 @@ final class DockPinManager: ObservableObject {
         repeating[kind] = nil
         switch kind {
         case .permissionPoll: checkPermission()
-        case .dockPoll: locate(.quick) { [weak self] outcome in self?.onPlacement(outcome, trigger: .poll) }
+        case .dockPoll: locateAndEvaluate(.quick, trigger: .poll)
         case .prefsPoll:                                         // R4.5 — 방향과 권한만
             orientation = deps.dockPreferences.orientation()
             hasPermission = deps.permission.isTrusted()
@@ -350,8 +356,7 @@ final class DockPinManager: ObservableObject {
 
     private func handleDisplaySignal(_ signal: DockPinDisplaySignal) {
         if signal == .reconfigured && phase.isRelocating {      // R4.3 — 그 자리에서 중단, 횟수 그대로
-            relocator.abort(.displayReconfigured)
-            phase = .idle
+            abortDrive(.displayReconfigured)
             publish()
         }
         cancel(&debounceToken)
@@ -362,11 +367,7 @@ final class DockPinManager: ObservableObject {
     }
 
     private func recomputeDisplays() {
-        allDisplays = deps.displays.allDisplays()
-        mainID = deps.displays.mainDisplayID()
-        hasPermission = deps.permission.isTrusted()
-        separateSpaces = deps.dockPreferences.screensHaveSeparateSpaces()
-        orientation = deps.dockPreferences.orientation()
+        readConfiguration()
         let changed = DockPinPolicy.isDisplayConfigChange(previous: lastFingerprint, current: currentFingerprint)
         reconcile(scanOnActivation: !changed)
         if changed { handleConfigChange() }
@@ -376,13 +377,10 @@ final class DockPinManager: ObservableObject {
     private func handleConfigChange() {
         guard activation == .active else { return }
         if phase.isRelocating {                                  // arch §12 I4
-            relocator.abort(.displayReconfigured)
-            phase = .idle
+            abortDrive(.displayReconfigured)
         }
-        releaseOverride()
         placement = nil
-        publish()
-        eventTrigger()
+        releaseOverrideAndRecheck()
     }
 
     // MARK: - 세션·시스템 알림 (R10, R6.1, R9.5, R4.5)
@@ -441,9 +439,7 @@ final class DockPinManager: ObservableObject {
             self.readAll()
             self.reconcile(scanOnActivation: !isEventTrigger)
             guard isEventTrigger, self.activation == .active, !self.phase.isRelocating else { return }
-            self.releaseOverride()
-            self.publish()
-            self.eventTrigger()
+            self.releaseOverrideAndRecheck()
         }
     }
 
@@ -456,13 +452,17 @@ final class DockPinManager: ObservableObject {
             optionPasses[id] = max(optionPasses[id] ?? -.infinity, time)
         }
         guard signals.hadOptionPass else { return }
-        optionCheckTokens.forEach { $0.cancel() }                // 새 통과의 확인 일정이 앞선 일정을 대신한다
-        optionCheckTokens.removeAll()
+        cancelOptionChecks()                                     // 새 통과의 확인 일정이 앞선 일정을 대신한다
         for delay in DockPinTuning.optionCheckDelays {          // R7.3 / AC7.5
             optionCheckTokens.append(deps.scheduler.schedule(after: delay, kind: .optionCheck) { [weak self] in
-                self?.locate(.quick) { [weak self] outcome in self?.onPlacement(outcome, trigger: .poll) }
+                self?.locateAndEvaluate(.quick, trigger: .poll)
             })
         }
+    }
+
+    private func cancelOptionChecks() {
+        optionCheckTokens.forEach { $0.cancel() }
+        optionCheckTokens.removeAll()
     }
 
     /// R7.6 — 오버라이드를 끄고 그 화면의 Option 통과 기록도 버린다(창 10 s는 켤 때만 본다)
@@ -474,6 +474,13 @@ final class DockPinManager: ObservableObject {
         overrideDisplayID = nil
     }
 
+    /// 오버라이드를 풀고 발행한 뒤 이벤트 계기로 바로 다시 조회한다(R8.7)
+    private func releaseOverrideAndRecheck() {
+        releaseOverride()
+        publish()
+        eventTrigger()
+    }
+
     // MARK: - 위치·되돌리기 (R8)
 
     private func locate(_ mode: DockPinLocateMode, _ completion: @escaping @MainActor (DockPinLocateOutcome) -> Void) {
@@ -481,13 +488,23 @@ final class DockPinManager: ObservableObject {
                             completion: completion)
     }
 
+    private func locateAndEvaluate(_ mode: DockPinLocateMode, trigger: DockPinTrigger) {
+        locate(mode) { [weak self] outcome in self?.onPlacement(outcome, trigger: trigger) }
+    }
+
+    /// 진행 중인 되돌리기를 멈추고(복원 1회) 단계를 .idle로 둔다. 실패 횟수는 그대로다.
+    private func abortDrive(_ reason: DockPinDriveAbortReason) {
+        relocator.abort(reason)
+        phase = .idle
+    }
+
     /// R8.7 이벤트 계기 — 실패 0, 재시도 취소, .failed → .idle, 백오프 무시 조회
     private func eventTrigger() {
         guard activation == .active, tapState == .running else { return }
         failureCount = 0
         cancel(&retryToken)
-        if case .failed = phase { phase = .idle }
-        locate(.event) { [weak self] outcome in self?.onPlacement(outcome, trigger: .event) }
+        if phase.isFailed { phase = .idle }
+        locateAndEvaluate(.event, trigger: .event)
     }
 
     private func onPlacement(_ outcome: DockPinLocateOutcome, trigger: DockPinTrigger) {
@@ -497,9 +514,7 @@ final class DockPinManager: ObservableObject {
             if id == anchorID {
                 lastConfirmedOnAnchorAt = deps.scheduler.now
                 overrideDisplayID = nil
-                var wasFailed = false
-                if case .failed = phase { wasFailed = true }
-                if wasFailed || retryToken != nil {              // R8.7, AC8.12
+                if phase.isFailed || retryToken != nil {         // R8.7, AC8.12
                     phase = .idle
                     failureCount = 0
                     cancel(&retryToken)
@@ -517,8 +532,7 @@ final class DockPinManager: ObservableObject {
     private func evaluateRelocation(_ trigger: DockPinTrigger) {
         guard !phase.isRelocating else { return }
         cancel(&waitRecheckToken)
-        session.locked = deps.session.isScreenLocked()
-        session.onConsole = deps.session.isOnConsole()
+        refreshSessionState()
         let decision = DockPinPolicy.relocationDecision(DockPinRelocationInputs(
             activation: tapState == .running ? activation : .inactive(.off),
             placement: placement, anchorID: layout?.anchor.display.id, phase: phase,
@@ -598,7 +612,7 @@ final class DockPinManager: ObservableObject {
             retryToken = deps.scheduler.schedule(after: delay, kind: .relocationRetry) { [weak self] in
                 guard let self else { return }
                 self.retryToken = nil
-                self.locate(.quick) { [weak self] outcome in self?.onPlacement(outcome, trigger: .retryTimer) }
+                self.locateAndEvaluate(.quick, trigger: .retryTimer)
             }
         } else {
             phase = .failed(attempts: failureCount)
@@ -630,8 +644,7 @@ final class DockPinManager: ObservableObject {
         cancel(&waitRecheckToken)
         cancel(&settleToken)
         cancel(&permissionRecheckToken)
-        optionCheckTokens.forEach { $0.cancel() }
-        optionCheckTokens.removeAll()
+        cancelOptionChecks()
         deps.locator.cancelAll()
         activation = .inactive(.off)
         phase = .idle

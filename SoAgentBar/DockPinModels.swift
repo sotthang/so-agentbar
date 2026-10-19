@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-// SPEC-004 Dock Pin — 순수 값 타입 (arch §2.1, 커밋 1)
+// SPEC-004 Dock Pin — 순수 값 타입 (arch §2.1)
 // 이 파일은 CoreGraphics / Foundation 만 import 한다 (AC13.1).
 
 /// R2.1 — 고정 대상. 저장은 UUID 문자열 하나(nil = .main).
@@ -27,14 +27,14 @@ enum DockPinTarget: Hashable, Sendable {
     }
 }
 
-/// R3.2 — 좌표는 전부 CG 전역(CGDisplayBounds). AppKit 화면 frame은 어디에도 쓰지 않는다(F11).
+/// R3.2 — 좌표는 전부 CG 전역(CGDisplayBounds). 화면 객체의 frame 좌표는 어디에도 쓰지 않는다(F11).
 struct DockPinDisplay: Equatable, Sendable {
     let id: CGDirectDisplayID
     let uuid: String
     let bounds: CGRect
     /// CGDisplayMirrorsDisplay != kCGNullDirectDisplay 이면 그 원본
     let mirrorOf: CGDirectDisplayID?
-    /// 표시용(AppKit 화면의 localizedName). 계산·비교 판정에 쓰지 않는다
+    /// 표시용(화면 객체의 localizedName). 계산·비교 판정에 쓰지 않는다
     let name: String
 }
 
@@ -62,7 +62,7 @@ enum DockPinActivation: Equatable, Sendable {
     case inactive(DockPinInactiveReason)
 }
 
-/// R4.1 — Spaces 상태는 입력값으로만 받는다(F15). 순수 테스트는 AppKit 화면 API를 읽지 않는다.
+/// R4.1 — Spaces 상태는 입력값으로만 받는다(F15). 순수 테스트는 화면 API를 직접 읽지 않는다.
 struct DockPinActivationInputs: Equatable, Sendable {
     var enabled: Bool
     var hasPermission: Bool
@@ -110,6 +110,11 @@ enum DockPinRelocationPhase: Equatable, Sendable {
 
     /// driving — AC8.10
     var isDriving: Bool { self == .driving }
+
+    var isFailed: Bool {
+        if case .failed = self { return true }
+        return false
+    }
 }
 
 /// R4.4 tapState 입력

@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 import os
 
-// SPEC-004 Dock Pin — 전용 스레드 CGEventTap (arch §2.7, 커밋 5)
+// SPEC-004 Dock Pin — 전용 스레드 CGEventTap (arch §2.7)
 // 잠금 2개(shared, handles) + 탭 스레드 전용 suppression, 메인 깨우기 CFRunLoopSource (R5).
 //
 // 스레드 규칙
@@ -53,8 +53,7 @@ final class DockPinEventTap: DockPinEventTapping, @unchecked Sendable {
     /// (탭 스레드는 살아 있는 동안 self를 붙잡으므로 여기 올 때 탭은 이미 없다.)
     deinit {
         if let wake = handles.withLockUnchecked({ $0.wake }) {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), wake, .commonModes)
-            CFRunLoopSourceInvalidate(wake)
+            Self.removeWakeSource(wake)
         }
     }
 
@@ -260,8 +259,12 @@ final class DockPinEventTap: DockPinEventTapping, @unchecked Sendable {
             return w
         }
         if let wake {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), wake, .commonModes)
-            CFRunLoopSourceInvalidate(wake)
+            Self.removeWakeSource(wake)
         }
+    }
+
+    private static func removeWakeSource(_ wake: CFRunLoopSource) {
+        CFRunLoopRemoveSource(CFRunLoopGetMain(), wake, .commonModes)
+        CFRunLoopSourceInvalidate(wake)
     }
 }

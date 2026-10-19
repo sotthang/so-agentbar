@@ -3,12 +3,12 @@ import ApplicationServices
 import CoreGraphics
 import os
 
-// SPEC-004 Dock Pin — 시스템 접점 프로토콜 + Live 어댑터 (arch §2.6, 커밋 5)
+// SPEC-004 Dock Pin — 시스템 접점 프로토콜 + Live 어댑터 (arch §2.6)
 // 부작용 파일. 순수 판정은 DockPinModels/DisplayMap/EdgeRule/Placement/Policy 에 있다(R13.1).
 //
 // 모든 Live 어댑터의 init은 시스템 호출·등록을 하지 않는다(등록은 start에서만). 테스트는 Live 어댑터를 부르지 않는다.
 // 좌표는 전부 CG 전역(CGDisplayBounds, CGEvent.location). NSScreen은 이름과 Spaces 읽기에만 쓴다(F11).
-// `DockPinDependencies.live()`는 실제 어댑터 + DockPinDockLocator(커밋 6)를 묶는다.
+// `DockPinDependencies.live()`는 실제 어댑터 + DockPinDockLocator를 묶는다.
 
 protocol DockPinCancellable: AnyObject { func cancel() }
 
@@ -265,7 +265,9 @@ final class DockPinLiveWorkItem: DockPinCancellable {
 
 /// Dock 설정(com.apple.dock), Spaces(NSApplication 초기화 뒤에만, F15), Dock PID.
 @MainActor final class DockPinLiveDockPreferences: DockPinDockPreferencesProviding {
-    private static let dockDomain = "com.apple.dock" as CFString
+    /// Dock의 번들 ID = 설정 도메인
+    nonisolated static let dockBundleID = "com.apple.dock"
+    private static let dockDomain = dockBundleID as CFString
 
     func orientation() -> DockPinOrientation {
         CFPreferencesAppSynchronize(Self.dockDomain)
@@ -278,7 +280,7 @@ final class DockPinLiveWorkItem: DockPinCancellable {
     }
 
     func dockPID() -> pid_t? {
-        NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock")
+        NSRunningApplication.runningApplications(withBundleIdentifier: Self.dockBundleID)
             .first { !$0.isTerminated }?.processIdentifier
     }
 }
@@ -364,7 +366,7 @@ final class DockPinLiveWorkItem: DockPinCancellable {
             forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main
         ) { note in
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            guard app?.bundleIdentifier == "com.apple.dock" else { return }
+            guard app?.bundleIdentifier == DockPinLiveDockPreferences.dockBundleID else { return }
             MainActor.assumeIsolated { handler(.dockRelaunched) }
         })
         // R4.5 — 앱 활성화 때 Spaces 재읽기

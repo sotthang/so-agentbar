@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-// SPEC-004 Dock Pin — Dock 위치 조회기 (arch §2.8, 커밋 6)
+// SPEC-004 Dock Pin — Dock 위치 조회기 (arch §2.8)
 // 부작용 파일. 창 번호 캐시, 직렬 조회 큐(.utility), 합치기, 백오프·속도 제한(R6.1–R6.6).
 // 판정 자체는 DockPinPlacementRules(순수)에 있고, 창 목록 IO는 DockPinWindowListing 뒤에 있다.
 //
@@ -151,9 +151,14 @@ final class DockPinDockLocator: DockPinDockLocating {
 
     private func runRateLimited() {
         rateLimitWait = nil
+        startPending(rateLimitPassed: true)
+    }
+
+    /// 합쳐 둔 요청을 꺼내 시작한다
+    private func startPending(rateLimitPassed: Bool) {
         guard let next = pending else { return }
         pending = nil
-        start(next.mode, displays: next.displays, completions: next.completions, rateLimitPassed: true)
+        start(next.mode, displays: next.displays, completions: next.completions, rateLimitPassed: rateLimitPassed)
     }
 
     private func run(_ job: Job, pid: pid_t, displays: [DockPinDisplay], completions: [Completion]) {
@@ -225,10 +230,7 @@ final class DockPinDockLocator: DockPinDockLocating {
         deliver(result.outcome, to: completions)
         guard jobGeneration == generation else { return }   // completion 안에서 cancelAll
         inFlight = false
-        if let next = pending, rateLimitWait == nil {
-            pending = nil
-            start(next.mode, displays: next.displays, completions: next.completions, rateLimitPassed: false)
-        }
+        if rateLimitWait == nil { startPending(rateLimitPassed: false) }
     }
 
     /// R6.6 — 전체 조회 결과 .unknown이 연달아 나오면 다음 전체 조회 간격을 늘린다. 성공하면 초기화.

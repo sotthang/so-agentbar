@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-// SPEC-004 Dock Pin — 디스플레이 맵 (arch §2.2, 커밋 1)
+// SPEC-004 Dock Pin — 디스플레이 맵 (arch §2.2)
 // 활성 디스플레이, 고정 화면, 트리거 줄, 빈 구간·목표점, 피커 선택지, 복원점 (R2, R3, R8.5 예외 1)
 // 이 파일은 CoreGraphics / Foundation 만 import 한다 (AC13.1). 모든 함수는 순수 함수다.
 
@@ -51,10 +51,13 @@ struct DockPinTargetChoice: Equatable, Identifiable, Sendable {
         case disconnected(lastName: String?)
     }
 
-    /// "main" 또는 UUID
+    /// mainID 또는 UUID
     let id: String
     let target: DockPinTarget
     let kind: Kind
+
+    /// .main 선택지의 id
+    static let mainID = "main"
 
     /// main → nil, connected → name, disconnected → lastName
     var displayNameToSave: String? {
@@ -150,7 +153,7 @@ enum DockPinDisplayMap {
     /// R2.5, AC2.5
     static func targetChoices(connected: [DockPinDisplay], target: DockPinTarget,
                               savedName: String?) -> [DockPinTargetChoice] {
-        var choices = [DockPinTargetChoice(id: "main", target: .main, kind: .main)]
+        var choices = [DockPinTargetChoice(id: DockPinTargetChoice.mainID, target: .main, kind: .main)]
         choices += connected.map {
             DockPinTargetChoice(id: $0.uuid, target: .display(uuid: $0.uuid), kind: .connected(name: $0.name))
         }

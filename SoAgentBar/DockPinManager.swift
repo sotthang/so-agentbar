@@ -78,6 +78,10 @@ final class DockPinManager: ObservableObject {
     // (r6) R9.6 7번 — 래치 L. 새 프로세스 결과가 프로세스 안 판정과 달랐던 값(7-2).
     // 7-4: reconcile 뒤 requiredTimers에 freshTrustCheck가 없거나 정리하면 nil. 권한 알림으로는 바뀌지 않는다
     private var trustLatch: Bool?
+    /// (r6.5) VULN-006 — .needsPermission 진입(또는 초기화) 시각. 아니면 nil. 주기 확인 간격을 늘리는 기준
+    private var needsPermissionSince: TimeInterval?
+    /// (r6.5) VULN-006 — 대기 중인 freshTrustCheck 반복 예약의 간격
+    private var freshTimerInterval: TimeInterval?
     // (r6.3) VULN-003 — 분산 잠금 알림은 누구나 보낼 수 있다. 세션을 직접 읽어 본 잠김만 믿는다
     /// 세션 읽기로 잠김을 본 뒤 아직 실제 해제로 소비하지 않았다
     private var observedLocked = false
@@ -252,10 +256,12 @@ final class DockPinManager: ObservableObject {
                 tapState = .retrying(attempt: 1)
             }
         }
+        let leftNeedsPermission = trackNeedsPermission()
         publish()
         if !syncRepeatingTimers().contains(.freshTrustCheck) {
             trustLatch = nil                                    // R9.6 7-4. 진행 중 확인은 applyFresh 가드가 버린다(arch §12 I12)
         }
+        if leftNeedsPermission { resetFreshCadence() }          // VULN-006 — 떠나면 5 s 주기로
         lastFingerprint = currentFingerprint
         if scanAfter { activationScan() }
     }
@@ -324,11 +330,35 @@ final class DockPinManager: ObservableObject {
         case .tapRetry:
             if case .retrying(let attempt) = tapState { return DockPinPolicy.tapRetryDelay(attempt: attempt) }
             return DockPinPolicy.tapRetryDelay(attempt: 1)
-        case .freshTrustCheck: return DockPinTuning.freshTrustCheckInterval
+        case .freshTrustCheck:                                   // VULN-006 — .needsPermission에서만 늘어난다
+            return DockPinPolicy.freshTrustCheckInterval(
+                elapsedInNeedsPermission: needsPermissionSince.map { deps.scheduler.now - $0 })
         }
     }
 
+    /// VULN-006 — .needsPermission 진입 시각을 기록·해제한다. 반환값 = 이번에 .needsPermission을 떠났는지
+    private func trackNeedsPermission() -> Bool {
+        if activation == .inactive(.needsPermission) {
+            if needsPermissionSince == nil { needsPermissionSince = deps.scheduler.now }
+            return false
+        }
+        guard needsPermissionSince != nil else { return false }
+        needsPermissionSince = nil
+        return true
+    }
+
+    /// VULN-006 — 확인 간격을 5 s부터 다시 센다(접근성 알림·앱 활성화·.needsPermission 떠남).
+    /// 대기 중 예약이 더 긴 간격이면 지금부터 새 간격으로 다시 잡는다
+    private func resetFreshCadence() {
+        if needsPermissionSince != nil { needsPermissionSince = deps.scheduler.now }
+        guard let token = repeating[.freshTrustCheck],
+              freshTimerInterval != interval(.freshTrustCheck) else { return }
+        token.cancel()
+        scheduleRepeating(.freshTrustCheck)
+    }
+
     private func scheduleRepeating(_ kind: DockPinRepeatingTimer) {
+        if kind == .freshTrustCheck { freshTimerInterval = interval(kind) }
         repeating[kind] = deps.scheduler.schedule(after: interval(kind), kind: .repeating(kind)) { [weak self] in
             self?.fireRepeating(kind)
         }
@@ -530,8 +560,10 @@ final class DockPinManager: ObservableObject {
             deps.locator.invalidateCache()
             activationScan()
         case .accessibilityChanged:                               // R9.5 (r5) — 즉시 확인 없음, +1.0·+3.0 s 뒤
+            resetFreshCadence()                                   // VULN-006
             schedulePermissionRechecks()
         case .appBecameActive:
+            resetFreshCadence()                                   // VULN-006
             separateSpaces = deps.dockPreferences.screensHaveSeparateSpaces()
             reconcile()
         }
@@ -799,6 +831,7 @@ final class DockPinManager: ObservableObject {
         cancelOptionChecks()
         invalidateFreshCheck()                                   // 자식 종료 + 늦은 결과 버림(AC9.8 c)
         trustLatch = nil                                         // R9.6 7-4
+        needsPermissionSince = nil                               // VULN-006 — 다시 켜면 5 s부터
         deps.locator.cancelAll()
         activation = .inactive(.off)
         phase = .idle

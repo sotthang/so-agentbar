@@ -324,6 +324,21 @@ final class DockPinPolicyTests: XCTestCase {
         XCTAssertEqual(DockPinPolicy.tapRetryDelay(attempt: 100), 30)
     }
 
+    // MARK: - (r6.5) VULN-006 새 프로세스 확인 간격 freshTrustCheckInterval (R9.6)
+
+    /// .needsPermission에 머문 시간(elapsed)으로 정한다: 1분 미만 5 s, 10분 미만 30 s, 그 뒤 60 s. nil(.needsPermission 아님) = 5 s
+    func test_VULN006_freshTrustCheckInterval_needsPermission_5_then30_then60() {
+        XCTAssertEqual(DockPinPolicy.freshTrustCheckInterval(elapsedInNeedsPermission: nil), 5, "활성 주기는 5 s 그대로")
+        XCTAssertEqual(DockPinPolicy.freshTrustCheckInterval(elapsedInNeedsPermission: 0), 5)
+        XCTAssertEqual(DockPinPolicy.freshTrustCheckInterval(elapsedInNeedsPermission: 59.9), 5)
+        XCTAssertEqual(DockPinPolicy.freshTrustCheckInterval(elapsedInNeedsPermission: 60), 30)
+        XCTAssertEqual(DockPinPolicy.freshTrustCheckInterval(elapsedInNeedsPermission: 599.9), 30)
+        XCTAssertEqual(DockPinPolicy.freshTrustCheckInterval(elapsedInNeedsPermission: 600), 60)
+        XCTAssertEqual(DockPinPolicy.freshTrustCheckInterval(elapsedInNeedsPermission: 86_400), 60)
+        XCTAssertEqual(DockPinTuning.needsPermissionFreshBackoff, [5, 30, 60])
+        XCTAssertEqual(DockPinTuning.needsPermissionFreshBackoffAfter, [60, 600])
+    }
+
     // MARK: - AC7.1–7.4 isUserOverride (R7.4)
 
     func test_AC7_1_isUserOverride_B1Regression_optionPassAfterLastConfirm_withinTenSeconds_true() {

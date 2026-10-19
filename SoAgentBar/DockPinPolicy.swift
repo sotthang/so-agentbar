@@ -155,6 +155,13 @@ enum DockPinPolicy {
         }
     }
 
+    /// (r6.5) VULN-006 — R9.6 주기 확인 간격. elapsed = .needsPermission에 머문 시간(nil = .needsPermission 아님 → 5 s)
+    static func freshTrustCheckInterval(elapsedInNeedsPermission elapsed: TimeInterval?) -> TimeInterval {
+        guard let elapsed else { return DockPinTuning.freshTrustCheckInterval }
+        let step = DockPinTuning.needsPermissionFreshBackoffAfter.filter { elapsed >= $0 }.count
+        return DockPinTuning.needsPermissionFreshBackoff[step]
+    }
+
     /// R4.8
     static func isDisplayConfigChange(previous: DockPinConfigFingerprint?,
                                       current: DockPinConfigFingerprint) -> Bool {

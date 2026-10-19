@@ -2662,4 +2662,111 @@ final class DockPinManagerTests: XCTestCase {
         XCTAssertEqual(h.moves.count, before + 1, "이동이 멈췄다")
         XCTAssertEqual(h.retryDelays, [], "실패 횟수 증가 없음")
     }
+
+    // MARK: - (r6.5) VULN-006 — .needsPermission 새 프로세스 확인 백오프(R9.6)
+    //
+    // 권한을 끝내 주지 않으면 5초마다 자식 프로세스를 띄워 하루 약 1.7만 회가 된다(EDR 소음·배터리).
+    // 규칙: .needsPermission에 들어온(또는 초기화된) 뒤 1분 미만 5 s, 10분 미만 30 s, 그 뒤 60 s.
+    // 초기화: 접근성 알림(R9.5), 앱 활성화, setEnabled(true), .needsPermission을 떠남. 활성 주기는 5 s 그대로.
+
+    private func needsPermissionHarness(_ name: String) -> Harness {
+        let h = harness(name)
+        h.fakes.permission.trusted = false
+        h.fakes.permission.autoRespondFresh = .some(false)   // 새 프로세스 확인도 늘 "권한 없음"
+        h.start()
+        XCTAssertEqual(h.manager.status, .needsPermission, "사전 조건")
+        return h
+    }
+
+    func test_VULN006_needsPermission_freshAlwaysFalse_5sForOneMinute_then30s_then60s() {
+        let h = needsPermissionHarness("VULN006_backoff")
+        h.advance(60)
+        XCTAssertEqual(h.fakes.permission.freshCount, 12, "첫 1분은 5초마다(t0+5 … t0+60)")
+        h.advance(30)
+        XCTAssertEqual(h.fakes.permission.freshCount, 13, "그 뒤 30초 간격(t0+90)")
+        h.advance(510)
+        XCTAssertEqual(h.fakes.permission.freshCount, 30, "t0+600까지 30초 간격 18회")
+        h.advance(120)
+        XCTAssertEqual(h.fakes.permission.freshCount, 32, "10분 뒤 60초 간격(t0+660, t0+720)")
+        let delays = h.fakes.scheduler.scheduledDelays(.repeating(.freshTrustCheck))
+        let expected: [TimeInterval] = Array(repeating: 5, count: 12) + Array(repeating: 30, count: 18) + [60, 60]
+        XCTAssertEqual(Array(delays.prefix(32)), expected)
+        XCTAssertEqual(h.fakes.scheduler.pendingCount(.repeating(.freshTrustCheck)), 1, "반복 타이머는 종류당 1개")
+        XCTAssertEqual(h.fakes.permission.promptCount, 0, "프롬프트 없음")
+        XCTAssertEqual(h.manager.status, .needsPermission)
+    }
+
+    func test_VULN006_accessibilityNotification_resetsCadenceTo5s() {
+        let h = needsPermissionHarness("VULN006_ax")
+        h.advance(700)                                        // 60초 간격 구간(다음 확인 t0+720)
+        let before = h.fakes.permission.freshCount
+        h.fakes.systemEvents.send(.accessibilityChanged)
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, before + 1, "알림 뒤 5초 안에 확인")
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, before + 2, "다시 5초 간격")
+        h.advance(50)
+        XCTAssertEqual(h.fakes.permission.freshCount, before + 12, "알림부터 1분은 5초 간격")
+        h.advance(30)
+        XCTAssertEqual(h.fakes.permission.freshCount, before + 13, "그 뒤 다시 30초 간격")
+    }
+
+    func test_VULN006_appBecameActive_resetsCadenceTo5s() {
+        let h = needsPermissionHarness("VULN006_app")
+        h.advance(700)
+        let before = h.fakes.permission.freshCount
+        h.fakes.systemEvents.send(.appBecameActive)
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, before + 1, "앱 활성화 뒤 5초 안에 확인")
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, before + 2, "다시 5초 간격")
+    }
+
+    func test_VULN006_reEnable_resetsCadenceTo5s() {
+        let h = needsPermissionHarness("VULN006_enable")
+        h.advance(700)
+        h.manager.setEnabled(false)
+        h.manager.setEnabled(true)
+        XCTAssertEqual(h.manager.status, .needsPermission, "사전 조건")
+        let before = h.fakes.permission.freshCount
+        h.advance(60)
+        XCTAssertEqual(h.fakes.permission.freshCount, before + 12, "다시 켜면 첫 1분은 5초 간격")
+    }
+
+    func test_VULN006_grantWhileBackedOff_activeCadenceBackTo5s() {
+        let h = needsPermissionHarness("VULN006_grant")
+        h.advance(700)                                        // 다음 확인 t0+720
+        h.fakes.permission.trusted = true
+        h.fakes.permission.autoRespondFresh = .some(true)
+        h.advance(1)                                          // permissionPoll → 활성
+        XCTAssertTrue(h.fakes.tap.isRunning, "사전 조건: 권한 → 탭 실행")
+        let before = h.fakes.permission.freshCount
+        h.advance(5)
+        XCTAssertEqual(h.fakes.permission.freshCount, before + 1, "활성이 되면 5초 간격으로 돌아온다")
+        h.advance(100)
+        XCTAssertEqual(h.fakes.permission.freshCount, before + 21, "활성 주기는 계속 5초")
+    }
+
+    func test_VULN006_freshTrueGrantWhileBackedOff_activeCadenceBackTo5s() {
+        let h = needsPermissionHarness("VULN006_freshGrant")
+        h.advance(700)                                        // 다음 확인 t0+720
+        h.fakes.permission.autoRespondFresh = .some(true)
+        h.fakes.systemEvents.send(.accessibilityChanged)      // 5초 안 확인 → 새 프로세스 true → 활성(래치 true)
+        h.advance(5)
+        XCTAssertTrue(h.fakes.tap.isRunning, "사전 조건: 새 프로세스 확인 true → 탭 실행")
+        h.fakes.permission.trusted = true                      // 이후 프로세스 안 판정도 true(래치 해제)
+        let before = h.fakes.permission.freshCount
+        h.advance(100)
+        XCTAssertEqual(h.fakes.permission.freshCount, before + 20, "활성 주기 5초")
+    }
+
+    func test_VULN006_activeCadence_staysEvery5s_beyondTenMinutes() {
+        let h = harness("VULN006_active")
+        h.fakes.permission.autoRespondFresh = .some(true)
+        h.start()
+        XCTAssertEqual(h.manager.status, .pinned(displayName: Fixture.builtIn.name), "사전 조건")
+        h.advance(720)
+        XCTAssertEqual(h.fakes.permission.freshCount, 144, "활성 중에는 백오프 없음(5초마다)")
+        XCTAssertEqual(Set(h.fakes.scheduler.scheduledDelays(.repeating(.freshTrustCheck))), [5])
+    }
 }

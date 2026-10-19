@@ -171,6 +171,11 @@ enum DockPinTuning {
     static let permissionPollInterval: TimeInterval = 1         // s — 권한 감시(R4.4 표의 상태에서만)
     static let permissionNotifyRecheckDelays: [TimeInterval] = [1.0, 3.0] // s — (r5) R9.5, F22 (알림 뒤 +1초·+3초)
     static let freshTrustCheckInterval: TimeInterval = 5              // s — (r5) R9.6, F20 (약 65ms/회)
+    /// (r6.5) VULN-006 — .needsPermission에 머문 시간별 새 프로세스 확인 간격. 첫 칸 = freshTrustCheckInterval.
+    /// 권한을 끝내 주지 않아도 자식 프로세스가 하루 약 1.7만 회에서 약 1.5천 회로 준다(EDR 소음·배터리)
+    static let needsPermissionFreshBackoff: [TimeInterval] = [freshTrustCheckInterval, 30, 60] // s
+    /// (r6.5) VULN-006 — 위 간격으로 넘어가는 경과 시각(.needsPermission 진입·초기화 기준). 1분, 10분
+    static let needsPermissionFreshBackoffAfter: [TimeInterval] = [60, 600] // s
     static let freshTrustCheckTimeout: TimeInterval = 2               // s — (r5) R9.6 5번 (초과 → 결과 nil)
     static let dockProbeTimeout: Float = 0.25                         // s — (r6) R9.1 2번, C13. AXUIElementSetMessagingTimeout 인자(Float). 측정 없음(D5, A24)
     static let dockPollInterval: TimeInterval = 3               // s — 평소 위치 확인

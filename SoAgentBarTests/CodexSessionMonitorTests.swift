@@ -33,6 +33,7 @@ final class CodexSessionMonitorTests: XCTestCase {
             .appendingPathComponent("Fixtures/Codex/\(name).jsonl")
     }
 
+    @discardableResult
     private func copyFixture(_ name: String, intoDate date: String = "2026/04/27") -> URL {
         let dir = tempDir
             .appendingPathComponent(date, isDirectory: true)
@@ -40,6 +41,9 @@ final class CodexSessionMonitorTests: XCTestCase {
         let src = fixtureURL(name)
         let dst = dir.appendingPathComponent("rollout-\(name).jsonl")
         try! FileManager.default.copyItem(at: src, to: dst)
+        // copyItem은 원본 mtime(체크아웃 시각)을 보존한다 — 모니터는 24시간 넘은 파일을 건너뛰므로
+        // 체크아웃이 오래되면 픽스처가 통째로 무시된다. 방금 쓴 파일처럼 mtime을 현재로 맞춘다.
+        try! FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: dst.path)
         return dst
     }
 
@@ -364,7 +368,7 @@ final class CodexSessionMonitorTests: XCTestCase {
         let zstFile = dir.appendingPathComponent("rollout-test.jsonl.zst")
         try! "dummy zst content".write(to: zstFile, atomically: true, encoding: .utf8)
 
-        var sessions: [ClaudeSession] = []
+        let sessions: [ClaudeSession] = []
         let exp = expectation(description: "zst ignored")
         exp.isInverted = true
         monitor.onSessionsChanged = { s in

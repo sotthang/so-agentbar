@@ -67,14 +67,17 @@ enum JSONLReader {
         guard let text = String(data: completeData, encoding: .utf8) else { return nextOffset }
 
         // 완성된 줄만 파싱
+        // 줄마다 autorelease pool을 비워 파싱 중간 객체가 전체 파일 분량만큼 쌓이지 않게 한다 (PERF-003)
         for line in text.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty,
-                  let lineData = trimmed.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
-            else { continue }
+            autoreleasepool {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty,
+                      let lineData = trimmed.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
+                else { return }
 
-            onEvent(json)
+                onEvent(json)
+            }
         }
         return nextOffset
     }

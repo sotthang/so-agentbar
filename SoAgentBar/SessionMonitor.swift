@@ -229,7 +229,14 @@ struct ClaudeSession: Identifiable {
 class ClaudeSessionMonitor: SessionMonitorProtocol {
     private let projectsDirs: [URL]                            // 직접 스캔하는 정적 프로젝트 디렉토리
     private let watchedExtraDirs: [URL]                        // FSEvents 감시 추가 경로
-    private let dispatchQueue = DispatchQueue(label: "com.sotthang.so-agentbar.sessionmonitor", qos: .utility)
+    // .workItem: 작업 단위마다 autorelease pool을 비운다 — 기본값(.inherit)이면 큐가 쉬지 못할 때
+    // 스레드 pool이 비워지지 않아 파일 Data/JSON 트리가 계속 쌓인다 (PERF-003)
+    private let dispatchQueue = DispatchQueue(
+        label: "com.sotthang.so-agentbar.sessionmonitor", qos: .utility, autoreleaseFrequency: .workItem
+    )
+    // 폴링 병합: 큐에 대기 중인 폴링이 있으면 새 요청은 버린다 (진행 중 폴링 뒤로 최대 1회만 대기)
+    private let pollRequestLock = NSLock()
+    private var isPollQueued = false
 
     var onSessionsChanged: (([ClaudeSession]) -> Void)?
 
@@ -293,7 +300,7 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         loadFileOffsets()
 
         // 초기 폴링
-        dispatchQueue.async { [weak self] in self?.poll() }
+        requestPoll()
 
         // FSEvents: 파일 변경 시 자동으로 poll 트리거
         startFSEvents()
@@ -301,7 +308,7 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         // 안전장치: 30초마다 폴백 폴링 (FSEvents가 놓칠 경우 대비)
         DispatchQueue.main.async { [weak self] in
             self?.fallbackTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
-                self?.dispatchQueue.async { self?.poll() }
+                self?.requestPoll()
             }
         }
     }
@@ -317,7 +324,7 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         DispatchQueue.main.async { [weak self] in
             self?.fallbackTimer?.invalidate()
             self?.fallbackTimer = Timer.scheduledTimer(withTimeInterval: max(interval, 10), repeats: true) { [weak self] _ in
-                self?.dispatchQueue.async { self?.poll() }
+                self?.requestPoll()
             }
         }
     }
@@ -362,12 +369,30 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
     /// FSEvents 콜백 디바운스: 0.5초 내 중복 호출 병합
     private func scheduleDebouncedPoll() {
         pollWorkItem?.cancel()
-        let item = DispatchWorkItem { [weak self] in self?.poll() }
+        let item = DispatchWorkItem { [weak self] in self?.requestPoll() }
         pollWorkItem = item
         dispatchQueue.asyncAfter(deadline: .now() + 0.5, execute: item)
     }
 
     // MARK: - 메인 루프
+
+    /// 폴링 요청의 단일 진입점 (초기 폴링 / 폴백 타이머 / FSEvents 디바운스).
+    /// 폴링이 진행 중이거나 대기 중이면 병합되어, 진행 중 폴링이 끝난 뒤 최대 1회만 추가 실행된다 (PERF-003).
+    func requestPoll() {
+        pollRequestLock.lock()
+        defer { pollRequestLock.unlock() }
+        guard !isPollQueued else { return }
+        isPollQueued = true
+        dispatchQueue.async { [weak self] in self?.runQueuedPoll() }
+    }
+
+    private func runQueuedPoll() {
+        // 실행 시작 시점에 대기 표시를 해제 — 이후 들어온 요청은 다음 1회로 대기한다
+        pollRequestLock.lock()
+        isPollQueued = false
+        pollRequestLock.unlock()
+        poll()
+    }
 
     private func poll() {
         let results = pollNow()
@@ -415,63 +440,66 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
             let subagentJSONLs = activeSubagentJSONLs(in: entry.url, now: now)
 
             for jsonlURL in directJSONLs + subagentJSONLs {
-                guard let modDate = modificationDate(of: jsonlURL) else { continue }
+                // 파일마다 읽은 Data/파싱 결과의 autorelease 객체를 즉시 해제 (PERF-003)
+                autoreleasepool {
+                    guard let modDate = modificationDate(of: jsonlURL) else { return }
 
-                let isSubagent = subagentJSONLs.contains(jsonlURL)
-                let sessionID = jsonlURL.deletingPathExtension().lastPathComponent
-                // 서브에이전트 jsonl 경로: {projectURL}/{parentSessionId}/subagents/agent-xxx.jsonl
-                // → 두 단계 위 디렉토리 이름이 부모 sessionId
-                let parentSessionId: String? = isSubagent
-                    ? jsonlURL.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent
-                    : nil
+                    let isSubagent = subagentJSONLs.contains(jsonlURL)
+                    let sessionID = jsonlURL.deletingPathExtension().lastPathComponent
+                    // 서브에이전트 jsonl 경로: {projectURL}/{parentSessionId}/subagents/agent-xxx.jsonl
+                    // → 두 단계 위 디렉토리 이름이 부모 sessionId
+                    let parentSessionId: String? = isSubagent
+                        ? jsonlURL.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent
+                        : nil
 
-                // 캐시 미스 = 앱 재시작 직후 또는 새 세션
-                // → 저장된 fileOffset을 무시하고 처음부터 재파싱해서 토큰/비용 복원
-                let cacheKey = jsonlURL.path
-                let isCacheMiss = sessionCache[cacheKey] == nil
-                if isCacheMiss {
-                    fileOffsets.removeValue(forKey: cacheKey)
-                }
-
-                var session = sessionCache[cacheKey] ?? ClaudeSession(
-                    id: sessionID,
-                    projectDir: folderName,
-                    source: entry.source,
-                    workingPath: readCWD(from: jsonlURL) ?? entry.url.path,
-                    lastModified: modDate,
-                    lastActivity: .distantPast,  // 파싱 중 이벤트 timestamp로 채워짐
-                    lastContentChange: .distantPast
-                )
-
-                session.lastModified = modDate
-                session.isSubagent = isSubagent
-                session.parentSessionId = parentSessionId
-
-                // 캐시된 workingPath가 fallback 상태(.claude/projects 내부)면 매 폴링마다 재시도
-                if session.workingPath.contains("/.claude/projects/"),
-                   let cwd = readCWD(from: jsonlURL) {
-                    session.workingPath = cwd
-                }
-
-                // Desktop Code 메타데이터 적용 (직접 JSONL에만 적용, 서브에이전트는 제외)
-                // isArchived=false: 현재 Desktop에서 열려있는 세션 → Desktop으로 표시 + 클릭 시 Claude.app
-                // isArchived=true: 이전에 Desktop에서 열었지만 지금은 닫힘 → CLI 유지, title만 적용
-                if entry.source == .cli, directJSONLs.contains(jsonlURL),
-                   let meta = desktopCodeMeta[sessionID] {
-                    if !meta.isArchived {
-                        session.source = .desktopCode
+                    // 캐시 미스 = 앱 재시작 직후 또는 새 세션
+                    // → 저장된 fileOffset을 무시하고 처음부터 재파싱해서 토큰/비용 복원
+                    let cacheKey = jsonlURL.path
+                    let isCacheMiss = sessionCache[cacheKey] == nil
+                    if isCacheMiss {
+                        fileOffsets.removeValue(forKey: cacheKey)
                     }
-                    if session.title == nil, !meta.title.isEmpty {
-                        session.title = meta.title
+
+                    var session = sessionCache[cacheKey] ?? ClaudeSession(
+                        id: sessionID,
+                        projectDir: folderName,
+                        source: entry.source,
+                        workingPath: readCWD(from: jsonlURL) ?? entry.url.path,
+                        lastModified: modDate,
+                        lastActivity: .distantPast,  // 파싱 중 이벤트 timestamp로 채워짐
+                        lastContentChange: .distantPast
+                    )
+
+                    session.lastModified = modDate
+                    session.isSubagent = isSubagent
+                    session.parentSessionId = parentSessionId
+
+                    // 캐시된 workingPath가 fallback 상태(.claude/projects 내부)면 매 폴링마다 재시도
+                    if session.workingPath.contains("/.claude/projects/"),
+                       let cwd = readCWD(from: jsonlURL) {
+                        session.workingPath = cwd
                     }
+
+                    // Desktop Code 메타데이터 적용 (직접 JSONL에만 적용, 서브에이전트는 제외)
+                    // isArchived=false: 현재 Desktop에서 열려있는 세션 → Desktop으로 표시 + 클릭 시 Claude.app
+                    // isArchived=true: 이전에 Desktop에서 열었지만 지금은 닫힘 → CLI 유지, title만 적용
+                    if entry.source == .cli, directJSONLs.contains(jsonlURL),
+                       let meta = desktopCodeMeta[sessionID] {
+                        if !meta.isArchived {
+                            session.source = .desktopCode
+                        }
+                        if session.title == nil, !meta.title.isEmpty {
+                            session.title = meta.title
+                        }
+                    }
+
+                    // 새로 추가된 줄만 파싱
+                    parseNewLines(url: jsonlURL, session: &session)
+
+                    sessionCache[cacheKey] = session
+                    activePaths.insert(cacheKey)
+                    results.append(session)
                 }
-
-                // 새로 추가된 줄만 파싱
-                parseNewLines(url: jsonlURL, session: &session)
-
-                sessionCache[cacheKey] = session
-                activePaths.insert(cacheKey)
-                results.append(session)
             }
         }
 

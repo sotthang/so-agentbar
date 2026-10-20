@@ -41,6 +41,28 @@ private final class SpyByteSource: ByteSource {
     }
 }
 
+// PERF-003: 폴링이 폴백 간격(30초)보다 오래 걸리면 타이머/FSEvents 요청이 직렬 큐에 계속 쌓여
+// 워커 스레드가 쉬지 못하고, 스레드 단위 autorelease pool이 비워지지 않아 파일 Data와
+// JSON 트리가 전부 살아남았다. → 진행 중인 폴링이 있으면 요청을 병합(최대 1회 추가)한다.
+
+/// 첫 번째 읽기 원천 생성 시 폴링 스레드를 멈춰 세우는 게이트 (폴링 "진행 중" 상태 재현)
+private final class PollGate {
+    let entered = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var hasBlocked = false
+
+    func blockFirstCall() {
+        lock.lock()
+        let shouldBlock = !hasBlocked
+        hasBlocked = true
+        lock.unlock()
+        guard shouldBlock else { return }
+        entered.signal()
+        _ = release.wait(timeout: .now() + 10)
+    }
+}
+
 final class SessionMonitorMemoryTests: XCTestCase {
 
     private var rootDir: URL!
@@ -211,5 +233,76 @@ final class SessionMonitorMemoryTests: XCTestCase {
         XCTAssertEqual(recorder.reads.first.map { URL(fileURLWithPath: $0.path).lastPathComponent }, target.lastPathComponent)
         XCTAssertEqual(recorder.reads.first?.offset, originalSize)
         XCTAssertEqual(recorder.totalBytes, Data(appended.utf8).count)
+    }
+
+    // MARK: - PERF-003: 폴링 요청 병합
+
+    func test_requestPoll_manyRequestsWhilePollInFlight_runAtMostOneExtraPoll() throws {
+        try createSessions(count: 1)
+        let gate = PollGate()
+        let now = fixedNow
+        let monitor = ClaudeSessionMonitor(
+            cliProjectsDir: cliDir,
+            xcodeProjectsDir: rootDir.appendingPathComponent("xcode"),
+            desktopCodeSessionsDir: rootDir.appendingPathComponent("desktop"),
+            coworkSessionsDir: rootDir.appendingPathComponent("cowork"),
+            defaults: defaults,
+            now: { now },
+            makeByteSource: { url in
+                gate.blockFirstCall()
+                return FileByteSource(url: url)
+            }
+        )
+        var pollCount = 0
+        let twoPolls = expectation(description: "진행 중 폴링 + 병합된 1회")
+        twoPolls.expectedFulfillmentCount = 2
+        twoPolls.assertForOverFulfill = false
+        monitor.onSessionsChanged = { _ in
+            pollCount += 1
+            twoPolls.fulfill()
+        }
+
+        monitor.requestPoll()
+        XCTAssertEqual(gate.entered.wait(timeout: .now() + 5), .success, "첫 폴링이 시작되어야 한다")
+
+        for _ in 0..<50 { monitor.requestPoll() }
+        gate.release.signal()
+
+        wait(for: [twoPolls], timeout: 5)
+        // 더 들어오는 폴링이 없는지 잠시 관찰
+        let settle = expectation(description: "추가 폴링 관찰")
+        settle.isInverted = true
+        wait(for: [settle], timeout: 1)
+
+        XCTAssertEqual(pollCount, 2, "진행 중 폴링 동안의 요청 50건은 1회로 병합되어야 한다 (실제 \(pollCount)회)")
+
+        // 병합 상태가 해제되어 이후 요청은 다시 폴링되어야 한다
+        let third = expectation(description: "유휴 후 새 요청")
+        monitor.onSessionsChanged = { _ in third.fulfill() }
+        monitor.requestPoll()
+        wait(for: [third], timeout: 5)
+    }
+
+    // MARK: - PERF-003: 줄 단위 autorelease pool
+
+    /// 한 줄 처리 중 생성된 autorelease 객체는 다음 줄로 넘어가기 전에 해제되어야 한다.
+    /// (줄 루프에 autoreleasepool이 없으면 호출자의 pool이 비워질 때까지 모든 줄의 객체가 살아남는다)
+    func test_readCompleteLines_releasesAutoreleasedObjectsPerLine() throws {
+        let url = rootDir.appendingPathComponent("lines.jsonl")
+        let text = (0..<20).map { jsonLine(["type": "user", "index": $0]) }.joined()
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        let source = try XCTUnwrap(FileByteSource(url: url))
+
+        weak var previous: NSObject?
+        var survivedLines = 0
+        autoreleasepool {
+            _ = JSONLReader.readCompleteLines(from: source, startingAt: 0) { _ in
+                if previous != nil { survivedLines += 1 }
+                // 줄마다 autorelease 객체 하나를 만들어 pool에 맡긴다
+                let marker = NSObject()
+                previous = Unmanaged.passRetained(marker).autorelease().takeUnretainedValue()
+            }
+        }
+        XCTAssertEqual(survivedLines, 0, "이전 줄의 autorelease 객체가 \(survivedLines)줄에서 살아 있었다")
     }
 }

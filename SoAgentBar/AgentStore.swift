@@ -952,8 +952,9 @@ class AgentStore: ObservableObject {
                 return $0.lastModified > $1.lastModified
             }
             let subAgents = sortedSubs.enumerated().map { idx, sub -> Agent in
-                // 서브에이전트 jsonl 파일명: "agent-{agentId}" → prefix 제거 후 부모 매핑 조회
-                let bareAgentId = sub.id.hasPrefix("agent-") ? String(sub.id.dropFirst("agent-".count)) : sub.id
+                // 서브 id: "{부모id}/agent-{agentId}" (PERF-006) → 파일명 부분에서 prefix 제거 후 부모 매핑 조회
+                let fileStem = sub.id.split(separator: "/").last.map(String.init) ?? sub.id
+                let bareAgentId = fileStem.hasPrefix("agent-") ? String(fileStem.dropFirst("agent-".count)) : fileStem
                 let meta = parentSession.subagentMeta[bareAgentId]
                 let subName: String
                 if let meta = meta {

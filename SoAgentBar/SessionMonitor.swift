@@ -472,12 +472,15 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
                     guard let modDate = modificationDate(of: jsonlURL) else { return }
 
                     let isSubagent = subagentJSONLs.contains(jsonlURL)
-                    let sessionID = jsonlURL.deletingPathExtension().lastPathComponent
+                    let fileStem = jsonlURL.deletingPathExtension().lastPathComponent
                     // 서브에이전트 jsonl 경로: {projectURL}/{parentSessionId}/subagents/agent-xxx.jsonl
                     // → 두 단계 위 디렉토리 이름이 부모 sessionId
                     let parentSessionId: String? = isSubagent
                         ? jsonlURL.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent
                         : nil
+                    // resume/fork 시 같은 이름의 서브 jsonl이 여러 부모 아래 복제되므로
+                    // 서브에이전트 id는 "{부모id}/{파일명}"으로 한정한다. 최상위 세션 id(UUID 파일명)는 그대로 (PERF-006)
+                    let sessionID = parentSessionId.map { "\($0)/\(fileStem)" } ?? fileStem
 
                     // 캐시 미스 = 앱 재시작 직후 또는 새 세션
                     // → 유효한 스냅샷이 있으면 그 상태·오프셋부터 이어 읽고, 없으면 처음부터 재파싱 (PERF-004)

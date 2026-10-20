@@ -15,6 +15,7 @@
 		TH001TH001TH001TH001TH01 /* SessionMonitorThinkingEndTurnTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TH001TH001TH001TH001TH02 /* SessionMonitorThinkingEndTurnTests.swift */; };
 		SDU01SDU01SDU01SDU01SD01 /* SessionDateUtilTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SDU01SDU01SDU01SDU01SD02 /* SessionDateUtilTests.swift */; };
 		SMM01SMM01SMM01SMM01SM01 /* SessionMonitorMemoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SMM01SMM01SMM01SMM01SM02 /* SessionMonitorMemoryTests.swift */; };
+		SSI01SSI01SSI01SSI01SI01 /* SubagentSessionIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SSI01SSI01SSI01SSI01SI02 /* SubagentSessionIdentityTests.swift */; };
 		JRT01JRT01JRT01JRT01JT01 /* JSONLReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = JRT01JRT01JRT01JRT01JT02 /* JSONLReaderTests.swift */; };
 		CD001CD001CD001CD001CD01 /* CompletionAlarmDelayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD001CD001CD001CD001CD02 /* CompletionAlarmDelayTests.swift */; };
 		CX006CX006CX006CX006CX01 /* AgentModeDisplayNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CX006CX006CX006CX006CX02 /* AgentModeDisplayNameTests.swift */; };
@@ -146,6 +147,7 @@
 		TH001TH001TH001TH001TH02 /* SessionMonitorThinkingEndTurnTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitorThinkingEndTurnTests.swift; sourceTree = "<group>"; };
 		SDU01SDU01SDU01SDU01SD02 /* SessionDateUtilTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDateUtilTests.swift; sourceTree = "<group>"; };
 		SMM01SMM01SMM01SMM01SM02 /* SessionMonitorMemoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitorMemoryTests.swift; sourceTree = "<group>"; };
+		SSI01SSI01SSI01SSI01SI02 /* SubagentSessionIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubagentSessionIdentityTests.swift; sourceTree = "<group>"; };
 		JRT01JRT01JRT01JRT01JT02 /* JSONLReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONLReaderTests.swift; sourceTree = "<group>"; };
 		CD001CD001CD001CD001CD02 /* CompletionAlarmDelayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionAlarmDelayTests.swift; sourceTree = "<group>"; };
 		CX006CX006CX006CX006CX02 /* AgentModeDisplayNameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentModeDisplayNameTests.swift; sourceTree = "<group>"; };
@@ -298,6 +300,7 @@
 				CX005CX005CX005CX005CX02 /* ProjectGroupKeyTests.swift */,
 				TH001TH001TH001TH001TH02 /* SessionMonitorThinkingEndTurnTests.swift */,
 				SMM01SMM01SMM01SMM01SM02 /* SessionMonitorMemoryTests.swift */,
+				SSI01SSI01SSI01SSI01SI02 /* SubagentSessionIdentityTests.swift */,
 				SDU01SDU01SDU01SDU01SD02 /* SessionDateUtilTests.swift */,
 				JRT01JRT01JRT01JRT01JT02 /* JSONLReaderTests.swift */,
 				CD001CD001CD001CD001CD02 /* CompletionAlarmDelayTests.swift */,
@@ -512,6 +515,7 @@
 				CX005CX005CX005CX005CX01 /* ProjectGroupKeyTests.swift in Sources */,
 				TH001TH001TH001TH001TH01 /* SessionMonitorThinkingEndTurnTests.swift in Sources */,
 				SMM01SMM01SMM01SMM01SM01 /* SessionMonitorMemoryTests.swift in Sources */,
+				SSI01SSI01SSI01SSI01SI01 /* SubagentSessionIdentityTests.swift in Sources */,
 				SDU01SDU01SDU01SDU01SD01 /* SessionDateUtilTests.swift in Sources */,
 				JRT01JRT01JRT01JRT01JT01 /* JSONLReaderTests.swift in Sources */,
 				CD001CD001CD001CD001CD01 /* CompletionAlarmDelayTests.swift in Sources */,

@@ -237,6 +237,8 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
     private var fallbackTimer: Timer?
     private var pollWorkItem: DispatchWorkItem?       // FSEvents 디바운스용
     private var fileOffsets: [String: UInt64] = [:]   // 파일별 마지막 읽은 바이트 위치
+    // 파일 경로 → 누적 파싱 상태(ClaudeSession). fileOffsets와 같은 키를 써서
+    // 캐시에 상태가 남아 있는 한 오프셋이 절대 리셋되지 않도록 한다 (PERF-001)
     private var sessionCache: [String: ClaudeSession] = [:]
 
     // Desktop Code: cliSessionId → (title, isArchived) 매핑 (claude-code-sessions/*.json 에서 로드)
@@ -381,6 +383,7 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
     func pollNow() -> [ClaudeSession] {
         let now = self.now()
         var results: [ClaudeSession] = []
+        var activePaths: Set<String> = []
 
         // Desktop Code 메타데이터 갱신 (cliSessionId → title 매핑)
         loadDesktopCodeTitles()
@@ -424,12 +427,13 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
 
                 // 캐시 미스 = 앱 재시작 직후 또는 새 세션
                 // → 저장된 fileOffset을 무시하고 처음부터 재파싱해서 토큰/비용 복원
-                let isCacheMiss = sessionCache[sessionID] == nil
+                let cacheKey = jsonlURL.path
+                let isCacheMiss = sessionCache[cacheKey] == nil
                 if isCacheMiss {
-                    fileOffsets.removeValue(forKey: jsonlURL.path)
+                    fileOffsets.removeValue(forKey: cacheKey)
                 }
 
-                var session = sessionCache[sessionID] ?? ClaudeSession(
+                var session = sessionCache[cacheKey] ?? ClaudeSession(
                     id: sessionID,
                     projectDir: folderName,
                     source: entry.source,
@@ -465,7 +469,8 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
                 // 새로 추가된 줄만 파싱
                 parseNewLines(url: jsonlURL, session: &session)
 
-                sessionCache[sessionID] = session
+                sessionCache[cacheKey] = session
+                activePaths.insert(cacheKey)
                 results.append(session)
             }
         }
@@ -479,25 +484,14 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
             return $0.lastModified > $1.lastModified
         }
 
-        // 캐시 정리: 현재 결과에 없는 항목 제거 (24시간 필터에서 걸러진 오래된 세션)
-        let activeIDs = Set(results.map(\.id))
-        for key in sessionCache.keys where !activeIDs.contains(key) {
+        // 캐시 정리: 이번 폴링에 없는 파일 제거 (24시간 필터에서 걸러진 오래된 세션)
+        // 활성 파일 수로 캐시 크기가 제한되므로 별도 개수 상한은 두지 않는다 —
+        // 활성 세션을 쫓아내면 다음 폴링에서 오프셋 0부터 전체 재파싱된다 (PERF-001)
+        for key in sessionCache.keys where !activePaths.contains(key) {
             sessionCache.removeValue(forKey: key)
         }
-        for path in fileOffsets.keys {
-            let id = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
-            if !activeIDs.contains(id) {
-                fileOffsets.removeValue(forKey: path)
-            }
-        }
-
-        // 안전장치: 캐시가 비정상적으로 클 경우 가장 오래된 항목부터 제거 (lastModified 기준)
-        if sessionCache.count > 200 {
-            let sortedByAge = sessionCache.sorted { $0.value.lastModified < $1.value.lastModified }
-            let excess = sessionCache.count - 150
-            for (key, _) in sortedByAge.prefix(excess) {
-                sessionCache.removeValue(forKey: key)
-            }
+        for path in fileOffsets.keys where !activePaths.contains(path) {
+            fileOffsets.removeValue(forKey: path)
         }
 
         // pendingAgentSpawns가 tool_result를 못 받고 누적되는 것 방지 (Agent 호출당 최대 32개)

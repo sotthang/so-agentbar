@@ -32,6 +32,7 @@
 		3E1ED4571EA5484EA2B785B0 /* MenuBarIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785B1 /* MenuBarIconView.swift */; };
 		3E1ED4571EA5484EA2B785B2 /* AgentListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785B3 /* AgentListView.swift */; };
 		JR001JR001JR001JR001JR01 /* JSONLReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = JR001JR001JR001JR001JR02 /* JSONLReader.swift */; };
+		PSS01PSS01PSS01PSS01PS01 /* SessionParseState.swift in Sources */ = {isa = PBXBuildFile; fileRef = PSS01PSS01PSS01PSS01PS02 /* SessionParseState.swift */; };
 		3E1ED4571EA5484EA2B785B5 /* SessionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1ED4571EA5484EA2B785B6 /* SessionMonitor.swift */; };
 		D04D14F12F7A4750001113FE /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = D04D14F02F7A4750001113FE /* Sparkle */; };
 		D0A7CBDC2F7556870052C5A3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A7CBDB2F7556860052C5A3 /* SettingsView.swift */; };
@@ -110,6 +111,7 @@
 		3E1ED4571EA5484EA2B785B3 /* AgentListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentListView.swift; sourceTree = "<group>"; };
 		3E1ED4571EA5484EA2B785B4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		JR001JR001JR001JR001JR02 /* JSONLReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONLReader.swift; sourceTree = "<group>"; };
+		PSS01PSS01PSS01PSS01PS02 /* SessionParseState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionParseState.swift; sourceTree = "<group>"; };
 		3E1ED4571EA5484EA2B785B6 /* SessionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitor.swift; sourceTree = "<group>"; };
 		D0A7CBDB2F7556860052C5A3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		D0A7CBDD2F7591410052C5A3 /* EmojiPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiPickerView.swift; sourceTree = "<group>"; };
@@ -225,6 +227,7 @@
 				3E1ED4571EA5484EA2B785AD /* AgentStore.swift */,
 				3E1ED4571EA5484EA2B785B6 /* SessionMonitor.swift */,
 				JR001JR001JR001JR001JR02 /* JSONLReader.swift */,
+				PSS01PSS01PSS01PSS01PS02 /* SessionParseState.swift */,
 				NF001NF001NF001NF001NF02 /* SessionMonitoring.swift */,
 				NF002NF002NF002NF002NF02 /* CodexSessionMonitor.swift */,
 				NF003NF003NF003NF003NF02 /* SessionCoordinator.swift */,
@@ -440,6 +443,7 @@
 				3E1ED4571EA5484EA2B785AC /* AgentStore.swift in Sources */,
 				3E1ED4571EA5484EA2B785B5 /* SessionMonitor.swift in Sources */,
 				JR001JR001JR001JR001JR01 /* JSONLReader.swift in Sources */,
+				PSS01PSS01PSS01PSS01PS01 /* SessionParseState.swift in Sources */,
 				D0A7CBE52F76505F0052C5A3 /* UsageMonitor.swift in Sources */,
 				D0A7CBE62F76505F0052C5A3 /* UsageView.swift in Sources */,
 				D0A7CBDC2F7556870052C5A3 /* SettingsView.swift in Sources */,

@@ -747,5 +747,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         store.keepAwakeManager.releaseAll()
         store.clipboardMonitor.stop()
         store.quickNoteStore.flush()
+        store.stopSessionMonitoring()
     }
 }

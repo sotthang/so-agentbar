@@ -306,3 +306,412 @@ final class SessionMonitorMemoryTests: XCTestCase {
         XCTAssertEqual(survivedLines, 0, "이전 줄의 autorelease 객체가 \(survivedLines)줄에서 살아 있었다")
     }
 }
+
+// MARK: - PERF-004: 파싱 상태 스냅샷 영속화
+//
+// 앱을 켤 때마다 24시간 내 활성 세션 파일 전체(실사용 259개 / 6.85GB)를 오프셋 0부터 재파싱했다.
+// 저장된 오프셋은 캐시 미스 시 버려졌다 — 누적 파싱 상태(토큰/제목/상태)가 영속화되지 않아서였다.
+// → 파일별 파싱 상태 스냅샷을 오프셋과 함께 저장하고, 새 인스턴스는 그 지점부터 이어서 읽는다.
+
+/// 저장/로드 호출을 기록하는 인메모리 스토어
+private final class SpyParseStateStore: SessionParseStateStore {
+    var stored: [String: SessionParseSnapshot] = [:]
+    private(set) var saveCount = 0
+
+    func load() -> [String: SessionParseSnapshot] { stored }
+
+    func save(_ snapshots: [String: SessionParseSnapshot]) {
+        saveCount += 1
+        stored = snapshots
+    }
+}
+
+/// 테스트에서 직접 전진시키는 시계
+private final class TestClock {
+    var now: Date
+    init(_ now: Date) { self.now = now }
+}
+
+extension SessionMonitorMemoryTests {
+
+    /// 모니터가 보는 경로 형태 (임시 디렉토리의 /var → /private/var 심볼릭 링크 해석)
+    private func monitorPath(_ url: URL) -> String {
+        guard let resolved = realpath(url.path, nil) else { return url.path }
+        defer { free(resolved) }
+        return String(cString: resolved)
+    }
+
+    private var stateFileURL: URL { rootDir.appendingPathComponent("state/session-parse-state.json") }
+
+    private func makeMonitor(
+        store: SessionParseStateStore?,
+        clock: TestClock? = nil,
+        recorder: ReadRecorder? = nil
+    ) -> ClaudeSessionMonitor {
+        let recorder = recorder ?? self.recorder!
+        let fixed = fixedNow
+        return ClaudeSessionMonitor(
+            cliProjectsDir: cliDir,
+            xcodeProjectsDir: rootDir.appendingPathComponent("xcode"),
+            desktopCodeSessionsDir: rootDir.appendingPathComponent("desktop"),
+            coworkSessionsDir: rootDir.appendingPathComponent("cowork"),
+            defaults: defaults,
+            now: { clock?.now ?? fixed },
+            makeByteSource: { SpyByteSource(url: $0, recorder: recorder) },
+            parseStateStore: store,
+            parseStateSaveInterval: 15
+        )
+    }
+
+    /// processEvent가 누적하는 상태를 고루 건드리는 세션 앞부분
+    /// (cwd/permissionMode, Agent spawn → tool_result 확정, 미확정 spawn, thinking, ai-title, 두 모델 토큰)
+    private func richSessionPrefix(index: Int) -> String {
+        let user: [String: Any] = [
+            "type": "user", "timestamp": "2026-10-20T01:00:00.123Z",
+            "cwd": "/tmp/rich-\(index)", "permissionMode": "acceptEdits",
+            "message": ["role": "user", "content": "시작 \(index)"],
+        ]
+        let spawn: [String: Any] = [
+            "type": "assistant", "timestamp": "2026-10-20T01:00:01.456Z",
+            "message": [
+                "model": "claude-opus-4-7", "stop_reason": "tool_use",
+                "usage": ["input_tokens": 10, "cache_read_input_tokens": 5, "output_tokens": 3],
+                "content": [
+                    ["type": "text", "text": "에이전트를 띄운다"],
+                    ["type": "tool_use", "id": "toolu_A", "name": "Agent",
+                     "input": ["subagent_type": "explorer", "description": "탐색 \(index)"]],
+                    ["type": "tool_use", "id": "toolu_B", "name": "Agent",
+                     "input": ["subagent_type": "reviewer", "description": "대기 중"]],
+                ],
+            ] as [String: Any],
+        ]
+        let result: [String: Any] = [
+            "type": "user", "timestamp": "2026-10-20T01:00:02.000Z",
+            "toolUseResult": ["agentId": "a\(index)", "agentType": "explorer"],
+            "message": ["role": "user", "content": [["type": "tool_result", "tool_use_id": "toolu_A"]]],
+        ]
+        let thinking: [String: Any] = [
+            "type": "assistant", "timestamp": "2026-10-20T01:00:03.000Z",
+            "message": ["model": "claude-sonnet-4-6", "content": [["type": "thinking", "thinking": "..."]]] as [String: Any],
+        ]
+        let title: [String: Any] = ["type": "ai-title", "title": "풍부한 세션 \(index)"]
+        return [user, spawn, result, thinking, title].map(jsonLine).joined()
+    }
+
+    /// 재시작 후 덧붙는 부분 — 다른 모델 토큰 + Bash tool_use(승인 대기 판단 필드)
+    private func richSessionAppendix(index: Int) -> String {
+        let bash: [String: Any] = [
+            "type": "assistant", "timestamp": "2026-10-20T01:05:00.789Z",
+            "message": [
+                "model": "claude-sonnet-4-6", "stop_reason": "tool_use",
+                "usage": ["input_tokens": 200 + index, "cache_creation_input_tokens": 7, "output_tokens": 20],
+                "content": [["type": "tool_use", "id": "toolu_C", "name": "Bash", "input": ["command": "ls"]]],
+            ] as [String: Any],
+        ]
+        return jsonLine(bash)
+    }
+
+    private func append(_ text: String, to url: URL) throws {
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(text.utf8))
+        try handle.close()
+    }
+
+    private func setRecentMTime(_ url: URL, secondsAgo: Double = 60) throws {
+        try FileManager.default.setAttributes(
+            [.modificationDate: fixedNow.addingTimeInterval(-secondsAgo)], ofItemAtPath: url.path)
+    }
+
+    private func fileSize(_ url: URL) throws -> UInt64 {
+        try XCTUnwrap(FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64)
+    }
+
+    /// 직접 세션 3개 + 서브에이전트 1개 생성
+    @discardableResult
+    private func createRichSessions() throws -> [URL] {
+        let projectDir = cliDir.appendingPathComponent("-tmp-rich")
+        var urls: [URL] = []
+        for i in 0..<3 {
+            let url = projectDir.appendingPathComponent("rich-\(i).jsonl")
+            try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+            try richSessionPrefix(index: i).write(to: url, atomically: true, encoding: .utf8)
+            try setRecentMTime(url, secondsAgo: Double(60 + i))
+            urls.append(url)
+        }
+        let subDir = projectDir.appendingPathComponent("rich-0/subagents")
+        try FileManager.default.createDirectory(at: subDir, withIntermediateDirectories: true)
+        let subURL = subDir.appendingPathComponent("agent-a0.jsonl")
+        try richSessionPrefix(index: 9).write(to: subURL, atomically: true, encoding: .utf8)
+        try setRecentMTime(subURL, secondsAgo: 70)
+        urls.append(subURL)
+        return urls
+    }
+
+    /// 세션의 사용자 노출 결과 전부 (골든 비교용)
+    private struct DetailedSnapshot: Equatable {
+        let id: String
+        let projectDir: String
+        let workingPath: String
+        let lastModified: Date
+        let lastActivity: Date
+        let lastContentChange: Date
+        let sawResultEvent: Bool
+        let sawErrorEvent: Bool
+        let lastEventType: String
+        let lastAssistantHasToolUse: Bool
+        let lastToolUseTime: Date?
+        let tokensByModel: [String: [Int]]
+        let lastToolName: String
+        let lastAssistantText: String
+        let currentModel: String
+        let permissionMode: String
+        let title: String?
+        let currentTurnHadThinking: Bool
+        let isSubagent: Bool
+        let parentSessionId: String?
+        let subagentMeta: [String: [String]]
+        let pendingAgentSpawns: [String: [String]]
+        let totalTokens: Int
+        let estimatedCost: Double?
+        let displayStatus: SessionStatus
+    }
+
+    private func detailed(_ sessions: [ClaudeSession]) -> [DetailedSnapshot] {
+        sessions.map { s in
+            DetailedSnapshot(
+                id: s.id, projectDir: s.projectDir, workingPath: s.workingPath,
+                lastModified: s.lastModified, lastActivity: s.lastActivity,
+                lastContentChange: s.lastContentChange,
+                sawResultEvent: s.sawResultEvent, sawErrorEvent: s.sawErrorEvent,
+                lastEventType: s.lastEventType, lastAssistantHasToolUse: s.lastAssistantHasToolUse,
+                lastToolUseTime: s.lastToolUseTime,
+                tokensByModel: s.tokensByModel.mapValues { [$0.input, $0.cachedInput, $0.output, $0.reasoningOutput] },
+                lastToolName: s.lastToolName, lastAssistantText: s.lastAssistantText,
+                currentModel: s.currentModel, permissionMode: s.permissionMode, title: s.title,
+                currentTurnHadThinking: s.currentTurnHadThinking,
+                isSubagent: s.isSubagent, parentSessionId: s.parentSessionId,
+                subagentMeta: s.subagentMeta.mapValues { [$0.type, $0.description] },
+                pendingAgentSpawns: s.pendingAgentSpawns.mapValues { [$0.type, $0.description] },
+                totalTokens: s.totalTokens, estimatedCost: s.estimatedCost,
+                displayStatus: s.displayStatus
+            )
+        }.sorted { ($0.projectDir, $0.id) < ($1.projectDir, $1.id) }
+    }
+
+    /// 스토어 없이 새 인스턴스로 전체 파싱한 결과 (골든)
+    private func freshFullParse() -> [DetailedSnapshot] {
+        detailed(makeMonitor(store: nil, recorder: ReadRecorder()).pollNow())
+    }
+
+    // MARK: 재시작 후 덧붙은 바이트만 읽고, 결과는 전체 파싱과 동일
+
+    func test_newInstanceWithPersistedSnapshot_readsOnlyAppendedBytes_andMatchesFullParse() throws {
+        let urls = try createRichSessions()
+        let store = FileSessionParseStateStore(fileURL: stateFileURL)
+
+        let first = makeMonitor(store: store)
+        first.pollNow()
+        first.flushParseState()
+
+        // 재시작 사이에 두 파일에 줄이 덧붙는다
+        var sizesBefore: [String: UInt64] = [:]
+        for url in urls { sizesBefore[url.lastPathComponent] = try fileSize(url) }
+        let appended = [urls[0], urls[3]]
+        var appendedBytes = 0
+        for (i, url) in appended.enumerated() {
+            let text = richSessionAppendix(index: i)
+            appendedBytes += Data(text.utf8).count
+            try append(text, to: url)
+            try setRecentMTime(url, secondsAgo: 30)
+        }
+
+        recorder.reset()
+        let restarted = makeMonitor(store: FileSessionParseStateStore(fileURL: stateFileURL))
+        let resumed = restarted.pollNow()
+
+        XCTAssertTrue(recorder.reads.allSatisfy { $0.offset > 0 }, "재시작 후 오프셋 0부터 읽은 파일이 있다")
+        for read in recorder.reads {
+            let name = URL(fileURLWithPath: read.path).lastPathComponent
+            XCTAssertEqual(read.offset, sizesBefore[name], "\(name)은 저장된 오프셋부터 읽어야 한다")
+        }
+        XCTAssertEqual(recorder.totalBytes, appendedBytes, "덧붙은 바이트만 읽어야 한다")
+        XCTAssertEqual(resumed.count, 4)
+        XCTAssertEqual(detailed(resumed), freshFullParse(), "스냅샷 복원 결과는 전체 재파싱과 같아야 한다")
+    }
+
+    func test_newInstanceWithPersistedSnapshot_unchangedFiles_readsZeroBytes() throws {
+        try createRichSessions()
+        let first = makeMonitor(store: FileSessionParseStateStore(fileURL: stateFileURL))
+        first.pollNow()
+        first.flushParseState()
+
+        recorder.reset()
+        let resumed = makeMonitor(store: FileSessionParseStateStore(fileURL: stateFileURL)).pollNow()
+
+        XCTAssertEqual(recorder.totalBytes, 0)
+        XCTAssertEqual(detailed(resumed), freshFullParse())
+    }
+
+    // MARK: 파일 정체성이 바뀐 경우 → 전체 재파싱
+
+    func test_truncatedFileSmallerThanSnapshotOffset_isFullyReparsed() throws {
+        let urls = try createRichSessions()
+        let first = makeMonitor(store: FileSessionParseStateStore(fileURL: stateFileURL))
+        first.pollNow()
+        first.flushParseState()
+
+        // 같은 파일(같은 inode)을 더 짧은 내용으로 덮어씀
+        let target = urls[1]
+        let shorter = jsonLine(["type": "user", "timestamp": "2026-10-20T02:00:00.000Z",
+                                "cwd": "/tmp/short", "message": ["role": "user", "content": "새로"]])
+        let handle = try FileHandle(forWritingTo: target)
+        try handle.truncate(atOffset: 0)
+        try handle.write(contentsOf: Data(shorter.utf8))
+        try handle.close()
+        try setRecentMTime(target, secondsAgo: 10)
+
+        recorder.reset()
+        let resumed = makeMonitor(store: FileSessionParseStateStore(fileURL: stateFileURL)).pollNow()
+
+        let targetReads = recorder.reads.filter { $0.path == monitorPath(target) }
+        XCTAssertEqual(targetReads.first?.offset, 0, "잘린 파일은 처음부터 다시 읽어야 한다")
+        XCTAssertEqual(recorder.reads.filter { $0.path != monitorPath(target) }.count, 0, "다른 파일은 읽지 않아야 한다")
+        XCTAssertEqual(detailed(resumed), freshFullParse())
+    }
+
+    func test_replacedFileWithDifferentIdentity_isFullyReparsedEvenIfLarger() throws {
+        let urls = try createRichSessions()
+        let first = makeMonitor(store: FileSessionParseStateStore(fileURL: stateFileURL))
+        first.pollNow()
+        first.flushParseState()
+
+        // 회전: 같은 경로에 새 파일(다른 inode), 원래보다 크다
+        let target = urls[2]
+        try FileManager.default.removeItem(at: target)
+        let bigger = richSessionPrefix(index: 42) + richSessionAppendix(index: 42)
+        try bigger.write(to: target, atomically: false, encoding: .utf8)
+        try setRecentMTime(target, secondsAgo: 10)
+
+        recorder.reset()
+        let resumed = makeMonitor(store: FileSessionParseStateStore(fileURL: stateFileURL)).pollNow()
+
+        XCTAssertEqual(recorder.reads.filter { $0.path == monitorPath(target) }.first?.offset, 0)
+        XCTAssertEqual(detailed(resumed), freshFullParse())
+    }
+
+    // MARK: 손상/버전 불일치 → 무시하고 전체 파싱
+
+    func test_corruptSnapshotFile_fallsBackToFullParseWithoutCrash() throws {
+        try createRichSessions()
+        try FileManager.default.createDirectory(
+            at: stateFileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("{ not json ".utf8).write(to: stateFileURL)
+
+        let store = FileSessionParseStateStore(fileURL: stateFileURL)
+        XCTAssertTrue(store.load().isEmpty)
+
+        recorder.reset()
+        let monitor = makeMonitor(store: store)
+        let sessions = monitor.pollNow()
+
+        XCTAssertEqual(Set(recorder.reads.filter { $0.offset == 0 }.map(\.path)).count, 4, "모든 파일을 처음부터 읽어야 한다")
+        XCTAssertEqual(detailed(sessions), freshFullParse())
+
+        // 손상 파일은 다음 저장에서 정상 스냅샷으로 교체된다
+        monitor.flushParseState()
+        XCTAssertEqual(FileSessionParseStateStore(fileURL: stateFileURL).load().count, 4)
+    }
+
+    func test_snapshotWithDifferentSchemaVersion_isIgnored() throws {
+        try createRichSessions()
+        let first = makeMonitor(store: FileSessionParseStateStore(fileURL: stateFileURL))
+        first.pollNow()
+        first.flushParseState()
+
+        // 저장된 파일의 version만 바꾼다 (entries는 그대로 유효)
+        let data = try Data(contentsOf: stateFileURL)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["version"] as? Int, FileSessionParseStateStore.schemaVersion)
+        object["version"] = FileSessionParseStateStore.schemaVersion + 1
+        try JSONSerialization.data(withJSONObject: object).write(to: stateFileURL)
+
+        XCTAssertTrue(FileSessionParseStateStore(fileURL: stateFileURL).load().isEmpty)
+
+        recorder.reset()
+        let resumed = makeMonitor(store: FileSessionParseStateStore(fileURL: stateFileURL)).pollNow()
+        XCTAssertEqual(Set(recorder.reads.filter { $0.offset == 0 }.map(\.path)).count, 4)
+        XCTAssertEqual(detailed(resumed), freshFullParse())
+    }
+
+    // MARK: 정리 — 활성이 아닌 파일의 스냅샷은 버린다
+
+    func test_snapshotEntriesForInactiveFiles_arePruned() throws {
+        let urls = try createRichSessions()
+        let store = SpyParseStateStore()
+        let first = makeMonitor(store: store)
+        first.pollNow()
+        XCTAssertEqual(Set(store.stored.keys), Set(urls.map(monitorPath)))
+
+        // 하나는 24시간 밖으로 밀려남 → 같은 인스턴스에서 정리
+        try setRecentMTime(urls[1], secondsAgo: 90_000)
+        first.pollNow()
+        first.flushParseState()
+        XCTAssertFalse(store.stored.keys.contains(monitorPath(urls[1])))
+        XCTAssertEqual(store.stored.count, 3)
+
+        // 재시작 시점에 이미 비활성인 파일의 스냅샷도 저장에서 빠진다
+        try setRecentMTime(urls[2], secondsAgo: 90_000)
+        let restarted = makeMonitor(store: store)
+        restarted.pollNow()
+        restarted.flushParseState()
+        XCTAssertEqual(Set(store.stored.keys), Set([monitorPath(urls[0]), monitorPath(urls[3])]))
+    }
+
+    // MARK: 쓰기 스로틀링 (주입 시계)
+
+    func test_parseStateWrites_areThrottled_andOnlyWhenChanged() throws {
+        let urls = try createRichSessions()
+        let store = SpyParseStateStore()
+        let clock = TestClock(fixedNow)
+        let monitor = makeMonitor(store: store, clock: clock)
+
+        monitor.pollNow()
+        XCTAssertEqual(store.saveCount, 1, "첫 파싱 결과는 즉시 저장한다")
+
+        try append(richSessionAppendix(index: 0), to: urls[0])
+        try setRecentMTime(urls[0], secondsAgo: 1)
+        clock.now = fixedNow.addingTimeInterval(5)
+        monitor.pollNow()
+        XCTAssertEqual(store.saveCount, 1, "저장 간격(15초) 안에서는 쓰지 않는다")
+
+        clock.now = fixedNow.addingTimeInterval(16)
+        monitor.pollNow()
+        XCTAssertEqual(store.saveCount, 2, "간격이 지나면 밀린 변경을 저장한다")
+        XCTAssertEqual(store.stored[monitorPath(urls[0])]?.offset, try fileSize(urls[0]))
+
+        try append(richSessionAppendix(index: 1), to: urls[0])
+        try setRecentMTime(urls[0], secondsAgo: 1)
+        clock.now = fixedNow.addingTimeInterval(20)
+        monitor.pollNow()
+        XCTAssertEqual(store.saveCount, 2)
+        monitor.flushParseState()
+        XCTAssertEqual(store.saveCount, 3, "flush(종료 시)는 간격과 무관하게 밀린 변경을 저장한다")
+        XCTAssertEqual(store.stored[monitorPath(urls[0])]?.offset, try fileSize(urls[0]))
+
+        clock.now = fixedNow.addingTimeInterval(60)
+        monitor.pollNow()
+        XCTAssertEqual(store.saveCount, 3, "변경이 없으면 쓰지 않는다")
+
+        monitor.flushParseState()
+        XCTAssertEqual(store.saveCount, 3, "변경 없는 flush는 쓰지 않는다")
+    }
+
+    func test_monitorWithoutStore_neverPersists() throws {
+        try createRichSessions()
+        let monitor = makeMonitor(store: nil)
+        monitor.pollNow()
+        monitor.flushParseState()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stateFileURL.path))
+    }
+}

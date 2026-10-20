@@ -49,7 +49,7 @@ struct ClaudeSession: Identifiable {
     var lastAssistantHasToolUse: Bool = false
     var lastToolUseTime: Date? = nil       // tool_use 감지 시각 (승인 대기 판단용)
     // 모델별 누적 토큰 — TokenUsage struct (cachedInput, reasoningOutput 포함)
-    struct TokenUsage {
+    struct TokenUsage: Codable, Equatable {  // Codable: 파싱 상태 스냅샷 영속화 (PERF-004)
         var input: Int = 0
         var cachedInput: Int = 0
         var output: Int = 0
@@ -247,6 +247,14 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
     // 파일 경로 → 누적 파싱 상태(ClaudeSession). fileOffsets와 같은 키를 써서
     // 캐시에 상태가 남아 있는 한 오프셋이 절대 리셋되지 않도록 한다 (PERF-001)
     private var sessionCache: [String: ClaudeSession] = [:]
+    private var fileIDs: [String: UInt64] = [:]        // 파일별 inode (마지막으로 새 줄을 읽었을 때)
+
+    // PERF-004: 파싱 상태 스냅샷 영속화 — 재시작 후 오프셋 0부터의 전체 재파싱 방지
+    private let parseStateStore: SessionParseStateStore?
+    private let parseStateSaveInterval: TimeInterval
+    private var restoredSnapshots: [String: SessionParseSnapshot]? = nil  // 첫 폴링 전 lazy 로드, 첫 폴링 후 비움
+    private var isParseStateDirty = false
+    private var lastParseStateSave: Date? = nil
 
     // Desktop Code: cliSessionId → (title, isArchived) 매핑 (claude-code-sessions/*.json 에서 로드)
     // isArchived=false인 세션만 Desktop으로 표시 (현재 Desktop에서 열려있는 세션)
@@ -254,7 +262,7 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
 
     private let desktopCodeSessionsDir: URL                    // Desktop Code 메타데이터(claude-code-sessions)
     private let coworkSessionsDir: URL                         // Cowork VM 세션(local-agent-mode-sessions)
-    private let defaults: UserDefaults                         // fileOffsets 영속화 저장소
+    private let defaults: UserDefaults                         // 구버전 fileOffsets 키 정리용
     private let now: () -> Date                                // poll 기준 시각 (24시간 필터)
     private let makeByteSource: (URL) -> ByteSource?           // JSONL 파일 읽기 원천
 
@@ -267,7 +275,8 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
             // Xcode: Coding Assistant에서 실행한 세션
             xcodeProjectsDir: home.appendingPathComponent("Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig/projects"),
             desktopCodeSessionsDir: home.appendingPathComponent("Library/Application Support/Claude/claude-code-sessions"),
-            coworkSessionsDir: home.appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
+            coworkSessionsDir: home.appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions"),
+            parseStateStore: FileSessionParseStateStore.applicationSupportStore()
         )
     }
 
@@ -279,7 +288,9 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         coworkSessionsDir: URL,
         defaults: UserDefaults = .standard,
         now: @escaping () -> Date = Date.init,
-        makeByteSource: @escaping (URL) -> ByteSource? = { FileByteSource(url: $0) }
+        makeByteSource: @escaping (URL) -> ByteSource? = { FileByteSource(url: $0) },
+        parseStateStore: SessionParseStateStore? = nil,     // nil = 영속화 안 함 (테스트 기본값)
+        parseStateSaveInterval: TimeInterval = 15
     ) {
         projectsDirs = [cliProjectsDir, xcodeProjectsDir]
         watchedExtraDirs = [desktopCodeSessionsDir, coworkSessionsDir]
@@ -288,6 +299,8 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         self.defaults = defaults
         self.now = now
         self.makeByteSource = makeByteSource
+        self.parseStateStore = parseStateStore
+        self.parseStateSaveInterval = parseStateSaveInterval
     }
 
     func start() {
@@ -296,8 +309,8 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
 
-        // 앱 재시작 후에도 파일 오프셋 복원 (전체 재파싱 방지)
-        loadFileOffsets()
+        // 구버전이 UserDefaults에 저장하던 fileOffsets는 더 이상 쓰지 않는다 (PERF-004: 스냅샷으로 대체)
+        defaults.removeObject(forKey: "fileOffsets")
 
         // 초기 폴링
         requestPoll()
@@ -317,6 +330,15 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         stopFSEvents()
         fallbackTimer?.invalidate()
         fallbackTimer = nil
+        flushParseState()
+    }
+
+    /// 스로틀로 밀린 파싱 상태 변경을 즉시 저장한다 (앱 종료 시).
+    /// 폴링과 같은 직렬 큐에서 실행해 상태 접근을 직렬화한다 — dispatchQueue 위에서 호출하면 안 된다.
+    func flushParseState() {
+        dispatchQueue.sync {
+            if isParseStateDirty { saveParseState(at: now()) }
+        }
     }
 
     func updatePollInterval(_ interval: Double) {
@@ -413,6 +435,11 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         // Desktop Code 메타데이터 갱신 (cliSessionId → title 매핑)
         loadDesktopCodeTitles()
 
+        // 이전 실행이 저장한 파싱 상태 스냅샷 (프로세스 생애 동안 한 번만 로드)
+        if restoredSnapshots == nil {
+            restoredSnapshots = parseStateStore?.load() ?? [:]
+        }
+
         // (디렉토리 URL, 출처) 쌍으로 순회
         let staticProjectDirs: [(url: URL, source: SessionSource)] = [
             (projectsDirs[0], .cli),
@@ -453,22 +480,33 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
                         : nil
 
                     // 캐시 미스 = 앱 재시작 직후 또는 새 세션
-                    // → 저장된 fileOffset을 무시하고 처음부터 재파싱해서 토큰/비용 복원
+                    // → 유효한 스냅샷이 있으면 그 상태·오프셋부터 이어 읽고, 없으면 처음부터 재파싱 (PERF-004)
                     let cacheKey = jsonlURL.path
-                    let isCacheMiss = sessionCache[cacheKey] == nil
-                    if isCacheMiss {
+                    let cached = sessionCache[cacheKey]
+                    var session: ClaudeSession
+                    if let cached {
+                        session = cached
+                    } else {
                         fileOffsets.removeValue(forKey: cacheKey)
+                        fileIDs.removeValue(forKey: cacheKey)
+                        session = ClaudeSession(
+                            id: sessionID,
+                            projectDir: folderName,
+                            source: entry.source,
+                            workingPath: entry.url.path,
+                            lastModified: modDate,
+                            lastActivity: .distantPast,  // 파싱 중 이벤트 timestamp로 채워짐
+                            lastContentChange: .distantPast
+                        )
+                        if let snapshot = restoredSnapshots?.removeValue(forKey: cacheKey),
+                           isSnapshotUsable(snapshot, for: jsonlURL) {
+                            snapshot.apply(to: &session)
+                            fileOffsets[cacheKey] = snapshot.offset
+                            fileIDs[cacheKey] = snapshot.fileID
+                        } else {
+                            session.workingPath = readCWD(from: jsonlURL) ?? entry.url.path
+                        }
                     }
-
-                    var session = sessionCache[cacheKey] ?? ClaudeSession(
-                        id: sessionID,
-                        projectDir: folderName,
-                        source: entry.source,
-                        workingPath: readCWD(from: jsonlURL) ?? entry.url.path,
-                        lastModified: modDate,
-                        lastActivity: .distantPast,  // 파싱 중 이벤트 timestamp로 채워짐
-                        lastContentChange: .distantPast
-                    )
 
                     session.lastModified = modDate
                     session.isSubagent = isSubagent
@@ -520,7 +558,16 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         }
         for path in fileOffsets.keys where !activePaths.contains(path) {
             fileOffsets.removeValue(forKey: path)
+            isParseStateDirty = true
         }
+        for path in fileIDs.keys where !activePaths.contains(path) {
+            fileIDs.removeValue(forKey: path)
+        }
+        // 이번 폴링에서 쓰이지 않은 복원 스냅샷 = 비활성 파일 → 버리고 저장본에서도 제거
+        if restoredSnapshots?.isEmpty == false {
+            isParseStateDirty = true
+        }
+        restoredSnapshots = [:]
 
         // pendingAgentSpawns가 tool_result를 못 받고 누적되는 것 방지 (Agent 호출당 최대 32개)
         for key in sessionCache.keys {
@@ -530,8 +577,11 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
             sessionCache[key] = s
         }
 
-        // 변경된 오프셋 영속화
-        saveFileOffsets()
+        // 변경된 파싱 상태 영속화 (첫 저장은 즉시, 이후 parseStateSaveInterval마다 최대 1회)
+        if isParseStateDirty,
+           lastParseStateSave.map({ now.timeIntervalSince($0) >= parseStateSaveInterval }) ?? true {
+            saveParseState(at: now)
+        }
 
         return results
     }
@@ -553,6 +603,8 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         }
         if let nextOffset {
             fileOffsets[url.path] = nextOffset
+            fileIDs[url.path] = Self.fileAttributes(of: url)?.fileID
+            isParseStateDirty = true
         }
 
         // 파싱 후 lastActivity가 실제로 전진했으면 그 timestamp를 lastContentChange로 사용
@@ -925,27 +977,31 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         return nil
     }
 
-    // MARK: - fileOffsets 영속화
+    // MARK: - 파싱 상태 영속화 (PERF-004)
 
-    private func saveFileOffsets() {
-        let encoded = Dictionary(uniqueKeysWithValues: fileOffsets.map { ($0.key, String($0.value)) })
-        if let data = try? JSONEncoder().encode(encoded) {
-            defaults.set(data, forKey: "fileOffsets")
-        }
+    private static func fileAttributes(of url: URL) -> (fileID: UInt64?, size: UInt64)? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = (attrs[.size] as? NSNumber)?.uint64Value else { return nil }
+        return ((attrs[.systemFileNumber] as? NSNumber)?.uint64Value, size)
     }
 
-    private func loadFileOffsets() {
-        guard let data = defaults.data(forKey: "fileOffsets"),
-              let dict = try? JSONDecoder().decode([String: String].self, from: data) else { return }
-        for (path, offsetStr) in dict {
-            // 파일이 실제로 존재하고 오프셋이 파일 크기 이하인 경우만 복원
-            if let offset = UInt64(offsetStr),
-               let attrs = try? FileManager.default.attributesOfItem(atPath: path),
-               let size = attrs[.size] as? UInt64,
-               offset <= size {
-                fileOffsets[path] = offset
-            }
+    /// 같은 파일(inode)이고 저장 오프셋 이후로만 자랐을 때만 스냅샷을 이어 쓴다.
+    /// 잘림(size < offset)·교체(inode 변경)는 전체 재파싱한다.
+    private func isSnapshotUsable(_ snapshot: SessionParseSnapshot, for url: URL) -> Bool {
+        guard let attrs = Self.fileAttributes(of: url) else { return false }
+        return attrs.size >= snapshot.offset && attrs.fileID == snapshot.fileID
+    }
+
+    private func saveParseState(at date: Date) {
+        guard let parseStateStore else { return }
+        var snapshots: [String: SessionParseSnapshot] = [:]
+        for (path, offset) in fileOffsets {
+            guard let session = sessionCache[path] else { continue }
+            snapshots[path] = SessionParseSnapshot(session: session, offset: offset, fileID: fileIDs[path])
         }
+        parseStateStore.save(snapshots)
+        isParseStateDirty = false
+        lastParseStateSave = date
     }
 
 }

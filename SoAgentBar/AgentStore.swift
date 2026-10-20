@@ -388,6 +388,11 @@ class AgentStore: ObservableObject {
         }
     }
 
+    /// 앱 종료 시 세션 모니터를 멈춘다 — Claude 모니터는 스로틀로 밀린 파싱 상태를 저장한다 (PERF-004)
+    func stopSessionMonitoring() {
+        coordinator.stop()
+    }
+
     func syncUsageMonitorSettings() {
         usageMonitor.alertThreshold     = sessionAlertThreshold
         usageMonitor.notifyOnThreshold  = notifyOnQuotaThreshold

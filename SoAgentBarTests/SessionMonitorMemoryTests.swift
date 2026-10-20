@@ -715,3 +715,137 @@ extension SessionMonitorMemoryTests {
         XCTAssertFalse(FileManager.default.fileExists(atPath: stateFileURL.path))
     }
 }
+
+// MARK: - PERF-008: readCWD 재시도 억제 + 조기 종료 스트리밍
+
+// workingPath가 fallback(.claude/projects 내부)인 동안 매 폴링마다 최대 256KB를 다시 읽고,
+// 청크마다 누적 텍스트를 String/components로 재파싱(O(n²))했다.
+// → 주입된 ByteSource + JSONLReader(조기 종료, 256KB 상한)로 읽고, 실패한 파일은 자랄 때까지 재시도하지 않는다.
+
+final class SessionMonitorCWDLookupTests: XCTestCase {
+
+    private var rootDir: URL!
+    private var cliDir: URL!
+    private var suiteName: String!
+    private var defaults: UserDefaults!
+    private var recorder: ReadRecorder!
+    private let fixedNow = Date()
+
+    override func setUpWithError() throws {
+        rootDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SessionMonitorCWDLookupTests-\(UUID().uuidString)")
+        // fallback 판정이 경로 기반("/.claude/projects/")이므로 실제와 같은 구조로 만든다
+        cliDir = rootDir.appendingPathComponent(".claude/projects")
+        try FileManager.default.createDirectory(at: cliDir, withIntermediateDirectories: true)
+        suiteName = "SessionMonitorCWDLookupTests-\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)
+        recorder = ReadRecorder()
+    }
+
+    override func tearDownWithError() throws {
+        defaults.removePersistentDomain(forName: suiteName)
+        try? FileManager.default.removeItem(at: rootDir)
+        rootDir = nil
+        cliDir = nil
+        defaults = nil
+        suiteName = nil
+        recorder = nil
+    }
+
+    private func makeMonitor() -> ClaudeSessionMonitor {
+        let recorder = self.recorder!
+        let now = fixedNow
+        return ClaudeSessionMonitor(
+            cliProjectsDir: cliDir,
+            xcodeProjectsDir: rootDir.appendingPathComponent("xcode"),
+            desktopCodeSessionsDir: rootDir.appendingPathComponent("desktop"),
+            coworkSessionsDir: rootDir.appendingPathComponent("cowork"),
+            defaults: defaults,
+            now: { now },
+            makeByteSource: { SpyByteSource(url: $0, recorder: recorder) }
+        )
+    }
+
+    private func jsonLine(_ object: [String: Any]) -> String {
+        let data = try! JSONSerialization.data(withJSONObject: object)
+        return String(data: data, encoding: .utf8)! + "\n"
+    }
+
+    /// cwd가 없는 이벤트 한 줄 (processEvent도 workingPath를 바꾸지 않는 타입)
+    private func progressLine(_ index: Int, padding: Int = 100) -> String {
+        jsonLine(["type": "progress", "index": index, "data": String(repeating: "x", count: padding)])
+    }
+
+    /// cwd만 가진 메타 이벤트 (user 이벤트가 아니라 readCWD로만 반영된다)
+    private func cwdLine(_ cwd: String) -> String {
+        jsonLine(["type": "system", "cwd": cwd])
+    }
+
+    private func writeSession(_ contents: String) throws -> URL {
+        let projectDir = cliDir.appendingPathComponent("-tmp-cwd-project")
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        let url = projectDir.appendingPathComponent("\(UUID().uuidString).jsonl")
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: fixedNow.addingTimeInterval(-60)],
+                                              ofItemAtPath: url.path)
+        return url
+    }
+
+    private func append(_ text: String, to url: URL) throws {
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(text.utf8))
+        try handle.close()
+        try FileManager.default.setAttributes([.modificationDate: fixedNow.addingTimeInterval(-30)],
+                                              ofItemAtPath: url.path)
+    }
+
+    private func fileSize(_ url: URL) throws -> Int {
+        try XCTUnwrap(FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int)
+    }
+
+    func test_readCWD_afterFailure_isNotRetriedWhileFileSizeUnchanged() throws {
+        let url = try writeSession((0..<5).map { progressLine($0) }.joined())
+        let monitor = makeMonitor()
+
+        let first = monitor.pollNow()
+        XCTAssertEqual(first.count, 1)
+        XCTAssertTrue(first[0].workingPath.contains("/.claude/projects/"), "cwd가 없으면 fallback 경로")
+
+        recorder.reset()
+        let second = monitor.pollNow()
+
+        XCTAssertEqual(recorder.totalBytes, 0,
+                       "크기가 그대로인 파일의 cwd 탐색은 다시 하지 않는다 (재독 \(recorder.totalBytes)바이트, \(url.lastPathComponent))")
+        XCTAssertEqual(second.first?.workingPath, first[0].workingPath)
+    }
+
+    func test_readCWD_afterFailure_isRetriedAfterFileGrows_andFindsCWD() throws {
+        let url = try writeSession((0..<5).map { progressLine($0) }.joined())
+        let monitor = makeMonitor()
+        monitor.pollNow()
+
+        try append(cwdLine("/tmp/grown-project"), to: url)
+        recorder.reset()
+        let sessions = monitor.pollNow()
+
+        XCTAssertEqual(sessions.first?.workingPath, "/tmp/grown-project", "파일이 자라면 cwd 탐색을 다시 한다")
+        XCTAssertTrue(recorder.reads.filter { $0.offset == 0 }.isEmpty,
+                      "이미 탐색한 앞부분을 다시 읽지 않는다")
+    }
+
+    func test_readCWD_findsCWDInFirstLine_viaInjectedSource_andStopsEarly() throws {
+        let padding = (0..<300).map { progressLine($0, padding: 1000) }.joined()  // 약 300KB
+        let url = try writeSession(cwdLine("/tmp/early-project") + padding)
+        let monitor = makeMonitor()
+
+        let sessions = monitor.pollNow()
+
+        XCTAssertEqual(sessions.first?.workingPath, "/tmp/early-project")
+        let size = try fileSize(url)
+        let cwdLookupBytes = recorder.totalBytes - size  // 나머지는 parseNewLines의 전체 파싱
+        XCTAssertGreaterThan(cwdLookupBytes, 0, "cwd 탐색도 주입된 ByteSource를 거쳐야 한다")
+        XCTAssertLessThanOrEqual(cwdLookupBytes, 16384,
+                                 "첫 줄에서 cwd를 찾으면 첫 청크 이후로는 읽지 않는다 (\(cwdLookupBytes)바이트)")
+    }
+}

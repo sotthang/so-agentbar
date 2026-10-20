@@ -73,7 +73,29 @@ enum JSONLReader {
         stats: Stats? = nil,
         onEvent: ([String: Any]) -> Void
     ) -> UInt64? {
-        let endOffset = source.size
+        readCompleteLines(
+            from: source, startingAt: currentOffset, endingAt: .max,
+            chunkSize: chunkSize, maxLineBytes: maxLineBytes, stats: stats
+        ) { json in
+            onEvent(json)
+            return false
+        }
+    }
+
+    /// 조기 종료·바이트 상한 버전 (PERF-008).
+    /// - Parameters:
+    ///   - endLimit: 이 절대 오프셋 이후 바이트는 읽지 않는다 (상한에 걸친 줄은 미완성으로 취급)
+    ///   - shouldStop: true를 반환하면 그 줄 직후에서 읽기를 멈추고 그 위치를 반환한다
+    static func readCompleteLines(
+        from source: ByteSource,
+        startingAt currentOffset: UInt64,
+        endingAt endLimit: UInt64,
+        chunkSize: Int = defaultChunkSize,
+        maxLineBytes: Int = defaultMaxLineBytes,
+        stats: Stats? = nil,
+        shouldStop: ([String: Any]) -> Bool
+    ) -> UInt64? {
+        let endOffset = min(source.size, endLimit)
         guard endOffset > currentOffset else { return nil }
 
         let newlineByte = UInt8(ascii: "\n")
@@ -82,13 +104,14 @@ enum JSONLReader {
         var partialLine = Data()             // 청크 경계에 걸친 미완성 줄 (최대 maxLineBytes)
         var isDiscardingLine = false         // 상한 초과 줄을 다음 '\n'까지 버리는 중
 
-        func emit(_ lineData: Data) {
+        /// - Returns: 호출자가 읽기를 멈추길 원하면 true
+        func emit(_ lineData: Data) -> Bool {
             // 줄마다 autorelease pool을 비워 파싱 중간 객체가 전체 파일 분량만큼 쌓이지 않게 한다 (PERF-003)
             autoreleasepool {
                 guard !lineData.isEmpty,
                       let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
-                else { return }
-                onEvent(json)
+                else { return false }
+                return shouldStop(json)
             }
         }
 
@@ -102,18 +125,20 @@ enum JSONLReader {
             var segmentStart = chunk.startIndex
             while let newlineIdx = chunk[segmentStart...].firstIndex(of: newlineByte) {
                 let segment = chunk[segmentStart..<newlineIdx]
+                var stop = false
                 if isDiscardingLine || partialLine.count + segment.count > maxLineBytes {
                     isDiscardingLine = false
                 } else if partialLine.isEmpty {
-                    emit(segment)
+                    stop = emit(segment)
                 } else {
                     partialLine.append(segment)
                     stats?.observe(chunk.count + partialLine.count)
-                    emit(partialLine)
+                    stop = emit(partialLine)
                 }
                 partialLine = Data()
                 segmentStart = newlineIdx + 1
                 committedOffset = chunkStart + UInt64(segmentStart - chunk.startIndex)
+                if stop { return committedOffset }
             }
             let remainder = chunk[segmentStart...]
             if !isDiscardingLine {

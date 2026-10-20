@@ -248,6 +248,8 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
     // 캐시에 상태가 남아 있는 한 오프셋이 절대 리셋되지 않도록 한다 (PERF-001)
     private var sessionCache: [String: ClaudeSession] = [:]
     private var fileIDs: [String: UInt64] = [:]        // 파일별 inode (마지막으로 새 줄을 읽었을 때)
+    // PERF-008: cwd 탐색에 실패한 파일의 (이어서 탐색할 오프셋, 실패 시점 크기) — 파일이 자랄 때까지 재시도 안 함
+    private var cwdScanStates: [String: (offset: UInt64, size: UInt64)] = [:]
 
     // PERF-004: 파싱 상태 스냅샷 영속화 — 재시작 후 오프셋 0부터의 전체 재파싱 방지
     private let parseStateStore: SessionParseStateStore?
@@ -492,6 +494,7 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
                     } else {
                         fileOffsets.removeValue(forKey: cacheKey)
                         fileIDs.removeValue(forKey: cacheKey)
+                        cwdScanStates.removeValue(forKey: cacheKey)
                         session = ClaudeSession(
                             id: sessionID,
                             projectDir: folderName,
@@ -565,6 +568,9 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         }
         for path in fileIDs.keys where !activePaths.contains(path) {
             fileIDs.removeValue(forKey: path)
+        }
+        for path in cwdScanStates.keys where !activePaths.contains(path) {
+            cwdScanStates.removeValue(forKey: path)
         }
         // 이번 폴링에서 쓰이지 않은 복원 스냅샷 = 비활성 파일 → 버리고 저장본에서도 제거
         if restoredSnapshots?.isEmpty == false {
@@ -946,37 +952,38 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
     }
 
-    /// JSONL 파일에서 cwd 필드를 가진 첫 이벤트를 찾아 반환
-    /// queue-operation 등 큰 메타 이벤트가 앞에 있을 수 있어 청크 단위로 확장 탐색
+    private static let cwdScanChunkSize = 16384
+    private static let cwdScanMaxBytes: UInt64 = 262144  // 256KB까지 (큰 메타 이벤트 대비)
+
+    /// JSONL 파일 앞부분(최대 256KB)에서 cwd 필드를 가진 첫 이벤트를 찾아 반환
+    /// queue-operation 등 큰 메타 이벤트가 앞에 있을 수 있어 청크 단위로 스트리밍하며, 찾으면 즉시 멈춘다.
+    /// 실패하면 이어서 탐색할 오프셋과 그때의 크기를 기억해, 파일이 자랄 때까지 다시 읽지 않는다 (PERF-008).
     private func readCWD(from jsonlURL: URL) -> String? {
-        guard let fileHandle = try? FileHandle(forReadingFrom: jsonlURL) else { return nil }
-        defer { try? fileHandle.close() }
+        guard let source = makeByteSource(jsonlURL) else { return nil }
+        let path = jsonlURL.path
+        let size = source.size
 
-        let chunkSize = 16384
-        let maxBytes = 262144 // 256KB까지 확장 (큰 메타 이벤트 대비)
-        var accumulated = Data()
-        while accumulated.count < maxBytes {
-            let chunk = fileHandle.readData(ofLength: chunkSize)
-            if chunk.isEmpty { break }
-            accumulated.append(chunk)
-
-            // 마지막 개행까지만 안전하게 파싱
-            let newlineByte = UInt8(ascii: "\n")
-            guard let lastNewlineIdx = accumulated.lastIndex(of: newlineByte) else { continue }
-            let parsable = accumulated[accumulated.startIndex...lastNewlineIdx]
-            guard let text = String(data: parsable, encoding: .utf8) else { continue }
-
-            for line in text.components(separatedBy: "\n") {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                guard !trimmed.isEmpty,
-                      let lineData = trimmed.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                      let cwd = json["cwd"] as? String
-                else { continue }
-                return cwd
-            }
+        var startOffset: UInt64 = 0
+        if let state = cwdScanStates[path] {
+            if state.size == size { return nil }                 // 실패 후 변화 없음 → 재시도 안 함
+            if size > state.size { startOffset = state.offset }  // 자랐으면 이어서 (줄었으면 처음부터)
         }
-        return nil
+
+        var found: String?
+        let nextOffset = JSONLReader.readCompleteLines(
+            from: source, startingAt: startOffset, endingAt: Self.cwdScanMaxBytes,
+            chunkSize: Self.cwdScanChunkSize
+        ) { json in
+            found = json["cwd"] as? String
+            return found != nil
+        }
+
+        if found != nil {
+            cwdScanStates.removeValue(forKey: path)
+        } else {
+            cwdScanStates[path] = (offset: nextOffset ?? startOffset, size: size)
+        }
+        return found
     }
 
     // MARK: - 파싱 상태 영속화 (PERF-004)

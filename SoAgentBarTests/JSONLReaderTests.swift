@@ -177,6 +177,49 @@ final class JSONLReaderTests: XCTestCase {
         XCTAssertEqual(events.compactMap { $0["index"] as? Int }, [1], "호출 중 자라난 바이트는 다음 호출에서 처리")
         XCTAssertEqual(next, UInt64(Data(line(["index": 1]).utf8).count))
     }
+
+    // MARK: - PERF-008: 조기 종료 + 바이트 상한
+
+    func test_readCompleteLines_whenShouldStopReturnsTrue_stopsReadingAfterThatLine() {
+        let first = line(["index": 1])
+        let second = line(["index": 2, "cwd": "/tmp/found"])
+        let rest = (3...50).map { line(["index": $0, "padding": String(repeating: "x", count: 100)]) }.joined()
+        let source = InMemoryByteSource(first + second + rest)
+        let chunkSize = 8
+
+        var seen: [Int] = []
+        let next = JSONLReader.readCompleteLines(
+            from: source, startingAt: 0, endingAt: .max, chunkSize: chunkSize
+        ) { json in
+            seen.append(json["index"] as? Int ?? -1)
+            return json["cwd"] != nil
+        }
+
+        let needed = Data((first + second).utf8).count
+        XCTAssertEqual(seen, [1, 2], "멈추라고 한 줄 이후로는 전달하지 않는다")
+        XCTAssertEqual(next, UInt64(needed), "오프셋은 멈춘 줄의 바로 뒤")
+        XCTAssertLessThanOrEqual(source.requestedCounts.reduce(0, +), needed + chunkSize,
+                                 "필요한 줄을 찾으면 더 읽지 않는다")
+    }
+
+    func test_readCompleteLines_withEndOffset_ignoresBytesBeyondLimit() {
+        let first = line(["index": 1])
+        let second = line(["index": 2])
+        let source = InMemoryByteSource(first + second)
+        let limit = UInt64(Data(first.utf8).count + 3)  // 두 번째 줄 중간에서 끊김
+
+        var seen: [Int] = []
+        let next = JSONLReader.readCompleteLines(
+            from: source, startingAt: 0, endingAt: limit, chunkSize: 4
+        ) { json in
+            seen.append(json["index"] as? Int ?? -1)
+            return false
+        }
+
+        XCTAssertEqual(seen, [1], "상한을 넘는(미완성) 줄은 전달하지 않는다")
+        XCTAssertEqual(next, UInt64(Data(first.utf8).count))
+        XCTAssertLessThanOrEqual(source.requestedCounts.reduce(0, +), Int(limit))
+    }
 }
 
 /// 읽을 때마다 뒤에 바이트가 덧붙는 원천 (쓰기 중인 파일 재현)

@@ -15,13 +15,19 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
 
     /// - rolloutsRoot: ~/.codex/sessions (테스트에서는 임시 디렉토리)
     /// - fileManager: FileManager (테스트에서는 mock 가능)
+    /// - now: poll 기준 시각 (24시간 필터) — 테스트에서 고정 시계 주입
+    /// - makeByteSource: JSONL 파일 읽기 원천 — 테스트에서 읽은 바이트를 세는 spy 주입
     init(
         rolloutsRoot: URL = URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent(".codex/sessions"),
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        now: @escaping () -> Date = Date.init,
+        makeByteSource: @escaping (URL) -> ByteSource? = { FileByteSource(url: $0) }
     ) {
         self.rolloutsRoot = rolloutsRoot
         self.fm = fileManager
+        self.now = now
+        self.makeByteSource = makeByteSource
     }
 
     // MARK: Protocol Methods
@@ -58,6 +64,8 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
 
     private let rolloutsRoot: URL
     private let fm: FileManager
+    private let now: () -> Date
+    private let makeByteSource: (URL) -> ByteSource?
     private let dispatchQueue = DispatchQueue(label: "com.sotthang.so-agentbar.codexmonitor", qos: .utility)
     private var eventStream: FSEventStreamRef?
     private var fallbackTimer: Timer?
@@ -115,7 +123,18 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
     // MARK: - 메인 루프
 
     private func poll() {
-        let now = Date()
+        let results = pollNow()
+        DispatchQueue.main.async { [weak self] in
+            self?.onSessionsChanged?(results)
+        }
+    }
+
+    /// 한 번의 스캔·파싱을 호출 스레드에서 동기 수행하고 세션 목록을 반환한다.
+    /// 프로덕션에서는 dispatchQueue 위에서 poll()을 통해서만 호출된다.
+    /// 테스트에서는 start() 없이 직접 호출해 폴링을 동기적으로 구동한다 (onSessionsChanged 미호출).
+    @discardableResult
+    func pollNow() -> [ClaudeSession] {
+        let now = self.now()
         var results: [ClaudeSession] = []
 
         let rolloutFiles = discoverRolloutFiles(now: now)
@@ -157,9 +176,7 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
 
         saveFileOffsets()
 
-        DispatchQueue.main.async { [weak self] in
-            self?.onSessionsChanged?(results)
-        }
+        return results
     }
 
     // MARK: - rollout 파일 탐색
@@ -194,37 +211,19 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
     // MARK: - JSONL 파싱 (오프셋 기반)
 
     private func parseNewLines(url: URL, session: inout ClaudeSession) {
-        guard let fileHandle = try? FileHandle(forReadingFrom: url) else { return }
-        defer { try? fileHandle.close() }
+        guard let source = makeByteSource(url) else { return }
 
         let currentOffset = fileOffsets[url.path] ?? 0
-        let fileSize = (try? fileHandle.seekToEnd()) ?? 0
-        guard fileSize > currentOffset else { return }
-
-        try? fileHandle.seek(toOffset: currentOffset)
-        let newData = fileHandle.readDataToEndOfFile()
-        guard !newData.isEmpty else { return }
-
-        // 마지막 개행 위치까지만 처리 — 파일 쓰는 도중인 불완전한 줄 제외
-        let newlineByte = UInt8(ascii: "\n")
-        guard let lastNewlineIdx = newData.lastIndex(of: newlineByte) else { return }
-
-        let completeData = newData[newData.startIndex...lastNewlineIdx]
-        fileOffsets[url.path] = currentOffset + UInt64(completeData.count)
-
-        guard let text = String(data: completeData, encoding: .utf8) else { return }
 
         // 파싱 전 lastActivity 스냅샷 — 새 이벤트 유무 판단용
         let activityBefore = session.lastActivity
 
-        for line in text.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty,
-                  let lineData = trimmed.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
-            else { continue }
-
+        // 마지막 개행까지의 완성된 줄만 청크 단위로 스트리밍 파싱 — 쓰는 도중인 불완전한 줄 제외
+        let nextOffset = JSONLReader.readCompleteLines(from: source, startingAt: currentOffset) { json in
             processCodexEvent(json, session: &session)
+        }
+        if let nextOffset {
+            fileOffsets[url.path] = nextOffset
         }
 
         // 파싱 후 lastActivity가 전진했으면 lastContentChange를 해당 timestamp로 갱신

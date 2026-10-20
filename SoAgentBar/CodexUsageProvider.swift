@@ -111,9 +111,7 @@ enum CodexUsageAggregator {
     ) -> [String: ClaudeSession.TokenUsage] {
         guard !jsonlData.isEmpty else { return [:] }
 
-        var result: [String: ClaudeSession.TokenUsage] = [:]
-        var currentModel: String = ""
-        var pendingTokenInfo: [String: Any]? = nil
+        var state = TokenSnapshotState()
 
         guard let content = String(data: jsonlData, encoding: .utf8) else { return [:] }
         let lines = content.components(separatedBy: "\n")
@@ -123,33 +121,49 @@ enum CodexUsageAggregator {
             guard !trimmed.isEmpty else { continue }
             guard let lineData = trimmed.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else { continue }
+            state.consume(json)
+        }
 
+        return state.result
+    }
+
+    /// 한 세션 JSONL을 줄 순서대로 소비하며 모델별 마지막 토큰 스냅샷을 누적하는 상태.
+    /// 줄 단위로 이어서 소비할 수 있어 파일 일부만 읽는 증분 집계에도 쓴다.
+    struct TokenSnapshotState {
+        /// 모델별 마지막 토큰 스냅샷
+        private(set) var result: [String: ClaudeSession.TokenUsage] = [:]
+        private var currentModel: String = ""
+        /// model 도착 전 token_count (첫 turn_context.model과 결합 대기)
+        private var pendingTokens: ClaudeSession.TokenUsage? = nil
+
+        mutating func consume(_ json: [String: Any]) {
             let type = json["type"] as? String ?? ""
             let outerPayload = json["payload"] as? [String: Any]
 
             switch type {
             case "turn_context":
-                guard let payload = outerPayload else { continue }
+                guard let payload = outerPayload else { return }
                 if let model = payload["model"] as? String, !model.isEmpty {
                     currentModel = model
                     // 보류된 토큰이 있으면 결합
-                    if let pending = pendingTokenInfo {
-                        applySnapshot(info: pending, model: currentModel, result: &result)
-                        pendingTokenInfo = nil
+                    if let pending = pendingTokens {
+                        result[currentModel] = pending
+                        pendingTokens = nil
                     }
                 }
 
             case "event_msg":
-                guard let innerPayload = outerPayload else { continue }
+                guard let innerPayload = outerPayload else { return }
                 let innerType = innerPayload["type"] as? String ?? ""
                 if innerType == "token_count" {
                     guard let info = innerPayload["info"] as? [String: Any],
-                          info["total_token_usage"] is [String: Any] else { continue }
+                          let tokens = CodexUsageAggregator.tokenUsage(from: info) else { return }
                     if !currentModel.isEmpty {
-                        applySnapshot(info: info, model: currentModel, result: &result)
+                        // 누적 X — 마지막 값으로 덮어쓰기 (rev6)
+                        result[currentModel] = tokens
                     } else {
                         // model 미정 — 보류
-                        pendingTokenInfo = info
+                        pendingTokens = tokens
                     }
                 }
 
@@ -157,28 +171,16 @@ enum CodexUsageAggregator {
                 break
             }
         }
-
-        return result
     }
 
-    /// info["total_token_usage"]를 파싱해 model 키로 덮어쓰기 (rev6 의미론)
-    private nonisolated static func applySnapshot(
-        info: [String: Any],
-        model: String,
-        result: inout [String: ClaudeSession.TokenUsage]
-    ) {
-        guard let usage = info["total_token_usage"] as? [String: Any] else { return }
-        let input     = (usage["input_tokens"]            as? Int) ?? 0
-        let cached    = (usage["cached_input_tokens"]     as? Int) ?? 0
-        let output    = (usage["output_tokens"]           as? Int) ?? 0
-        let reasoning = (usage["reasoning_output_tokens"] as? Int) ?? 0
-
-        // 누적 X — 마지막 값으로 덮어쓰기 (rev6)
-        result[model] = ClaudeSession.TokenUsage(
-            input: input,
-            cachedInput: cached,
-            output: output,
-            reasoningOutput: reasoning
+    /// info["total_token_usage"] → TokenUsage (없으면 nil)
+    fileprivate nonisolated static func tokenUsage(from info: [String: Any]) -> ClaudeSession.TokenUsage? {
+        guard let usage = info["total_token_usage"] as? [String: Any] else { return nil }
+        return ClaudeSession.TokenUsage(
+            input:           (usage["input_tokens"]            as? Int) ?? 0,
+            cachedInput:     (usage["cached_input_tokens"]     as? Int) ?? 0,
+            output:          (usage["output_tokens"]           as? Int) ?? 0,
+            reasoningOutput: (usage["reasoning_output_tokens"] as? Int) ?? 0
         )
     }
 

@@ -187,19 +187,21 @@ enum CodexUsageAggregator {
     // MARK: - 세션 간 합산
 
     /// 세션별 마지막 스냅샷을 세션 간 "합산" → 모델별 합계 (R1.2, AC-1.1).
+    /// - scanCache: 파일별 증분 스캔 상태. 폴링 사이에 유지하면 변경 없는 파일은 다시 읽지 않는다 (PERF-007).
+    ///   기본값(새 캐시)이면 매번 처음부터 읽되, 파일 전체가 아닌 청크 단위로 스트리밍한다.
     nonisolated static func aggregate(
         root: URL,
         now: Date,
-        fileManager: FileManager
+        fileManager: FileManager,
+        scanCache: CodexUsageScanCache = CodexUsageScanCache()
     ) -> [String: ClaudeSession.TokenUsage] {
         let files = discoverRolloutFiles(root: root, now: now, fileManager: fileManager)
-        guard !files.isEmpty else { return [:] }
+        let snapshots = scanCache.snapshots(for: files, fileManager: fileManager)
+        guard !snapshots.isEmpty else { return [:] }
 
         var combined: [String: ClaudeSession.TokenUsage] = [:]
 
-        for file in files {
-            guard let data = fileManager.contents(atPath: file.path) else { continue }
-            let snapshot = lastSnapshot(jsonlData: data)
+        for snapshot in snapshots {
             for (model, tokens) in snapshot {
                 let existing = combined[model] ?? ClaudeSession.TokenUsage()
                 combined[model] = ClaudeSession.TokenUsage(
@@ -252,7 +254,8 @@ enum CodexUsageAggregator {
     nonisolated static func buildUsage(
         root: URL,
         now: Date,
-        fileManager: FileManager
+        fileManager: FileManager,
+        scanCache: CodexUsageScanCache = CodexUsageScanCache()
     ) -> ProviderUsage {
         // 디렉토리 없으면 needsSetup (디렉토리 생성 안 함)
         guard fileManager.fileExists(atPath: root.path) else {
@@ -266,10 +269,126 @@ enum CodexUsageAggregator {
             return needsSetupUsage
         }
 
-        let tokensByModel = aggregate(root: root, now: now, fileManager: fileManager)
+        let tokensByModel = aggregate(root: root, now: now, fileManager: fileManager, scanCache: scanCache)
         let estimate = estimateInfo(from: tokensByModel, windowHours: windowHours)
 
         return ProviderUsage(id: .codex, state: .data, isEstimate: true, quota: nil, estimate: estimate)
+    }
+}
+
+// MARK: - CodexUsageScanCache (PERF-007)
+
+/// rollout 파일별 증분 스캔 상태 캐시.
+///
+/// 폴링마다 모든 rollout 파일을 통째로 메모리에 읽고(`contents(atPath:)`) 줄 단위로 재파싱하던 것을 대체한다.
+/// - 크기·mtime이 그대로인 파일은 열지도 않고 캐시된 스냅샷을 쓴다.
+/// - 덧붙은 파일은 마지막으로 읽은 위치부터 새 바이트만 청크 단위로 읽는다 (JSONLReader, 줄 단위 autoreleasepool).
+/// - 크기가 줄어든 파일(교체/절단)은 처음부터 다시 읽는다.
+///
+/// 역방향 스캔 대신 정방향 증분 스캔을 쓰는 이유: `lastSnapshot` 의미론은 "모델별" 마지막 스냅샷이라
+/// 파일 앞부분에만 등장한 모델도 결과에 포함된다 — 끝에서 마지막 token_count 하나만 찾으면 결과가 달라진다.
+/// 폴링 사이 Task.detached 실행이 겹칠 수 있어 내부 상태는 lock으로 직렬화한다.
+final class CodexUsageScanCache: @unchecked Sendable {
+
+    private struct Entry {
+        var size: UInt64
+        var modificationDate: Date
+        var offset: UInt64
+        var state: CodexUsageAggregator.TokenSnapshotState
+    }
+
+    private let chunkSize: Int
+    private let makeByteSource: (URL) -> ByteSource?
+    private let lock = NSLock()
+    private var entries: [String: Entry] = [:]
+
+    init(
+        chunkSize: Int = JSONLReader.defaultChunkSize,
+        makeByteSource: @escaping (URL) -> ByteSource? = { FileByteSource(url: $0) }
+    ) {
+        self.chunkSize = chunkSize
+        self.makeByteSource = makeByteSource
+    }
+
+    /// 캐시에 남아 있는 파일 수 (테스트 계측용)
+    var cachedFileCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries.count
+    }
+
+    /// 주어진 파일들의 모델별 마지막 토큰 스냅샷. 목록에 없는 파일의 캐시 항목은 버린다.
+    func snapshots(for files: [URL], fileManager: FileManager) -> [[String: ClaudeSession.TokenUsage]] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var results: [[String: ClaudeSession.TokenUsage]] = []
+        var activePaths: Set<String> = []
+        for file in files {
+            autoreleasepool {
+                guard let attrs = try? fileManager.attributesOfItem(atPath: file.path),
+                      let size = (attrs[.size] as? NSNumber)?.uint64Value,
+                      let modDate = attrs[.modificationDate] as? Date else { return }
+                activePaths.insert(file.path)
+                let entry = updatedEntry(for: file, size: size, modificationDate: modDate)
+                entries[file.path] = entry
+                results.append(entry.state.result)
+            }
+        }
+        for path in entries.keys where !activePaths.contains(path) {
+            entries.removeValue(forKey: path)
+        }
+        return results
+    }
+
+    private func updatedEntry(for file: URL, size: UInt64, modificationDate: Date) -> Entry {
+        if let cached = entries[file.path],
+           cached.size == size, cached.modificationDate == modificationDate {
+            return cached
+        }
+
+        // 크기가 줄었으면(교체/절단) 이전 상태를 버리고 처음부터
+        var entry = entries[file.path].flatMap { $0.offset <= size ? $0 : nil }
+            ?? Entry(size: 0, modificationDate: .distantPast, offset: 0, state: .init())
+        entry.size = size
+        entry.modificationDate = modificationDate
+
+        guard let source = makeByteSource(file) else { return entry }
+        var state = entry.state
+        if let next = JSONLReader.readCompleteLines(
+            from: source, startingAt: entry.offset, chunkSize: chunkSize,
+            onEvent: { state.consume($0) }
+        ) {
+            entry.offset = next
+        }
+        // 개행 없이 끝난 마지막 줄: 완성된 JSON이면 소비한다 (기존 전체 읽기 방식도 집계했다).
+        // 아직 쓰는 중이라 파싱에 실패하면 오프셋을 그대로 두고 다음 폴링에서 다시 본다.
+        consumeTrailingLine(from: source, entry: &entry, state: &state)
+        entry.state = state
+        return entry
+    }
+
+    private func consumeTrailingLine(
+        from source: ByteSource,
+        entry: inout Entry,
+        state: inout CodexUsageAggregator.TokenSnapshotState
+    ) {
+        let end = source.size
+        guard end > entry.offset, end - entry.offset <= UInt64(JSONLReader.defaultMaxLineBytes) else { return }
+        var tail = Data()
+        var readOffset = entry.offset
+        while readOffset < end {
+            let chunk = source.read(from: readOffset, upTo: Int(min(UInt64(chunkSize), end - readOffset)))
+            if chunk.isEmpty { return }
+            tail.append(chunk)
+            readOffset += UInt64(chunk.count)
+        }
+        guard !tail.contains(UInt8(ascii: "\n")) else { return }  // 그 사이 개행이 생겼으면 다음 폴링에서 정상 처리
+        autoreleasepool {
+            guard let json = try? JSONSerialization.jsonObject(with: tail) as? [String: Any] else { return }
+            state.consume(json)
+            entry.offset = end
+        }
     }
 }
 
@@ -283,6 +402,8 @@ final class CodexUsageProvider: UsageProviderProtocol {
 
     private let root: URL
     private let fileManager: FileManager
+    /// 폴링 사이 유지되는 파일별 증분 스캔 상태 — 변경 없는 rollout 파일은 다시 읽지 않는다 (PERF-007)
+    private let scanCache = CodexUsageScanCache()
     private var pollingTimer: Timer?
     /// 기본 폴링 간격 — UsageCoordinator.updatePollInterval이 호출되기 전까지 사용 (NFR3)
     private static let defaultPollInterval: TimeInterval = 300  // 5분
@@ -311,10 +432,11 @@ final class CodexUsageProvider: UsageProviderProtocol {
     func fetch() async {
         let root = self.root
         let fm = self.fileManager
+        let scanCache = self.scanCache
         let now = Date()
 
         let usage = await Task.detached(priority: .utility) {
-            CodexUsageAggregator.buildUsage(root: root, now: now, fileManager: fm)
+            CodexUsageAggregator.buildUsage(root: root, now: now, fileManager: fm, scanCache: scanCache)
         }.value
 
         currentUsage = usage

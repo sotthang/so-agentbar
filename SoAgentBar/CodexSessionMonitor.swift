@@ -33,12 +33,11 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
     // MARK: Protocol Methods
 
     func start() {
-        loadFileOffsets()
-        dispatchQueue.async { [weak self] in self?.poll() }
+        requestPoll()
         startFSEvents()
         DispatchQueue.main.async { [weak self] in
             self?.fallbackTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
-                self?.dispatchQueue.async { self?.poll() }
+                self?.requestPoll()
             }
         }
     }
@@ -55,7 +54,7 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
         DispatchQueue.main.async { [weak self] in
             self?.fallbackTimer?.invalidate()
             self?.fallbackTimer = Timer.scheduledTimer(withTimeInterval: max(interval, 10), repeats: true) { [weak self] _ in
-                self?.dispatchQueue.async { self?.poll() }
+                self?.requestPoll()
             }
         }
     }
@@ -66,14 +65,23 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
     private let fm: FileManager
     private let now: () -> Date
     private let makeByteSource: (URL) -> ByteSource?
-    private let dispatchQueue = DispatchQueue(label: "com.sotthang.so-agentbar.codexmonitor", qos: .utility)
+    // .workItem: 작업 단위마다 autorelease pool을 비운다 — 기본값(.inherit)이면 큐가 쉬지 못할 때
+    // 스레드 pool이 비워지지 않아 파일 Data/JSON 트리가 계속 쌓인다 (PERF-003 / PERF-007)
+    private let dispatchQueue = DispatchQueue(
+        label: "com.sotthang.so-agentbar.codexmonitor", qos: .utility, autoreleaseFrequency: .workItem
+    )
+    // 폴링 병합: 큐에 대기 중인 폴링이 있으면 새 요청은 버린다 (진행 중 폴링 뒤로 최대 1회만 대기)
+    private let pollRequestLock = NSLock()
+    private var isPollQueued = false
     private var eventStream: FSEventStreamRef?
     private var fallbackTimer: Timer?
     private var pollWorkItem: DispatchWorkItem?
-    private var fileOffsets: [String: UInt64] = [:]
+    private var fileOffsets: [String: UInt64] = [:]   // 파일 경로 → 다음에 읽을 바이트 위치
+    // 파일 경로 → 누적 파싱 상태. fileOffsets와 같은 키를 써서 상태가 남아 있는 한 오프셋이 리셋되지 않고,
+    // 같은 파일명(세션 id)의 다른 파일과 상태가 섞이지 않는다 (PERF-001 / PERF-007)
     private var sessionCache: [String: ClaudeSession] = [:]
 
-    // model 도착 전 token_count 이벤트 임시 저장 (turn_context.model과 결합 대기)
+    // 파일 경로 → model 도착 전 token_count 이벤트 임시 저장 (turn_context.model과 결합 대기)
     private var pendingTokenSnapshot: [String: [String: Any]] = [:]
 
     // MARK: - FSEvents
@@ -115,12 +123,30 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
 
     private func scheduleDebouncedPoll() {
         pollWorkItem?.cancel()
-        let item = DispatchWorkItem { [weak self] in self?.poll() }
+        let item = DispatchWorkItem { [weak self] in self?.requestPoll() }
         pollWorkItem = item
         dispatchQueue.asyncAfter(deadline: .now() + 0.5, execute: item)
     }
 
     // MARK: - 메인 루프
+
+    /// 폴링 요청의 단일 진입점 (초기 폴링 / 폴백 타이머 / FSEvents 디바운스).
+    /// 폴링이 진행 중이거나 대기 중이면 병합되어, 진행 중 폴링이 끝난 뒤 최대 1회만 추가 실행된다.
+    func requestPoll() {
+        pollRequestLock.lock()
+        defer { pollRequestLock.unlock() }
+        guard !isPollQueued else { return }
+        isPollQueued = true
+        dispatchQueue.async { [weak self] in self?.runQueuedPoll() }
+    }
+
+    private func runQueuedPoll() {
+        // 실행 시작 시점에 대기 표시를 해제 — 이후 들어온 요청은 다음 1회로 대기한다
+        pollRequestLock.lock()
+        isPollQueued = false
+        pollRequestLock.unlock()
+        poll()
+    }
 
     private func poll() {
         let results = pollNow()
@@ -137,44 +163,56 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
         let now = self.now()
         var results: [ClaudeSession] = []
 
+        var activePaths: Set<String> = []
+
         let rolloutFiles = discoverRolloutFiles(now: now)
         for fileURL in rolloutFiles {
-            guard let modDate = modificationDate(of: fileURL) else { continue }
-            let sessionID = deriveSessionID(from: fileURL)
+            // 파일마다 읽은 Data/파싱 결과의 autorelease 객체를 즉시 해제
+            autoreleasepool {
+                guard let modDate = modificationDate(of: fileURL) else { return }
+                let cacheKey = fileURL.path
 
-            let isCacheMiss = sessionCache[sessionID] == nil
-            if isCacheMiss {
-                fileOffsets.removeValue(forKey: fileURL.path)
+                // 상태가 없을 때(새 파일)만 처음부터 읽는다 — 상태가 있으면 오프셋을 그대로 이어 쓴다
+                var session: ClaudeSession
+                if let cached = sessionCache[cacheKey] {
+                    session = cached
+                } else {
+                    fileOffsets.removeValue(forKey: cacheKey)
+                    pendingTokenSnapshot.removeValue(forKey: cacheKey)
+                    session = ClaudeSession(
+                        id: deriveSessionID(from: fileURL),
+                        projectDir: fileURL.lastPathComponent,
+                        source: .codexCLI,
+                        workingPath: "",
+                        lastModified: modDate,
+                        lastActivity: .distantPast,
+                        lastContentChange: .distantPast
+                    )
+                }
+                session.lastModified = modDate
+
+                // Codex invariant 강제 (R3.8)
+                session.isSubagent = false
+                session.parentSessionId = nil
+
+                parseNewLines(url: fileURL, session: &session)
+
+                sessionCache[cacheKey] = session
+                activePaths.insert(cacheKey)
+                results.append(session)
             }
-
-            var session = sessionCache[sessionID] ?? ClaudeSession(
-                id: sessionID,
-                projectDir: fileURL.lastPathComponent,
-                source: .codexCLI,
-                workingPath: "",
-                lastModified: modDate,
-                lastActivity: .distantPast,
-                lastContentChange: .distantPast
-            )
-            session.lastModified = modDate
-
-            // Codex invariant 강제 (R3.8)
-            session.isSubagent = false
-            session.parentSessionId = nil
-
-            parseNewLines(url: fileURL, session: &session)
-
-            sessionCache[sessionID] = session
-            results.append(session)
         }
 
-        // 캐시 정리
-        let activeIDs = Set(results.map(\.id))
-        for key in sessionCache.keys where !activeIDs.contains(key) {
+        // 캐시 정리: 이번 폴링에 없는 파일(24시간 필터에서 걸러짐)의 상태·오프셋 제거
+        for key in sessionCache.keys where !activePaths.contains(key) {
             sessionCache.removeValue(forKey: key)
         }
-
-        saveFileOffsets()
+        for key in fileOffsets.keys where !activePaths.contains(key) {
+            fileOffsets.removeValue(forKey: key)
+        }
+        for key in pendingTokenSnapshot.keys where !activePaths.contains(key) {
+            pendingTokenSnapshot.removeValue(forKey: key)
+        }
 
         return results
     }
@@ -220,7 +258,7 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
 
         // 마지막 개행까지의 완성된 줄만 청크 단위로 스트리밍 파싱 — 쓰는 도중인 불완전한 줄 제외
         let nextOffset = JSONLReader.readCompleteLines(from: source, startingAt: currentOffset) { json in
-            processCodexEvent(json, session: &session)
+            processCodexEvent(json, session: &session, stateKey: url.path)
         }
         if let nextOffset {
             fileOffsets[url.path] = nextOffset
@@ -266,7 +304,8 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
         }
     }
 
-    private func processCodexEvent(_ json: [String: Any], session: inout ClaudeSession) {
+    /// - stateKey: 파일별 보류 토큰 저장 키 (파일 경로)
+    private func processCodexEvent(_ json: [String: Any], session: inout ClaudeSession, stateKey: String) {
         guard let type = json["type"] as? String else { return }
 
         // 타임스탬프 갱신
@@ -298,9 +337,9 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
             if let model = payload["model"] as? String {
                 session.currentModel = model
                 // 보류된 토큰 스냅샷이 있으면 지금 결합
-                if let pending = pendingTokenSnapshot[session.id] {
+                if let pending = pendingTokenSnapshot[stateKey] {
                     applyTokenSnapshot(info: pending, model: model, session: &session)
-                    pendingTokenSnapshot[session.id] = nil
+                    pendingTokenSnapshot[stateKey] = nil
                 }
             }
             if let policy = payload["approval_policy"] as? String {
@@ -350,7 +389,7 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
                 guard let info = innerPayload["info"] as? [String: Any] else {
                     break
                 }
-                updateTokenUsage(info: info, session: &session)
+                updateTokenUsage(info: info, session: &session, stateKey: stateKey)
 
             case .unknown:
                 break
@@ -390,7 +429,7 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
 
     // MARK: - 토큰 처리
 
-    private func updateTokenUsage(info: [String: Any], session: inout ClaudeSession) {
+    private func updateTokenUsage(info: [String: Any], session: inout ClaudeSession, stateKey: String) {
         guard info["total_token_usage"] is [String: Any] else { return }
 
         let model = session.currentModel
@@ -398,7 +437,7 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
             applyTokenSnapshot(info: info, model: model, session: &session)
         } else {
             // model 미정 — 보류 (AC-R3.12)
-            pendingTokenSnapshot[session.id] = info
+            pendingTokenSnapshot[stateKey] = info
         }
     }
 
@@ -431,36 +470,5 @@ final class CodexSessionMonitor: SessionMonitorProtocol {
 
     private func modificationDate(of url: URL) -> Date? {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-    }
-
-    // MARK: - fileOffsets 영속화
-
-    private func saveFileOffsets() {
-        // Codex 전용 키 prefix로 Claude와 분리
-        let encoded = Dictionary(uniqueKeysWithValues: fileOffsets.map { ("codex:\($0.key)", String($0.value)) })
-        var existing: [String: String] = [:]
-        if let data = UserDefaults.standard.data(forKey: "fileOffsets"),
-           let dict = try? JSONDecoder().decode([String: String].self, from: data) {
-            existing = dict
-        }
-        for (k, v) in encoded { existing[k] = v }
-        if let data = try? JSONEncoder().encode(existing) {
-            UserDefaults.standard.set(data, forKey: "fileOffsets")
-        }
-    }
-
-    private func loadFileOffsets() {
-        guard let data = UserDefaults.standard.data(forKey: "fileOffsets"),
-              let dict = try? JSONDecoder().decode([String: String].self, from: data) else { return }
-        for (key, offsetStr) in dict {
-            guard key.hasPrefix("codex:") else { continue }
-            let path = String(key.dropFirst("codex:".count))
-            if let offset = UInt64(offsetStr),
-               let attrs = try? fm.attributesOfItem(atPath: path),
-               let size = attrs[.size] as? UInt64,
-               offset <= size {
-                fileOffsets[path] = offset
-            }
-        }
     }
 }

@@ -20,7 +20,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var store = AgentStore()
     private var iconUpdateTimer: Timer?
     private var hotkeyRef: EventHotKeyRef?
-    private var pixelHotkeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
     private var cancellables = Set<AnyCancellable>()
     // [SPEC-003 C4] 로고 바운스 애니메이션 컨트롤러. NSImage(named:"logo")를 1회만 취득하며
@@ -29,7 +28,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     // [SPEC-003 R9] 슬립/웨이크 옵저버 — applicationWillTerminate에서 해제한다(R9.4).
     private var workspaceObservers: [NSObjectProtocol] = []
     private(set) var updaterController: SPUStandardUpdaterController!
-    private var pixelWindowController: PixelAgentsWindowController?
 
     private static let showPopoverNotification = Notification.Name("com.sotthang.so-agentbar.showPopover")
     nonisolated static let updateNotificationIdentifier = "SparkleUpdateAvailable"
@@ -119,7 +117,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         // 런루프가 완전히 준비된 후 상태바 아이템 생성 — 첫 실행 시 메뉴바 미표시 방지
         DispatchQueue.main.async { [self] in
-            pixelWindowController = PixelAgentsWindowController(store: store)
             installMainMenu()
             setupStatusItem()
             setupPopover()
@@ -675,7 +672,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 DispatchQueue.main.async {
                     switch hotKeyID.id {
                     case 1: delegate.togglePopoverFromHotkey()
-                    case 2: delegate.togglePixelWindowFromHotkey()
                     default: break
                     }
                 }
@@ -689,7 +685,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         // 초기 핫키 등록
         registerCurrentHotkey()
-        registerCurrentPixelHotkey()
 
         // 팝오버 핫키 설정 변경 감시
         store.$hotkeyKeyCode
@@ -699,17 +694,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             .sink { [weak self] _, _, _ in
                 self?.unregisterHotkey()
                 self?.registerCurrentHotkey()
-            }
-            .store(in: &cancellables)
-
-        // 픽셀 핫키 설정 변경 감시
-        store.$pixelHotkeyKeyCode
-            .combineLatest(store.$pixelHotkeyModifiers, store.$pixelHotkeyEnabled)
-            .dropFirst()
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _, _, _ in
-                self?.unregisterPixelHotkey()
-                self?.registerCurrentPixelHotkey()
             }
             .store(in: &cancellables)
     }
@@ -737,29 +721,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
     }
 
-    private func registerCurrentPixelHotkey() {
-        guard store.pixelHotkeyEnabled else { return }
-        let hotkeyID = EventHotKeyID(signature: OSType(0x4142_4152), id: 2)
-        let status = RegisterEventHotKey(
-            UInt32(store.pixelHotkeyKeyCode),
-            UInt32(store.pixelHotkeyModifiers),
-            hotkeyID,
-            GetApplicationEventTarget(),
-            0,
-            &pixelHotkeyRef
-        )
-        if status != noErr {
-            NSLog("[SoAgentBar] 픽셀 핫키 등록 실패 (OSStatus: %d) — 다른 앱과 충돌할 수 있습니다", status)
-        }
-    }
-
-    private func unregisterPixelHotkey() {
-        if let ref = pixelHotkeyRef {
-            UnregisterEventHotKey(ref)
-            pixelHotkeyRef = nil
-        }
-    }
-
     fileprivate func togglePopoverFromHotkey() {
         guard let popover = popover else { return }
         if popover.isShown {
@@ -767,10 +728,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         } else {
             showPopover()
         }
-    }
-
-    fileprivate func togglePixelWindowFromHotkey() {
-        store.isPixelWindowVisible.toggle()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -784,7 +741,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         iconUpdateTimer?.invalidate()
         unregisterHotkey()
-        unregisterPixelHotkey()
         if let ref = eventHandlerRef { RemoveEventHandler(ref) }
 
         // Utility cleanup

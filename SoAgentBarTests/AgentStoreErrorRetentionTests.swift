@@ -1,7 +1,7 @@
 import XCTest
 @testable import SoAgentBar
 
-/// 에러 세션이 일정 시간(기본 5분) 이상 지나면 픽셀 창에서 자동으로 사라지는지 검증.
+/// 에러 세션이 일정 시간(기본 5분) 이상 지나면 세션 목록에서 자동으로 사라지는지 검증.
 final class AgentStoreErrorRetentionTests: XCTestCase {
 
     // MARK: - 헬퍼

@@ -16,7 +16,7 @@ import AppKit
 
 final class MenubarBodyCharacterizationTests: XCTestCase {
 
-    // MARK: - 헬퍼: Agent 빌더 (선례: AgentModeDisplayNameTests.swift:14, PixelAgentsTests.swift:219)
+    // MARK: - 헬퍼: Agent 빌더 (선례: AgentModeDisplayNameTests.swift:14)
 
     private func makeAgent(id: String, status: AgentStatus) -> Agent {
         Agent(

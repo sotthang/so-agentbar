@@ -91,13 +91,6 @@ struct AgentListView: View {
             }
             .buttonStyle(.plain)
             .help(keepAwakeTooltip)
-            Button(action: { store.isPixelWindowVisible.toggle() }) {
-                Image(systemName: store.isPixelWindowVisible ? "person.3.fill" : "person.3")
-                    .font(.system(size: 13))
-                    .foregroundColor(store.isPixelWindowVisible ? .accentColor : .secondary)
-            }
-            .buttonStyle(.plain)
-            .help(store.t("픽셀 에이전트 윈도우", "Pixel Agents Window"))
             Button(action: { store.isPinned.toggle() }) {
                 Image(systemName: store.isPinned ? "pin.fill" : "pin")
                     .font(.system(size: 13))
@@ -238,7 +231,6 @@ struct AgentRowView: View {
     var onEmojiTap: () -> Void
     @State private var isHovering = false
     @State private var subagentsExpanded = false
-    @State private var showCharacterPicker = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -330,22 +322,9 @@ struct AgentRowView: View {
                 }
 
                 if isHovering {
-                    HStack(spacing: 6) {
-                        Button(action: { showCharacterPicker.toggle() }) {
-                            Image(systemName: "person.crop.square")
-                                .font(.system(size: 13))
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .help(store.t("픽셀 캐릭터 선택", "Choose pixel character"))
-                        .popover(isPresented: $showCharacterPicker, arrowEdge: .trailing) {
-                            CharacterPickerView(agentID: agent.id, store: store)
-                        }
-
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 13))
-                            .foregroundColor(.secondary)
-                    }
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
                 } else if let costStr = CostCalculator.formatCost(agent.estimatedCost) {
                     Text(costStr)
                         .font(.system(size: 10, design: .monospaced))
@@ -384,8 +363,7 @@ struct AgentRowView: View {
                 : Color.clear
         )
         .contentShape(Rectangle())
-        .onHover { hovering in isHovering = hovering || showCharacterPicker }
-        .onChange(of: showCharacterPicker) { open in if !open { isHovering = false } }
+        .onHover { hovering in isHovering = hovering }
         .onTapGesture { store.openProject(agent.workingPath, source: agent.source) }
 
         // 서브에이전트 펼치기 영역

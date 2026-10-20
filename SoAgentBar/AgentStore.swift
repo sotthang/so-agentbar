@@ -262,17 +262,6 @@ class AgentStore: ObservableObject {
     @Published var agents: [Agent] = []
     @Published var popoverOpenCount = 0
 
-    // 픽셀 에이전트 윈도우
-    @Published var isPixelWindowVisible: Bool {
-        didSet { UserDefaults.standard.set(isPixelWindowVisible, forKey: "isPixelWindowVisible") }
-    }
-    @Published var pixelWindowOpacity: Double {
-        didSet { UserDefaults.standard.set(pixelWindowOpacity, forKey: "pixelWindowOpacity") }
-    }
-
-    /// 픽셀 창의 저장된 위치/크기를 기본값으로 초기화 요청 (WindowController가 구독).
-    let pixelWindowResetRequest = PassthroughSubject<Void, Never>()
-
     // 세션 설정
     @Published var showIdleSessions: Bool {
         didSet { UserDefaults.standard.set(showIdleSessions, forKey: "showIdleSessions") }
@@ -326,17 +315,6 @@ class AgentStore: ObservableObject {
     }
     @Published var hotkeyModifiers: Int {
         didSet { UserDefaults.standard.set(hotkeyModifiers, forKey: "hotkeyModifiers") }
-    }
-
-    // 픽셀 에이전트 글로벌 핫키
-    @Published var pixelHotkeyEnabled: Bool {
-        didSet { UserDefaults.standard.set(pixelHotkeyEnabled, forKey: "pixelHotkeyEnabled") }
-    }
-    @Published var pixelHotkeyKeyCode: Int {
-        didSet { UserDefaults.standard.set(pixelHotkeyKeyCode, forKey: "pixelHotkeyKeyCode") }
-    }
-    @Published var pixelHotkeyModifiers: Int {
-        didSet { UserDefaults.standard.set(pixelHotkeyModifiers, forKey: "pixelHotkeyModifiers") }
     }
 
     // 알림
@@ -418,14 +396,6 @@ class AgentStore: ObservableObject {
     }
 
     // 커스텀 이모지: 세션별 / 프로젝트별 2단계
-    @Published var pixelCharacterOverrides: [String: Int] = [:] {
-        didSet {
-            if let data = try? JSONEncoder().encode(pixelCharacterOverrides) {
-                UserDefaults.standard.set(data, forKey: "pixelCharacterOverrides")
-            }
-        }
-    }
-
     @Published var sessionEmojis: [String: String] = [:] {
         didSet {
             if let data = try? JSONEncoder().encode(sessionEmojis) {
@@ -569,8 +539,6 @@ class AgentStore: ObservableObject {
             selectedProvider: selectedProvider
         )
 
-        self.isPixelWindowVisible = UserDefaults.standard.object(forKey: "isPixelWindowVisible") as? Bool ?? false
-        self.pixelWindowOpacity   = UserDefaults.standard.object(forKey: "pixelWindowOpacity") as? Double ?? 1.0
         self.showIdleSessions   = UserDefaults.standard.object(forKey: "showIdleSessions") as? Bool ?? true
         self.pollInterval       = UserDefaults.standard.object(forKey: "pollInterval") as? Double ?? 10.0
         self.monitorCodexSessions = UserDefaults.standard.object(forKey: "monitorCodexSessions") as? Bool ?? true
@@ -584,9 +552,6 @@ class AgentStore: ObservableObject {
         self.hotkeyEnabled             = UserDefaults.standard.object(forKey: "hotkeyEnabled") as? Bool ?? true
         self.hotkeyKeyCode             = UserDefaults.standard.object(forKey: "hotkeyKeyCode") as? Int ?? Int(kVK_ANSI_S)
         self.hotkeyModifiers           = UserDefaults.standard.object(forKey: "hotkeyModifiers") as? Int ?? Int(optionKey | shiftKey)
-        self.pixelHotkeyEnabled        = UserDefaults.standard.object(forKey: "pixelHotkeyEnabled") as? Bool ?? false
-        self.pixelHotkeyKeyCode        = UserDefaults.standard.object(forKey: "pixelHotkeyKeyCode") as? Int ?? Int(kVK_ANSI_P)
-        self.pixelHotkeyModifiers      = UserDefaults.standard.object(forKey: "pixelHotkeyModifiers") as? Int ?? Int(optionKey | shiftKey)
         self.completionSound           = UserDefaults.standard.string(forKey: "completionSound") ?? "default"
         self.respectFocusMode          = UserDefaults.standard.object(forKey: "respectFocusMode") as? Bool ?? false
         self.quietHoursEnabled         = UserDefaults.standard.object(forKey: "quietHoursEnabled") as? Bool ?? false
@@ -599,10 +564,6 @@ class AgentStore: ObservableObject {
         self.notifyOnQuotaReset        = UserDefaults.standard.object(forKey: "notifyOnQuotaReset") as? Bool ?? true
         self.sessionAlertThreshold     = UserDefaults.standard.object(forKey: "sessionAlertThreshold") as? Double ?? 80
 
-        if let data = UserDefaults.standard.data(forKey: "pixelCharacterOverrides"),
-           let overrides = try? JSONDecoder().decode([String: Int].self, from: data) {
-            self.pixelCharacterOverrides = overrides
-        }
         if let data = UserDefaults.standard.data(forKey: "projectEmojis"),
            let emojis = try? JSONDecoder().decode([String: String].self, from: data) {
             self.projectEmojis = emojis
@@ -708,15 +669,6 @@ class AgentStore: ObservableObject {
         if hotkeyModifiers & Int(shiftKey) != 0   { mods += "⇧" }
         if hotkeyModifiers & Int(cmdKey) != 0     { mods += "⌘" }
         return mods + Self.keyCodeName(hotkeyKeyCode)
-    }
-
-    var pixelHotkeyDisplayString: String {
-        var mods = ""
-        if pixelHotkeyModifiers & Int(controlKey) != 0 { mods += "⌃" }
-        if pixelHotkeyModifiers & Int(optionKey) != 0  { mods += "⌥" }
-        if pixelHotkeyModifiers & Int(shiftKey) != 0   { mods += "⇧" }
-        if pixelHotkeyModifiers & Int(cmdKey) != 0     { mods += "⌘" }
-        return mods + Self.keyCodeName(pixelHotkeyKeyCode)
     }
 
     static func keyCodeName(_ code: Int) -> String {
@@ -844,11 +796,11 @@ class AgentStore: ObservableObject {
 
     // MARK: - 세션 업데이트
 
-    /// 에러 세션이 픽셀 창에 머무는 최대 시간.
+    /// 에러 세션이 세션 목록에 머무는 최대 시간.
     /// Why: 사용자가 에러 발생을 인지할 시간을 주되, 화면이 영구적으로 어지러워지지 않도록 자동 정리.
     nonisolated static let errorSessionRetention: TimeInterval = 300
 
-    /// 픽셀 창/메뉴 표시 대상 세션을 결정하는 순수 함수.
+    /// 세션 목록/메뉴 표시 대상 세션을 결정하는 순수 함수.
     /// - showIdleSessions=true: 모든 세션 (단, 5분 이상 지난 에러는 제외)
     /// - showIdleSessions=false: running/responded만 + 사용자 인지를 위해 5분 이내 에러도 노출
     static func filterSessionsForDisplay(
@@ -1109,24 +1061,6 @@ class AgentStore: ObservableObject {
             previousStatuses[agent.id] = agent.status
         }
 
-        // 새 세션에 미사용 캐릭터 랜덤 배정
-        let previousIDs = Set(agents.flatMap { [$0.id] + $0.subagents.map { $0.id } })
-        let allNewAgents = newAgents.flatMap { [$0] + $0.subagents }
-        for agent in allNewAgents where !previousIDs.contains(agent.id) && pixelCharacterOverrides[agent.id] == nil {
-            let inUse = Set(allNewAgents.map { a in pixelCharacterOverrides[a.id] ?? SpriteSheetPixelProvider.charIndex(for: a.id) })
-            pixelCharacterOverrides[agent.id] = assignCharacter(forNewAgentID: agent.id, inUseIndices: inUse)
-        }
-
         agents = newAgents
-    }
-
-    /// Returns a character index not in inUseIndices, or a random index if all 6 are used.
-    internal func assignCharacter(forNewAgentID id: String, inUseIndices: Set<Int>) -> Int {
-        let total = SpriteSheetPixelProvider.charCount
-        let available = (0..<total).filter { !inUseIndices.contains($0) }
-        if available.isEmpty {
-            return Int.random(in: 0..<total)
-        }
-        return available.randomElement()!
     }
 }

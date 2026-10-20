@@ -482,69 +482,6 @@ struct SettingsView: View {
                         }
                     }
 
-                    // 픽셀 에이전트 섹션
-                    sectionHeader(store.t("픽셀 에이전트", "Pixel Agents"))
-
-                    settingRow {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text(store.t("투명도", "Opacity"))
-                                    .font(.system(size: 13))
-                                Spacer()
-                                Text("\(Int(store.pixelWindowOpacity * 100))%")
-                                    .font(.system(size: 12, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                            }
-                            Slider(value: $store.pixelWindowOpacity, in: 0.1...1.0, step: 0.05)
-                        }
-                    }
-
-                    Divider().padding(.leading, 16)
-
-                    settingRow {
-                        Toggle(isOn: $store.pixelHotkeyEnabled) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(store.t("픽셀 창 핫키", "Pixel window hotkey"))
-                                    .font(.system(size: 13))
-                                Text(store.t("어디서든 픽셀 에이전트 창을 보였다 숨겼다 할 수 있습니다", "Toggle pixel agents window from anywhere"))
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .toggleStyle(.switch)
-                    }
-
-                    Divider().padding(.leading, 16)
-
-                    settingRow {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(store.t("창 위치/크기 초기화", "Reset window position/size"))
-                                    .font(.system(size: 13))
-                                Text(store.t("드래그로 변경한 위치와 크기를 기본값으로 되돌립니다", "Restore default position and size after dragging"))
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Button(store.t("초기화", "Reset")) {
-                                store.pixelWindowResetRequest.send()
-                            }
-                        }
-                    }
-
-                    if store.pixelHotkeyEnabled {
-                        Divider().padding(.leading, 16)
-
-                        settingRow {
-                            HStack {
-                                Text(store.t("단축키", "Shortcut"))
-                                    .font(.system(size: 13))
-                                Spacer()
-                                PixelHotkeyRecorderButton(store: store)
-                            }
-                        }
-                    }
-
                     // 클립보드 섹션
                     sectionHeader(store.t("클립보드", "Clipboard"))
 
@@ -772,7 +709,7 @@ private struct HotkeyRecorderButton: View {
     }
 }
 
-// MARK: - 핫키 레코더 래퍼 (팝오버 핫키 / 픽셀 창 핫키)
+// MARK: - 핫키 레코더 래퍼 (팝오버 핫키)
 
 struct PopoverHotkeyRecorderButton: View {
     @ObservedObject var store: AgentStore
@@ -781,17 +718,6 @@ struct PopoverHotkeyRecorderButton: View {
         HotkeyRecorderButton(store: store, displayString: store.hotkeyDisplayString) { keyCode, modifiers in
             store.hotkeyKeyCode = keyCode
             store.hotkeyModifiers = modifiers
-        }
-    }
-}
-
-struct PixelHotkeyRecorderButton: View {
-    @ObservedObject var store: AgentStore
-
-    var body: some View {
-        HotkeyRecorderButton(store: store, displayString: store.pixelHotkeyDisplayString) { keyCode, modifiers in
-            store.pixelHotkeyKeyCode = keyCode
-            store.pixelHotkeyModifiers = modifiers
         }
     }
 }

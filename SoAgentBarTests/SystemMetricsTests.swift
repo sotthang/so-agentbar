@@ -246,3 +246,68 @@ final class SystemMetricsMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.metrics?.cpuPercent, 0, accuracy: 0.001)
     }
 }
+
+// MARK: - AgentStore.systemMetricsMonitor 즉시 폴링 시작 (구 PhaseD_WindowControllerTests AC13 에서 이전)
+
+final class AgentStoreSystemMetricsMonitorTests: XCTestCase {
+
+    private var store: AgentStore!
+
+    override func setUp() {
+        super.setUp()
+        store = AgentStore()
+    }
+
+    override func tearDown() {
+        store = nil
+        super.tearDown()
+    }
+
+    // AC13: AgentStore는 systemMetricsMonitor 프로퍼티를 보유한다
+    // 이 테스트는 프로퍼티가 없으면 컴파일 에러로 실패한다
+    @MainActor
+    func test_agentStore_hasSystemMetricsMonitorProperty() {
+        // Given / When
+        let monitor = store.systemMetricsMonitor
+
+        // Then: 프로퍼티가 존재하면 nil이 아니어야 한다
+        XCTAssertNotNil(monitor,
+                        "AC13: AgentStore는 systemMetricsMonitor 프로퍼티를 갖고 있어야 한다")
+    }
+
+    // AC13: AgentStore init 직후 systemMetricsMonitor.metrics 가 nil이 아니다
+    // (init에서 start()를 즉시 호출하기 때문에 첫 번째 샘플이 채워져야 한다)
+    @MainActor
+    func test_agentStore_init_systemMetricsMonitor_metricsIsNotNil() {
+        // Given: AgentStore가 생성됨 (setUp에서)
+
+        // When: 별도 start() 호출 없음 — init에서 이미 호출되어야 함
+
+        // Then: metrics가 nil이 아니어야 한다
+        XCTAssertNotNil(store.systemMetricsMonitor.metrics,
+                        "AC13: AgentStore init 후 systemMetricsMonitor.metrics가 채워져야 한다 (init에서 start() 즉시 호출)")
+    }
+
+    // AC13: 동일 인스턴스인지 확인 (computed property가 아닌 stored property)
+    @MainActor
+    func test_agentStore_systemMetricsMonitor_isSameInstance() {
+        // Given / When
+        let m1 = store.systemMetricsMonitor
+        let m2 = store.systemMetricsMonitor
+
+        // Then: 매번 같은 인스턴스여야 한다 (computed property로 새 인스턴스 생성하면 안 됨)
+        XCTAssertTrue(m1 === m2,
+                      "AC13: systemMetricsMonitor는 매번 동일 인스턴스를 반환해야 한다")
+    }
+
+    // AC13: systemMetricsMonitor는 SystemMetricsMonitor 타입이다
+    @MainActor
+    func test_agentStore_systemMetricsMonitor_isCorrectType() {
+        // Given / When
+        let monitor = store.systemMetricsMonitor
+
+        // Then
+        XCTAssertTrue(monitor is SystemMetricsMonitor,
+                      "AC13: systemMetricsMonitor는 SystemMetricsMonitor 타입이어야 한다")
+    }
+}

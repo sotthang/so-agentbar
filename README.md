@@ -33,11 +33,6 @@
   <br><em>Settings: language, notifications, quota threshold, and display options</em>
 </p>
 
-<p align="center">
-  <img src="docs/4.png" alt="Pixel Agents floating window" width="400">
-  <br><em>Pixel Agents — animated pixel art characters that reflect each session's live status</em>
-</p>
-
 ## Features
 
 - **Real-time Session Monitoring** — Automatically detects and tracks all running Claude and Codex CLI sessions: Claude (CLI, Xcode, Desktop Code, Cowork) and Codex (CLI, VSCode)
@@ -57,8 +52,7 @@
 - **Human-in-the-loop Detection** — Automatically detects when an agent is waiting for your approval and sends an alert
 - **Statistics Dashboard** — Daily summary, 7-day chart, and top project rankings
 - **Global Hotkey** — Toggle the session panel from anywhere (default: ⌥⇧S)
-- **Pixel Agents Window** — Visualize active Claude Code sessions as animated pixel art characters in a floating macOS window. Toggle the window from the session panel header, customize opacity in settings, and watch characters animate based on session status (working, waiting for approval, etc.) Always display resident system monitor pets (CPU and Memory) that react to live system metrics in real-time
-- **System Resource Monitor** — Real-time CPU, Memory, and Disk usage display in the menu bar popover. System pets in the pixel window dynamically adjust their movement speed and activity based on current CPU and Memory metrics, replacing the need for separate system monitoring tools
+- **System Resource Monitor** — Real-time CPU, Memory, and Disk usage display in the menu bar popover.
 - **Keep Awake** — Toggle keep-awake mode in 3 steps: Off / Always / Auto. Always prevents the Mac from sleeping regardless of session status. Auto activates sleep prevention only when one or more Claude sessions are actively running. The mode button in the session panel header shows the current state with visual feedback
 - **Dock Pin** — Keep a bottom Dock on one display. With two or more displays (Sidecar included), touching the bottom edge of another display no longer drags the Dock over, and if it does end up elsewhere it is moved back automatically. Hold Option to move it on purpose. Opt-in, off by default, requires Accessibility permission. See [Dock Pin](#dock-pin) for conditions and cautions
 - **Clipboard History** — Track your recent clipboard copies in a dedicated tab. View the 20 most recent text items, search through your clipboard history, and click any entry to restore it to your clipboard. History persists across app restarts
@@ -159,7 +153,6 @@ Tested on macOS 27.
 | Quiet Hours | Suppress all notifications during a set time window (e.g. 23:00–09:00) |
 | Global Hotkey | Customizable keyboard shortcut |
 | Poll Interval | 10s / 30s / 60s fallback polling |
-| Pixel Agents | Opacity slider for the floating pixel character window |
 | Idle Sessions | Show or hide idle sessions |
 | Keep Awake Mode | Toggle between Off, Always, and Auto (session-dependent) |
 | Auto Keep Awake on Session | Automatically prevent sleep when Claude sessions are active |
@@ -190,10 +183,6 @@ If this project helped you, please consider sponsoring.
 Your support helps me maintain and improve this project.
 
 👉 [https://github.com/sponsors/sotthang](https://github.com/sponsors/sotthang)
-
-## Credits
-
-Pixel Agents character sprites by [PIPOYA](https://pipoya.itch.io/pipoya-free-rpg-character-sprites-32x32) (PIPOYA FREE RPG Character Sprites 32x32).
 
 ## License
 

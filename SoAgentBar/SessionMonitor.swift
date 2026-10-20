@@ -463,15 +463,15 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
             let folderName = entry.url.lastPathComponent
 
             // 직접 JSONL + 서브에이전트 JSONL 모두 수집
-            let directJSONLs = activeJSONLs(in: entry.url, now: now)
-            let subagentJSONLs = activeSubagentJSONLs(in: entry.url, now: now)
+            // (파일+mtime, 서브에이전트 여부) 쌍 — contains 탐색(O(n²)) 없이 순회 (PERF-008)
+            let jsonlFiles = activeJSONLs(in: entry.url, now: now).map { (file: $0, isSubagent: false) }
+                + activeSubagentJSONLs(in: entry.url, now: now).map { (file: $0, isSubagent: true) }
 
-            for jsonlURL in directJSONLs + subagentJSONLs {
+            for (file, isSubagent) in jsonlFiles {
                 // 파일마다 읽은 Data/파싱 결과의 autorelease 객체를 즉시 해제 (PERF-003)
                 autoreleasepool {
-                    guard let modDate = modificationDate(of: jsonlURL) else { return }
-
-                    let isSubagent = subagentJSONLs.contains(jsonlURL)
+                    let jsonlURL = file.url
+                    let modDate = file.modDate
                     let fileStem = jsonlURL.deletingPathExtension().lastPathComponent
                     // 서브에이전트 jsonl 경로: {projectURL}/{parentSessionId}/subagents/agent-xxx.jsonl
                     // → 두 단계 위 디렉토리 이름이 부모 sessionId
@@ -524,7 +524,7 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
                     // Desktop Code 메타데이터 적용 (직접 JSONL에만 적용, 서브에이전트는 제외)
                     // isArchived=false: 현재 Desktop에서 열려있는 세션 → Desktop으로 표시 + 클릭 시 Claude.app
                     // isArchived=true: 이전에 Desktop에서 열었지만 지금은 닫힘 → CLI 유지, title만 적용
-                    if entry.source == .cli, directJSONLs.contains(jsonlURL),
+                    if entry.source == .cli, !isSubagent,
                        let meta = desktopCodeMeta[sessionID] {
                         if !meta.isArchived {
                             session.source = .desktopCode
@@ -896,34 +896,39 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
 
     // MARK: - 유틸
 
-    /// 프로젝트 디렉토리 내 24시간 이내 활성 JSONL 파일 목록 반환
-    private func activeJSONLs(in projectURL: URL, now: Date) -> [URL] {
+    /// 활성 JSONL 파일과 (한 번만 조회한) mtime
+    private typealias JSONLFile = (url: URL, modDate: Date)
+
+    /// 프로젝트 디렉토리 내 24시간 이내 활성 JSONL 파일 목록 반환 (최신순)
+    private func activeJSONLs(in projectURL: URL, now: Date) -> [JSONLFile] {
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: projectURL,
             includingPropertiesForKeys: [.contentModificationDateKey]
         ) else { return [] }
 
-        return files
-            .filter { $0.pathExtension == "jsonl" }
-            .filter { url in
-                guard let mod = modificationDate(of: url) else { return false }
-                return now.timeIntervalSince(mod) < 86400
-            }
-            .sorted {
-                (modificationDate(of: $0) ?? .distantPast) >
-                (modificationDate(of: $1) ?? .distantPast)
-            }
+        // 비교 함수 안에서 resourceValues를 부르면 O(n log n)번 조회 → 미리 구한 mtime으로 정렬 (PERF-008)
+        return recentJSONLs(in: files, now: now).sorted { $0.modDate > $1.modDate }
+    }
+
+    /// jsonl 확장자 + 24시간 이내 수정 파일만 남긴다 (mtime은 파일당 한 번만 조회)
+    private func recentJSONLs(in files: [URL], now: Date) -> [JSONLFile] {
+        files.compactMap { url in
+            guard url.pathExtension == "jsonl",
+                  let mod = modificationDate(of: url),
+                  now.timeIntervalSince(mod) < 86400 else { return nil }
+            return (url: url, modDate: mod)
+        }
     }
 
     /// 프로젝트 디렉토리 내 서브에이전트 JSONL 파일 목록 반환
     /// 경로: {projectURL}/{sessionId}/subagents/agent-xxx.jsonl
-    private func activeSubagentJSONLs(in projectURL: URL, now: Date) -> [URL] {
+    private func activeSubagentJSONLs(in projectURL: URL, now: Date) -> [JSONLFile] {
         guard let sessionDirs = try? FileManager.default.contentsOfDirectory(
             at: projectURL,
             includingPropertiesForKeys: [.isDirectoryKey]
         ) else { return [] }
 
-        var result: [URL] = []
+        var result: [JSONLFile] = []
         for sessionDir in sessionDirs {
             guard sessionDir.hasDirectoryPath else { continue }
             let subagentsDir = sessionDir.appendingPathComponent("subagents")
@@ -932,13 +937,7 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
                 includingPropertiesForKeys: [.contentModificationDateKey]
             ) else { continue }
 
-            let recent = files
-                .filter { $0.pathExtension == "jsonl" }
-                .filter { url in
-                    guard let mod = modificationDate(of: url) else { return false }
-                    return now.timeIntervalSince(mod) < 86400
-                }
-            result.append(contentsOf: recent)
+            result.append(contentsOf: recentJSONLs(in: files, now: now))
         }
         return result
     }

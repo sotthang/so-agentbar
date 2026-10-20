@@ -243,18 +243,42 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
     // isArchived=false인 세션만 Desktop으로 표시 (현재 Desktop에서 열려있는 세션)
     private var desktopCodeMeta: [String: (title: String, isArchived: Bool)] = [:]
 
-    init() {
+    private let desktopCodeSessionsDir: URL                    // Desktop Code 메타데이터(claude-code-sessions)
+    private let coworkSessionsDir: URL                         // Cowork VM 세션(local-agent-mode-sessions)
+    private let defaults: UserDefaults                         // fileOffsets 영속화 저장소
+    private let now: () -> Date                                // poll 기준 시각 (24시간 필터)
+    private let makeByteSource: (URL) -> ByteSource?           // JSONL 파일 읽기 원천
+
+    /// 프로덕션 기본 경로(홈 디렉토리 기준)로 생성
+    convenience init() {
         let home = URL(fileURLWithPath: NSHomeDirectory())
-        projectsDirs = [
+        self.init(
             // CLI: claude 명령어로 실행한 세션
-            home.appendingPathComponent(".claude/projects"),
+            cliProjectsDir: home.appendingPathComponent(".claude/projects"),
             // Xcode: Coding Assistant에서 실행한 세션
-            home.appendingPathComponent("Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig/projects"),
-        ]
-        watchedExtraDirs = [
-            home.appendingPathComponent("Library/Application Support/Claude/claude-code-sessions"),
-            home.appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions"),
-        ]
+            xcodeProjectsDir: home.appendingPathComponent("Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig/projects"),
+            desktopCodeSessionsDir: home.appendingPathComponent("Library/Application Support/Claude/claude-code-sessions"),
+            coworkSessionsDir: home.appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
+        )
+    }
+
+    /// 의존성 주입용 지정 이니셜라이저 (테스트에서는 임시 디렉토리 / 전용 UserDefaults / spy ByteSource 사용)
+    init(
+        cliProjectsDir: URL,
+        xcodeProjectsDir: URL,
+        desktopCodeSessionsDir: URL,
+        coworkSessionsDir: URL,
+        defaults: UserDefaults = .standard,
+        now: @escaping () -> Date = Date.init,
+        makeByteSource: @escaping (URL) -> ByteSource? = { FileByteSource(url: $0) }
+    ) {
+        projectsDirs = [cliProjectsDir, xcodeProjectsDir]
+        watchedExtraDirs = [desktopCodeSessionsDir, coworkSessionsDir]
+        self.desktopCodeSessionsDir = desktopCodeSessionsDir
+        self.coworkSessionsDir = coworkSessionsDir
+        self.defaults = defaults
+        self.now = now
+        self.makeByteSource = makeByteSource
     }
 
     func start() {
@@ -344,7 +368,18 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
     // MARK: - 메인 루프
 
     private func poll() {
-        let now = Date()
+        let results = pollNow()
+        DispatchQueue.main.async { [weak self] in
+            self?.onSessionsChanged?(results)
+        }
+    }
+
+    /// 한 번의 스캔·파싱을 호출 스레드에서 동기 수행하고 세션 목록을 반환한다.
+    /// 프로덕션에서는 dispatchQueue 위에서 poll()을 통해서만 호출된다.
+    /// 테스트에서는 start() 없이 직접 호출해 폴링을 동기적으로 구동한다 (onSessionsChanged 미호출).
+    @discardableResult
+    func pollNow() -> [ClaudeSession] {
+        let now = self.now()
         var results: [ClaudeSession] = []
 
         // Desktop Code 메타데이터 갱신 (cliSessionId → title 매핑)
@@ -476,56 +511,26 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
         // 변경된 오프셋 영속화
         saveFileOffsets()
 
-        DispatchQueue.main.async { [weak self] in
-            self?.onSessionsChanged?(results)
-        }
+        return results
     }
 
     // MARK: - JSONL 파싱 (오프셋 기반)
 
     private func parseNewLines(url: URL, session: inout ClaudeSession) {
-        guard let fileHandle = try? FileHandle(forReadingFrom: url) else { return }
-        defer { try? fileHandle.close() }
+        guard let source = makeByteSource(url) else { return }
 
         let currentOffset = fileOffsets[url.path] ?? 0
-
-        // 파일 크기 확인
-        let fileSize = (try? fileHandle.seekToEnd()) ?? 0
-        guard fileSize > currentOffset else { return }
-
-        // 마지막으로 읽은 위치로 이동
-        try? fileHandle.seek(toOffset: currentOffset)
-
-        // 새로 추가된 데이터만 읽기
-        let newData = fileHandle.readDataToEndOfFile()
-        guard !newData.isEmpty else { return }
-
-        // 마지막 개행 위치까지만 처리 — 파일 쓰는 도중인 불완전한 줄 제외
-        // 개행이 없으면 아직 한 줄도 완성되지 않은 것이므로 전부 건너뜀
-        let newlineByte = UInt8(ascii: "\n")
-        guard let lastNewlineIdx = newData.lastIndex(of: newlineByte) else { return }
-
-        // 완성된 줄까지만 슬라이싱 & 오프셋 전진
-        // 나머지 부분 줄은 다음 폴링 때 재처리됨
-        let completeData = newData[newData.startIndex...lastNewlineIdx]
-        fileOffsets[url.path] = currentOffset + UInt64(completeData.count)
-
-        guard let text = String(data: completeData, encoding: .utf8) else { return }
 
         // 실제 파싱된 이벤트의 timestamp를 기준으로 lastContentChange 갱신
         // (processEvent에서 session.lastActivity를 이벤트 timestamp로 업데이트하므로
         //  파싱 전 스냅샷과 비교해서 바뀌었으면 "새 이벤트가 있었다"고 판단)
         let activityBefore = session.lastActivity
 
-        // 완성된 줄만 파싱
-        for line in text.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty,
-                  let lineData = trimmed.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
-            else { continue }
-
+        let nextOffset = JSONLReader.readCompleteLines(from: source, startingAt: currentOffset) { json in
             processEvent(json, session: &session)
+        }
+        if let nextOffset {
+            fileOffsets[url.path] = nextOffset
         }
 
         // 파싱 후 lastActivity가 실제로 전진했으면 그 timestamp를 lastContentChange로 사용
@@ -744,8 +749,7 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
 
     /// claude-code-sessions 디렉토리를 스캔해 cliSessionId → (title, isArchived) 매핑 갱신
     private func loadDesktopCodeTitles() {
-        let home = URL(fileURLWithPath: NSHomeDirectory())
-        let base = home.appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
+        let base = desktopCodeSessionsDir
         guard let userDirs = try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: nil) else { return }
 
         var meta: [String: (title: String, isArchived: Bool)] = [:]
@@ -775,8 +779,7 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
 
     /// local-agent-mode-sessions 아래의 모든 .claude/projects 디렉토리 반환
     private func discoverCoworkProjectDirs() -> [URL] {
-        let home = URL(fileURLWithPath: NSHomeDirectory())
-        let base = home.appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
+        let base = coworkSessionsDir
         let fm = FileManager.default
         var result: [URL] = []
 
@@ -905,12 +908,12 @@ class ClaudeSessionMonitor: SessionMonitorProtocol {
     private func saveFileOffsets() {
         let encoded = Dictionary(uniqueKeysWithValues: fileOffsets.map { ($0.key, String($0.value)) })
         if let data = try? JSONEncoder().encode(encoded) {
-            UserDefaults.standard.set(data, forKey: "fileOffsets")
+            defaults.set(data, forKey: "fileOffsets")
         }
     }
 
     private func loadFileOffsets() {
-        guard let data = UserDefaults.standard.data(forKey: "fileOffsets"),
+        guard let data = defaults.data(forKey: "fileOffsets"),
               let dict = try? JSONDecoder().decode([String: String].self, from: data) else { return }
         for (path, offsetStr) in dict {
             // 파일이 실제로 존재하고 오프셋이 파일 크기 이하인 경우만 복원

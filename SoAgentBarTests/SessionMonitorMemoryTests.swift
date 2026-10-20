@@ -34,8 +34,8 @@ private final class SpyByteSource: ByteSource {
 
     var size: UInt64 { inner.size }
 
-    func readToEnd(from offset: UInt64) -> Data {
-        let data = inner.readToEnd(from: offset)
+    func read(from offset: UInt64, upTo count: Int) -> Data {
+        let data = inner.read(from: offset, upTo: count)
         recorder.record(path: path, offset: offset, bytes: data.count)
         return data
     }

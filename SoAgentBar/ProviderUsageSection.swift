@@ -258,11 +258,13 @@ struct ProviderUsageSection: View {
             }
 
             // 세션 (5시간)
-            quotaRow(
-                label: store.t("세션 (5h)", "Session (5h)"),
-                utilization: quota.sessionUtilization,
-                resetsAt: quota.sessionResetsAt
-            )
+            if quota.hasSession {
+                quotaRow(
+                    label: store.t("세션 (5h)", "Session (5h)"),
+                    utilization: quota.sessionUtilization,
+                    resetsAt: quota.sessionResetsAt
+                )
+            }
 
             // 주간
             quotaRow(

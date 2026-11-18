@@ -34,6 +34,7 @@ enum ProviderState: Equatable {
 struct QuotaInfo: Equatable {
     var sessionUtilization: Double      // 0-100
     var sessionResetsAt: Date?
+    var hasSession: Bool = true         // false: 세션(5h) 윈도우 데이터 없음
     var weeklyUtilization: Double       // 0-100
     var weeklyResetsAt: Date?
     var planName: String?

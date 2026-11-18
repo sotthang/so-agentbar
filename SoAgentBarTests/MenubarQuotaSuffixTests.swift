@@ -38,6 +38,28 @@ final class MenubarQuotaSuffixTests: XCTestCase {
         XCTAssertEqual(s, "S0%/W0%")
     }
 
+    func test_buildQuotaSuffix_noSession_sessionAndWeekly_showsWeeklyOnly() {
+        let s = AppDelegate.buildQuotaSuffix(util: (0, 39), mode: .quotaSessionAndWeekly, hasSession: false)
+        XCTAssertEqual(s, "W39%")
+    }
+
+    func test_buildQuotaSuffix_noSession_sessionOnlyMode_fallsBackToWeekly() {
+        let s = AppDelegate.buildQuotaSuffix(util: (0, 39), mode: .quotaSession, hasSession: false)
+        XCTAssertEqual(s, "W39%")
+    }
+
+    func test_buildQuotaSuffix_noSession_emojiMode_returnsEmptyString() {
+        let s = AppDelegate.buildQuotaSuffix(util: (0, 39), mode: .emoji, hasSession: false)
+        XCTAssertEqual(s, "")
+    }
+
+    func test_buildUsageSuffix_claudeNoSession_showsWeeklyOnly() {
+        let quota = QuotaInfo(sessionUtilization: 0, sessionResetsAt: nil, hasSession: false,
+                              weeklyUtilization: 39, weeklyResetsAt: nil, planName: nil, extra: nil)
+        let usage = ProviderUsage(id: .claude, state: .data, isEstimate: false, quota: quota, estimate: nil)
+        XCTAssertEqual(AppDelegate.buildUsageSuffix(usage: usage, mode: .quotaSessionAndWeekly), "W39%")
+    }
+
     func test_buildQuotaSuffix_emojiMode_returnsEmptyString() {
         let s = AppDelegate.buildQuotaSuffix(util: (45, 72), mode: .emoji)
         XCTAssertEqual(s, "")

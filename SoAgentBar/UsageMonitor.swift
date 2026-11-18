@@ -7,6 +7,8 @@ struct ClaudeUsage {
     var planName: String?              // "Max 5x", "Pro", etc.
     var sessionUtilization: Double     // 0-100
     var sessionResetsAt: Date?
+    /// false: API 가 five_hour 를 null 로 내려줌(활성 세션 윈도우 없음) → 0% 와 구분
+    var hasSession: Bool = true
     var weeklyUtilization: Double      // 0-100
     var weeklyResetsAt: Date?
     var extraEnabled: Bool
@@ -114,7 +116,9 @@ class UsageMonitor: ObservableObject, UsageProviderProtocol {
 
     // MARK: - 알림 로직
 
-    private func checkThresholdAndNotify(prev: ClaudeUsage?, new: ClaudeUsage) {
+    func checkThresholdAndNotify(prev: ClaudeUsage?, new: ClaudeUsage) {
+        // 세션 한도 자체가 없으면(five_hour=null) 0% 를 "충전됨"으로 오인하지 않도록 건너뜀
+        guard new.hasSession else { return }
         let newUtil = new.sessionUtilization
         let prevUtil = prev?.sessionUtilization
 
@@ -168,6 +172,7 @@ class UsageMonitor: ObservableObject, UsageProviderProtocol {
         let quota = QuotaInfo(
             sessionUtilization: u.sessionUtilization,
             sessionResetsAt: u.sessionResetsAt,
+            hasSession: u.hasSession,
             weeklyUtilization: u.weeklyUtilization,
             weeklyResetsAt: u.weeklyResetsAt,
             planName: u.planName,
@@ -360,19 +365,19 @@ class UsageMonitor: ObservableObject, UsageProviderProtocol {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw UsageError.parseError
         }
-        return parseUsage(json)
+        return Self.parseUsage(json)
     }
 
-    private static let iso8601Formatter: ISO8601DateFormatter = {
+    nonisolated(unsafe) private static let iso8601Formatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
 
-    private func parseUsage(_ json: [String: Any]) -> ClaudeUsage {
+    nonisolated static func parseUsage(_ json: [String: Any]) -> ClaudeUsage {
         func date(_ dict: [String: Any]?) -> Date? {
             guard let s = dict?["resets_at"] as? String else { return nil }
-            return Self.iso8601Formatter.date(from: s)
+            return UsageMonitor.iso8601Formatter.date(from: s)
         }
         let five  = json["five_hour"]   as? [String: Any]
         let seven = json["seven_day"]   as? [String: Any]
@@ -380,6 +385,7 @@ class UsageMonitor: ObservableObject, UsageProviderProtocol {
         return ClaudeUsage(
             sessionUtilization: five?["utilization"]  as? Double ?? 0,
             sessionResetsAt:    date(five),
+            hasSession:         five?["utilization"] is NSNumber,
             weeklyUtilization:  seven?["utilization"] as? Double ?? 0,
             weeklyResetsAt:     date(seven),
             extraEnabled:       extra?["is_enabled"]   as? Bool   ?? false,

@@ -133,4 +133,61 @@ final class UsageMonitorTokenTests: XCTestCase {
         XCTAssertEqual(oauth["accessToken"] as? String, "NEW_AT")
         XCTAssertEqual(oauth["refreshToken"] as? String, "OLD_RT")  // 유지
     }
+
+    // MARK: - parseUsage (실데이터: five_hour=null, seven_day만 존재)
+
+    func test_parseUsage_fiveHourNull_marksSessionUnavailableAndKeepsWeekly() {
+        let json = """
+        {"five_hour":null,"seven_day":{"utilization":39.0,"resets_at":"2026-11-18T18:59:59.784029+00:00"},
+         "extra_usage":{"is_enabled":false,"monthly_limit":10000,"used_credits":0.0}}
+        """.data(using: .utf8)!
+        let obj = try! JSONSerialization.jsonObject(with: json) as! [String: Any]
+
+        let usage = UsageMonitor.parseUsage(obj)
+
+        XCTAssertFalse(usage.hasSession)
+        XCTAssertNil(usage.sessionResetsAt)
+        XCTAssertEqual(usage.weeklyUtilization, 39.0)
+        XCTAssertNotNil(usage.weeklyResetsAt)
+    }
+
+    func test_parseUsage_fiveHourPresent_marksSessionAvailable() {
+        let json = """
+        {"five_hour":{"utilization":12.0,"resets_at":"2026-11-18T18:00:00.000000+00:00"},
+         "seven_day":{"utilization":39.0,"resets_at":"2026-11-18T18:59:59.784029+00:00"}}
+        """.data(using: .utf8)!
+        let obj = try! JSONSerialization.jsonObject(with: json) as! [String: Any]
+
+        let usage = UsageMonitor.parseUsage(obj)
+
+        XCTAssertTrue(usage.hasSession)
+        XCTAssertEqual(usage.sessionUtilization, 12.0)
+    }
+
+    func test_toProviderUsage_propagatesHasSession() {
+        var u = ClaudeUsage(sessionUtilization: 0, weeklyUtilization: 39, extraEnabled: false,
+                            extraSpentCents: 0, extraLimitCents: 0)
+        u.hasSession = false
+        let pu = UsageMonitor.toProviderUsage(usage: u, errorMessage: nil, needsLogin: false)
+        XCTAssertEqual(pu.quota?.hasSession, false)
+    }
+
+    // MARK: - 세션 알림 (hasSession=false)
+
+    @MainActor
+    func test_checkThreshold_noSession_afterPriorAlert_doesNotSendRefillNotification() {
+        let monitor = UsageMonitor()
+        var sent: [String] = []
+        monitor.sendNotificationHandler = { title, _ in sent.append(title) }
+        let high = ClaudeUsage(sessionUtilization: 90, weeklyUtilization: 10, extraEnabled: false,
+                               extraSpentCents: 0, extraLimitCents: 0)
+        monitor.checkThresholdAndNotify(prev: nil, new: high)
+        XCTAssertEqual(sent.count, 1)  // 임계값 경고
+
+        var none = ClaudeUsage(sessionUtilization: 0, weeklyUtilization: 39, extraEnabled: false,
+                               extraSpentCents: 0, extraLimitCents: 0)
+        none.hasSession = false
+        monitor.checkThresholdAndNotify(prev: high, new: none)
+        XCTAssertEqual(sent.count, 1, "세션 없음 → 충전 알림 금지")
+    }
 }

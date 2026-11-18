@@ -292,11 +292,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
     nonisolated static func buildQuotaSuffix(
         util: (session: Double, weekly: Double)?,
-        mode: MenubarStyle
+        mode: MenubarStyle,
+        hasSession: Bool = true
     ) -> String {
         guard let util else { return "" }
         let s = Int(util.session)
         let w = Int(util.weekly)
+        // 세션 한도가 없는 플랜(five_hour=null)은 있는 한도(주간)만 표시
+        if !hasSession {
+            switch mode {
+            case .quotaSession, .quotaSessionAndWeekly: return "W\(w)%"
+            default:                                    return ""
+            }
+        }
         switch mode {
         case .quotaSession:          return "S\(s)%"
         case .quotaSessionAndWeekly: return "S\(s)%/W\(w)%"
@@ -376,7 +384,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             // 기존 buildQuotaSuffix 경로 (회귀 없음)
             guard let quota = usage.quota else { return "" }
             let util = (session: quota.sessionUtilization, weekly: quota.weeklyUtilization)
-            return buildQuotaSuffix(util: util, mode: mode)
+            return buildQuotaSuffix(util: util, mode: mode, hasSession: quota.hasSession)
 
         case .codex, .gemini:
             // 추정 suffix
@@ -581,7 +589,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         if isQuotaMode, let mu = menubarUsage, case .data = mu.state, mu.id == .claude,
            let quota = mu.quota {
             sessionUtil = Int(quota.sessionUtilization)
-            weeklyUtil = (style == .quotaSessionAndWeekly) ? Int(quota.weeklyUtilization) : nil
+            weeklyUtil = (style == .quotaSessionAndWeekly || !quota.hasSession) ? Int(quota.weeklyUtilization) : nil
         } else {
             sessionUtil = nil
             weeklyUtil = nil
